@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>店家目前營業狀態</title>
+    <style>
+        html, body { 
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+        }
+        body { 
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+            background-color: #f4f5f7; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        
+        .status-section { 
+            flex: 1; 
+            padding: 20px; 
+            box-sizing: border-box; 
+            background: linear-gradient(135deg, #00B900 0%, #008a00 100%); 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+        }
+        .status-title { font-size: 18px; opacity: 0.9; margin-bottom: 15px; }
+        .status-badge { 
+            background: white; 
+            color: #00B900; 
+            padding: 15px 30px; 
+            border-radius: 40px; 
+            font-size: 28px; 
+            font-weight: bold; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        
+        .status-section.closed { background: linear-gradient(135deg, #ff3366 0%, #d81b43 100%); }
+        .status-section.closed .status-badge { color: #d81b43; }
+        
+        .status-section.preorder { background: linear-gradient(135deg, #f39c12 0%, #d68910 100%); }
+        .status-section.preorder .status-badge { color: #d68910; }
+        
+        .status-section.busy { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); }
+        .status-section.busy .status-badge { color: #2980b9; font-size: 20px; padding: 15px 25px; }
+        
+        
+        .status-section.connecting { background: #ffffff; color: #333; }
+        .status-section.connecting .status-title { color: #333; }
+        .status-section.connecting .status-badge { background: #f0f0f0; color: #666; box-shadow: none; border: 1px solid #ddd; }
+        .status-section.connecting .notice-text { color: #999; text-shadow: none; }
+        
+        .status-section.offline { background: linear-gradient(135deg, #2c3e50 0%, #000000 100%); }
+        .status-section.offline .status-title { color: #fff; }
+        .status-section.offline .status-badge { background: #111; color: #ff3366; box-shadow: 0 0 10px rgba(255,51,102,0.3); border: 1px solid #ff3366; }
+        .status-section.offline .notice-text { color: #ffffff; text-shadow: none; }
+
+        .notice-text {
+            font-size: 16px; 
+            margin-top: 15px; 
+            text-align: center; 
+            font-weight: bold; 
+            line-height: 1.4; 
+            color: #fff200; 
+            text-shadow: 0px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .update-time {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            text-align: right;
+            font-size: 14px;
+            color: white;
+            line-height: 1.4;
+            opacity: 0.9;
+        }
+        .status-section.connecting .update-time { color: #999; }
+    
+        .order-btn {
+            display: inline-block;
+            background-color: #fff200;
+            color: #d81b43;
+            text-decoration: none;
+            padding: 15px 50px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 40px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            text-align: center;
+            margin-top: 30px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+    </style>
+</head>
+<body>
+    <div id="status-container" class="status-section connecting">
+        <div class="status-title">店家目前營業狀態</div>
+        <div id="status-text" class="status-badge">連線中...</div>
+        <div class="notice-text">
+            訂單請於3小時前預約<br>
+            享優惠不需等待穩定用餐
+        </div>
+        
+        <div id="action-container" style="display: none; text-align: center;">
+            <a href="https://liff.line.me/2011657436-rGVj5SoG" id="order-link" class="order-btn">開始點餐</a>
+        </div>
+
+        <div class="update-time">
+            <div>最後更新時間</div>
+            <div id="update-time-text">--</div>
+        </div>
+    </div>
+
+    <script>
+        
+        function setStatus(type, text) {
+            const container = document.getElementById('status-container');
+            const badge = document.getElementById('status-text');
+            
+            container.className = 'status-section';
+            if(type === 'closed') container.classList.add('closed');
+            if(type === 'preorder') container.classList.add('preorder');
+            if(type === 'busy') container.classList.add('busy');
+            if(type === 'connecting') container.classList.add('connecting');
+            if(type === 'offline') container.classList.add('offline');
+            
+            
+            badge.innerText = text;
+            
+            const actionContainer = document.getElementById('action-container');
+            const noticeEl = document.querySelector('.notice-text');
+            
+            if (actionContainer) {
+                if (type === 'connecting') {
+                    actionContainer.style.display = 'none';
+                } else {
+                    actionContainer.style.display = 'block';
+                    const btn = document.getElementById('order-link');
+                    if (btn && !btn.dataset.autoClickScheduled) {
+                        btn.dataset.autoClickScheduled = "true";
+                        const autoClickTimer = setTimeout(() => {
+                            window.location.href = btn.href;
+                        }, 1500);
+                        
+                        btn.addEventListener('click', () => {
+                            clearTimeout(autoClickTimer);
+                        });
+                    }
+                }
+            }
+            
+            if (noticeEl) {
+                if (type === 'offline') {
+                    noticeEl.innerHTML = '目前可能訂單較多<br>您還是可以';
+                } else {
+                    noticeEl.innerHTML = '訂單請於3小時前預約<br>享優惠不需等待穩定用餐';
+                }
+            }
+
+            
+            if (text.length > 10) {
+                badge.style.fontSize = "20px";
+                badge.style.padding = "15px 25px";
+            } else {
+                badge.style.fontSize = "";
+                badge.style.padding = "";
+            }
+            
+            // 更新時間顯示
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            const timeEl = document.getElementById('update-time-text');
+            if (timeEl) {
+                timeEl.innerText = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+            }
+        }
+
+        async function loadStatus() {
+            try {
+                const configRes = await fetch('/config.json?t=' + new Date().getTime());
+                const configData = await configRes.json();
+                const lineUrl = configData.line_url;
+                if (!lineUrl) return;
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超時設定
+                
+                const response = await fetch(lineUrl + '/api/status', { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) throw new Error('API Error');
+                
+                const data = await response.json();
+                
+                // 如果成功，設定狀態
+                setStatus(data.type, data.text);
+            } catch (err) {
+                console.error("連線異常", err);
+                // 錯誤時直接改為斷線狀態
+                setStatus('offline', '斷線中');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            setStatus('connecting', '連線中');
+            loadStatus();
+        });
+</script>
+</body>
+</html>

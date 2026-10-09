@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>優惠方案</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 15px; display: flex; flex-direction: column; gap: 15px; }
+        
+        /* 卡片共用樣式 */
+        .card { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+        .card-title { font-size: 18px; font-weight: bold; color: #333; margin: 0; display: flex; align-items: center; gap: 8px; }
+        
+        /* 標籤/Badge 樣式 */
+        .tag-group { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag { font-size: 12px; padding: 3px 8px; border-radius: 6px; font-weight: bold; }
+        .tag.green { background-color: #e5f7ed; color: #00B900; border: 1px solid #00B900; }
+        .tag.red { background-color: #ffe6e6; color: #ff3366; border: 1px solid #ff3366; }
+        .tag.blue { background-color: #e6f2ff; color: #007aff; border: 1px solid #007aff; }
+        .tag.orange { background-color: #fff4e6; color: #f39c12; border: 1px solid #f39c12; }
+        .tag.gray { background-color: #f0f0f0; color: #666; }
+
+        /* 內容樣式 */
+        .highlight-box { background-color: #fff9e6; border: 1px dashed #f39c12; padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+        .highlight-text { color: #d68910; font-weight: bold; font-size: 15px; }
+        
+        .fee-row { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; }
+        .fee-label { font-weight: bold; color: #555; font-size: 14px; }
+        .fee-price { font-weight: bold; color: #ff3366; font-size: 16px; }
+
+        .discount-list { font-size: 13px; color: #666; margin: 0 0 10px 0; padding-left: 20px; }
+        .discount-list li { margin-bottom: 4px; }
+
+        /* 折疊選單 (Accordion) */
+        details { background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; cursor: pointer; }
+        summary { font-size: 14px; font-weight: bold; color: #333; outline: none; user-select: none; }
+        .details-content { font-size: 13px; color: #555; margin-top: 8px; line-height: 1.5; padding-top: 8px; border-top: 1px solid #e0e0e0; cursor: default; }
+        .details-content ul { margin: 0; padding-left: 15px; }
+        
+        /* 生鮮雜貨 專屬排版 */
+        .grocery-section { border-left: 3px solid #007aff; padding-left: 10px; margin-bottom: 15px; }
+        .grocery-title { font-size: 15px; font-weight: bold; color: #007aff; margin-bottom: 8px; }
+
+        /* 滑動容器 */
+        .swipe-container {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            margin: 0 -15px; 
+        }
+        .swipe-container::-webkit-scrollbar { display: none; }
+        .swipe-slide {
+            flex: 0 0 100%;
+            scroll-snap-align: start;
+            padding: 0 15px;
+            box-sizing: border-box;
+        }
+        .dots-container {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #d1d5db;
+            transition: background-color 0.3s;
+        }
+        .dot.active { background-color: #007aff; }
+        .swipe-hint { text-align: center; font-size: 11px; color: #999; margin-top: 5px; }
+
+        /* Modal 樣式 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 320px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        .modal-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        .modal-body { font-size: 14px; color: #555; line-height: 1.5; }
+        .modal-close {
+            position: absolute;
+            top: 15px; right: 15px;
+            background: #f0f0f0; border: none; border-radius: 50%;
+            width: 24px; height: 24px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; font-weight: bold; color: #666;
+        }
+        .help-circle {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 14px; height: 14px; border-radius: 50%;
+            background-color: #00B900; color: white;
+            font-size: 10px; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 美食 -->
+    <div class="card" style="padding-bottom: 10px;">
+        <div class="swipe-container">
+            <!-- Slide 1: 預約單 (預設) -->
+            <div class="swipe-slide">
+                <div class="card-header">
+                    <h2 class="card-title">🍔 美食預約單</h2>
+                    <div class="tag blue">限預約單</div>
+                </div>
+                
+                <div class="highlight-box">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <div class="highlight-text">✨ $300內 全面半價！</div>
+                        <div class="tag-group">
+                            <div class="tag green">免外送費</div>
+                            <div class="tag green">免服務費</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="fee-row">
+                    <span class="fee-label">💰 代訂費</span>
+                    <span class="fee-price">$50</span>
+                </div>
+                
+                <ul class="discount-list">
+                    <li>一次叫 2 單以上，每單<strong style="color: #00B900;">再折$10</strong></li>
+                    <li><strong style="color: #ff3366;">3小時前</strong>預約每單<strong style="color: #00B900;">再折$10</strong></li>
+                </ul>
+
+                <details open>
+                    <summary>📌 規則與預約優點</summary>
+                    <div class="details-content">
+                        <strong>📌 規則：</strong>
+                        <ul>
+                            <li>需告知預約指定時間 (可預約未來一週內)。</li>
+                            <li>無法疊加其他折扣商品 <strong style="color: #ff3366;">(買一送一、紅字優惠)</strong>。</li>
+                            <li><strong style="color: #ff3366;">超過$300</strong> 的金額部分以原價計算。</li>
+                        </ul>
+                        <strong style="display:inline-block; margin-top: 8px;">💡 預約優點：</strong><br>
+                        提早卡位，不怕雨天缺外送員、臨時爆單等太久！
+                    </div>
+                </details>
+            </div>
+            
+            <!-- Slide 2: 一般單 -->
+            <div class="swipe-slide">
+                <div class="card-header">
+                    <h2 class="card-title">🍔 美食一般單</h2>
+                    <div class="tag gray">即時配送</div>
+                </div>
+                
+                <div class="highlight-box">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <div class="highlight-text">✨ $300內 全面半價！</div>
+                        <div class="tag-group">
+                            <div class="tag green">免外送費</div>
+                            <div class="tag green">免服務費</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="fee-row">
+                    <span class="fee-label">💰 代訂費</span>
+                    <span class="fee-price">$50</span>
+                </div>
+                
+                <ul class="discount-list">
+                    <li><strong style="color: #ff3366;">限 $200 以上</strong></li>
+                </ul>
+                
+                <details open>
+                    <summary>📌 規則說明</summary>
+                    <div class="details-content">
+                        <strong>📌 說明：</strong>
+                        <ul>
+                            <li>即時幫您點單配送。</li>
+                            <li>無法疊加買一送一或紅字優惠。</li>
+                            <li><strong style="color: #ff3366;">即時訂單送出速度較慢，需要最少 10 分鐘。</strong></li>
+                            <li><strong style="color: #ff3366;">餐期有可能需要等待 30 分鐘。</strong></li>
+                        </ul>
+                    </div>
+                </details>
+            </div>
+        </div>
+        
+        <div class="dots-container">
+            <div class="dot active"></div>
+            <div class="dot"></div>
+        </div>
+        <div class="swipe-hint">👈 左右滑動切換方案 👉</div>
+    </div>
+
+    <!-- 生鮮雜貨 -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">🛒 生鮮雜貨</h2>
+        </div>
+        
+        <div style="font-size: 13px; color: #666; margin-bottom: 12px; text-align: center;">
+            (請從訂餐系統完成選擇店家，會發連結讓您慢慢挑選)
+        </div>
+
+        <div class="swipe-container" style="margin-bottom: 10px;">
+            <!-- Slide 1: 預約單 -->
+            <div class="swipe-slide">
+                <div class="grocery-section">
+                    <div class="grocery-title">👉 預約單 <span class="tag orange" style="margin-left:5px; font-size:11px;">最划算！</span></div>
+                    <div class="highlight-box">
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                            <div class="highlight-text">✨ 滿 $449 折 $200</div>
+                            <div class="tag-group">
+                                <div class="tag green">免運費</div>
+                                <div class="tag red">需服務費</div>
+                            </div>
+                        </div>
+                        <div onclick="openModal('time-discount-modal')" style="font-size: 12px; color: #00B900; font-weight: bold; margin-top: 5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                            (可再疊加「3小時時段-$25」折扣) <span class="help-circle">?</span>
+                        </div>
+                    </div>
+                    <div class="fee-row" style="margin-bottom: 0;">
+                        <span class="fee-label">💰 代訂費</span>
+                        <span class="fee-price"><span style="text-decoration: line-through; color: #999; font-size: 14px;">$60</span> $45</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Slide 2: 一般單 -->
+            <div class="swipe-slide">
+                <div class="grocery-section" style="border-color: #666;">
+                    <div class="grocery-title" style="color: #666;">👉 一般單 <span class="tag gray" style="margin-left:5px; font-size:11px;">即時配送</span></div>
+                    <div class="highlight-box" style="background-color: #f8f9fa; border-color: #ccc;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                            <div class="highlight-text" style="color: #555;">✨ 滿 $449 折 $180</div>
+                            <div class="tag-group">
+                                <div class="tag green">免運費</div>
+                                <div class="tag red">需服務費</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="fee-row" style="margin-bottom: 0;">
+                        <span class="fee-label">💰 代訂費</span>
+                        <span class="fee-price">$60</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dots-container" style="margin-top: 0; margin-bottom: 5px;">
+            <div class="dot active"></div>
+            <div class="dot"></div>
+        </div>
+        <div class="swipe-hint" style="margin-bottom: 15px;">👈 左右滑動切換方案 👉</div>
+
+        <details open>
+            <summary>🏪 可預約店家參考</summary>
+            <div class="details-content">
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 5px 0;">
+                    <!-- 大全聯 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://food-safetyws.tycg.gov.tw/001/Upload/0/8828eb8c-2141-ec11-a1fd-005056b7f485/bd931e9f-812c-4e96-a3c8-abf5e4a4dec5.jpg" alt="大全聯" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#2e7d32;color:#fff;align-items:center;justify-content:center;font-size:14px;font-weight:bold;">全聯</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">大全聯</span>
+                    </div>
+                    <!-- 屈臣氏 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://www.flowring.com/wp-content/uploads/2022/06/logo_watsons.jpg" alt="屈臣氏" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#00529B;color:#fff;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">屈臣氏</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">屈臣氏</span>
+                    </div>
+                    <!-- 大樹藥局 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2x_IO0pIzzmT3MQbPva7yBDVBOHui49Yb7XUAthXeFw&s=10" alt="大樹" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#e53935;color:#fff;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">大樹</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">大樹藥局</span>
+                    </div>
+                    <!-- 丁丁藥局 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://mall.iopenmall.tw/website/uploads/website_47886/zh-tw/logo.png?hash=0206170437" alt="丁丁" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#f57c00;color:#fff;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">丁丁</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">丁丁藥局</span>
+                    </div>
+                    <!-- 寵物公園 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://lcp-prod-obs.line-scdn.net/0h4F_BSs1fa2liO3kaCoQUPjFmZxhRSm9hC0N2VEZ-SlskSFNJFxVYUDhgZzwoTVNNNRZFaQZ9SgEkCk1ZXwFxakZySzwoSlM8KhV3eU5wZSw_TVdjBFVYWQ" alt="寵物公園" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#4caf50;color:#fff;align-items:center;justify-content:center;font-size:11px;font-weight:bold;">🐾</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">寵物公園</span>
+                    </div>
+                    <!-- 特力屋 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRh-FtODpxTYhYetRJRzwSoj--jclS2DvUx3_FlDG24JQ&s=10" alt="特力屋" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#E8560E;color:#fff;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">特力屋</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">特力屋</span>
+                    </div>
+                    <!-- 小北百貨 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSOSn3qnIJTrEqkIqhw_W0DSBgVI-lrfXm77wUqz1QmCQD53ZYvP-y2iQ&s=10" alt="小北" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#d32f2f;color:#fff;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">小北</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">小北百貨</span>
+                    </div>
+                    <!-- 燦坤 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://play-lh.googleusercontent.com/HjAZTOFZEbUl9YoIoqmwhGo-4EL-4fCErxCoLT12syFKbHeUeCZFcE36Zs52sYWdwHLPGHedKS97mWj45Z2V9Yw" alt="燦坤" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#1565c0;color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">燦坤</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">燦坤</span>
+                    </div>
+                    <!-- 唐吉訶德 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://image.kkday.com/v2/image/get/c_fill%2Cq_55%2Ct_webp%2Cw_960/s1.kkday.com/product_151129/20250204053005_qPFMz/jpg" alt="唐吉訶德" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#e91e63;color:#fff;align-items:center;justify-content:center;font-size:8px;font-weight:bold;">唐吉訶德</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">唐吉訶德</span>
+                    </div>
+                    <!-- 優市 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://d3i4yxtzktqr9n.cloudfront.net/web-eats-v2/0c6de4f0b3884eb89b28a29ecbc10d59.svg" alt="優市" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #15b05c; border: 1px solid #eee; padding: 5px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#ff9800;color:#fff;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">優市</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">優市</span>
+                    </div>
+                    <!-- 美廉社 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR0NQ3ypYahpF0AfCzhsKuRthKxmhBWt2aiDSs4s50diw&s" alt="美廉社" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#7b1fa2;color:#fff;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">美廉社</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">美廉社</span>
+                    </div>
+                    <!-- 亞尼克 -->
+                    <div style="display: flex; flex-direction: column; align-items: center; width: 60px;">
+                        <img src="https://mall.iopenmall.tw/website/uploads/website_24385/zh-tw/logo.jpg?hash=0511100515" alt="亞尼克" style="width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: #fff; border: 1px solid #eee; padding: 2px;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="display:none;width:40px;height:40px;border-radius:8px;background:#5d4037;color:#fff;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">亞尼克</div>
+                        <span style="font-size: 11px; color: #666; margin-top: 4px; text-align: center; white-space: nowrap; transform: scale(0.9);">亞尼克</span>
+                    </div>
+                </div>
+                <div style="text-align: center; font-size: 12px; color: #999; margin-top: 8px;">...等，其他可預約之店家皆可</div>
+            </div>
+        </details>
+    </div>
+
+    <!-- Modal -->
+    <div id="time-discount-modal" class="modal-overlay" onclick="closeModal(event, 'time-discount-modal')">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closeModal(event, 'time-discount-modal')">×</button>
+            <div class="modal-title">什麼是3小時折扣?</div>
+            <div class="modal-body">
+                在官方APP內預約時會有3小時時段選項。<br><br>
+                通常會是：<br>
+                <ul style="margin-top: 5px; margin-bottom: 5px; padding-left: 20px; color: #666; font-size: 13px;">
+                    <li>11:00 AM ~ 2:00 PM</li>
+                    <li>12:00 PM ~ 3:00 PM</li>
+                    <li>1:00 PM ~ 4:00 PM</li>
+                    <li>2:00 PM ~ 5:00 PM</li>
+                    <li>3:00 PM ~ 6:00 PM</li>
+                    <li>4:00 PM ~ 7:00 PM</li>
+                    <li>5:00 PM ~ 8:00 PM</li>
+                    <li>6:00 PM ~ 9:00 PM</li>
+                </ul>
+                <br>
+                <strong>不會影響你的食物狀態</strong>，只是讓店家有更長時間準備出貨。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openModal(id) { document.getElementById(id).classList.add('show'); }
+        function closeModal(event, id) { document.getElementById(id).classList.remove('show'); }
+
+        document.querySelectorAll('.swipe-container').forEach(container => {
+            const dots = container.nextElementSibling.querySelectorAll('.dot');
+            container.addEventListener('scroll', () => {
+                const index = Math.round(container.scrollLeft / container.clientWidth);
+                dots.forEach((dot, i) => {
+                    dot.classList.toggle('active', i === index);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

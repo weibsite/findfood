@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>收餐指引與試算工具</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        
+        .guide-section { 
+            flex: 1; 
+            background-color: white; 
+            padding: 25px; 
+            overflow-y: auto; 
+        }
+        .guide-title { font-size: 20px; color: #333; margin-top: 0; margin-bottom: 20px; text-align: center; font-weight: bold; }
+        
+        .step-box { background: #f8f9fa; border-radius: 10px; padding: 15px; margin-bottom: 20px; border-left: 5px solid #00B900; }
+        .step-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 10px; }
+        .step-content { font-size: 14px; color: #555; line-height: 1.6; }
+        .step-content ul { margin: 0; padding-left: 20px; }
+        .step-content li { margin-bottom: 5px; }
+        
+        .warning-box { background: #fff0f0; border: 1px solid #ffcccc; border-radius: 10px; padding: 15px; text-align: center; margin-bottom: 20px; }
+        .warning-title { color: #ff3366; font-size: 15px; font-weight: bold; margin-bottom: 5px; }
+        .warning-content { color: #d81b43; font-size: 14px; font-weight: bold; }
+    </style>
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js">
+        
+        function buildFlexMessage() {
+            if (!window.bestBins) return null;
+            
+            let contents = [
+                {
+                    "type": "text",
+                    "text": "自動拆單試算結果",
+                    "weight": "bold",
+                    "color": "#1DB446",
+                    "size": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": "美食預約單 ($285內半價)",
+                    "weight": "bold",
+                    "size": "xl",
+                    "margin": "md"
+                },
+                {
+                    "type": "separator",
+                    "margin": "xxl"
+                }
+            ];
+
+            let totalCost = 0;
+
+            window.bestBins.forEach((bin, index) => {
+                let itemsList = [];
+                let counts = {};
+                for (let item of bin.items) {
+                    let key = `${item.name} ($${item.price})`;
+                    counts[key] = (counts[key] || 0) + 1;
+                }
+                for (let key in counts) {
+                    itemsList.push({
+                        "type": "box",
+                        "layout": "horizontal",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": `${key} x${counts[key]}`,
+                                "size": "sm",
+                                "color": "#555555",
+                                "flex": 0
+                            }
+                        ]
+                    });
+                }
+
+                contents.push({
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "xxl",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": `📦 第 ${index + 1} 單`,
+                                    "size": "sm",
+                                    "color": "#555555",
+                                    "flex": 0
+                                },
+                                {
+                                    "type": "text",
+                                    "text": `$${bin.sum}`,
+                                    "size": "sm",
+                                    "color": "#111111",
+                                    "align": "end"
+                                }
+                            ]
+                        },
+                        ...itemsList,
+                        {
+                            "type": "separator",
+                            "margin": "xxl"
+                        }
+                    ]
+                });
+                totalCost += bin.sum;
+            });
+
+            return {
+                "type": "flex",
+                "altText": "自動拆單試算結果出爐囉！",
+                "contents": {
+                    "type": "bubble",
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "contents": contents
+                    }
+                }
+            };
+        }
+
+        function sendFlexMessage(action) {
+            const flexMsg = buildFlexMessage();
+            if (!flexMsg) {
+                alert("請先完成試算");
+                return;
+            }
+
+            if (!liff.isLoggedIn()) {
+                alert("請先登入 LINE");
+                return;
+            }
+
+            const messages = [flexMsg];
+
+            if (action === 'share') {
+                if (!liff.isApiAvailable('shareTargetPicker')) {
+                    alert("此裝置不支援 shareTargetPicker");
+                    return;
+                }
+                liff.shareTargetPicker(messages)
+                    .then(function(res) {
+                        if (res) {
+                            alert("分享成功！");
+                            liff.closeWindow();
+                        }
+                    })
+                    .catch(function(error) {
+                        alert("分享失敗：" + error);
+                    });
+            } else if (action === 'send') {
+                if (!liff.isInClient()) {
+                    alert("只能在 LINE APP 內的聊天室使用此按鈕");
+                    return;
+                }
+                liff.sendMessages(messages)
+                    .then(function() {
+                        alert("已成功傳送至聊天室！");
+                        liff.closeWindow();
+                    })
+                    .catch(function(error) {
+                        alert("送出失敗：" + error);
+                    });
+            }
+        }
+
+
+
+    </script>
+</head>
+<body>
+
+    <!-- 收餐指引區塊 -->
+    <div class="guide-section">
+        <div class="guide-title">🛵 收餐與外送指引</div>
+        
+        <div class="step-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div class="step-title" style="margin-bottom: 0;">Step 1. 按下開始點餐按鈕直接點餐</div>
+                <button onclick="openCalculator()" style="background-color: #007aff; color: white; border: none; padding: 6px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🔢 試算金額</button>
+            </div>
+            <div class="step-content">
+                <ul>
+                    <li>依照 <strong>畫面金額支付</strong>沒有隱藏消費</li>
+                    <li style="color: #00B900; font-weight: bold;">✅ 支付後請務必回傳截圖</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="step-box" style="border-left-color: #007aff;">
+            <div class="step-title">Step 2. 追蹤外送進度</div>
+            <div class="step-content">
+                <ul>
+                    <li style="font-weight: bold; color: #007aff;">📢 留意「即將抵達」提示</li>
+                    <li>看到此顯示代表外送員已在門口！</li>
+                    <li>請自行點擊連結追蹤，司機不一定會撥打電話。</li>
+                    <li>外送員無強制送上樓，請提前準備取餐。</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="warning-box">
+            <div class="warning-title">⚠️ 請務必留意訊息</div>
+            <div class="warning-content">
+                若因未留意訊息導致無人取餐<br>外送員將餐點放置門口後離開<br>我們不負賠償責任，請見諒。
+            </div>
+        </div>
+    </div>
+
+    <!-- 拆單試算提示窗 -->
+    <div id="split-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2500;">
+        <div style="background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 350px; max-height: 90vh; overflow-y: auto; box-sizing: border-box; text-align: left; box-shadow: 0 4px 15px rgba(0,0,0,0.2); position: relative;">
+            <button onclick="closeCalculator()" style="position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 20px; color: #999; cursor: pointer;">&times;</button>
+            
+            <h3 style="margin-top: 0; color: #333; font-size: 18px; margin-bottom: 5px; text-align: center;">自動拆單計算機</h3>
+            <p style="font-size: 13px; color: #666; margin-top: 0; margin-bottom: 20px; text-align: center;">
+                設定商品單價及數量，我們將為您計算最划算的拆單方式。<br>
+                
+            </p>
+            
+            <div id="item-list" style="margin-bottom: 15px;">
+                <!-- 商品項目將動態產生於此 -->
+            </div>
+            
+            <button onclick="addItem()" style="width: 100%; padding: 10px; border: 1px dashed #00B900; background: #f0fbf4; color: #00B900; border-radius: 6px; cursor: pointer; font-size: 14px; margin-bottom: 15px; font-weight: bold;">+ 新增不同價位的商品</button>
+            
+            <button onclick="calculateSplit()" style="width: 100%; padding: 12px; border: none; background: #333; color: white; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">開始計算</button>
+            
+            <div id="split-result" style="font-size: 14px; color: #333; line-height: 1.5; background: #f8f9fa; padding: 15px; border-radius: 8px; display: none;">
+                <!-- 計算結果將顯示於此 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let liffInitPromise = null;
+        window.splitResultText = "";
+
+        window.addEventListener('DOMContentLoaded', () => {
+            liffInitPromise = liff.init({ liffId: "2011657436-SNFTv9uP" }).catch(err => {
+                console.error('LIFF init failed', err);
+            });
+        });
+
+        // 試算工具邏輯
+        let itemCount = 0;
+        
+        function openCalculator() {
+            document.getElementById('split-modal').style.display = 'flex';
+            if (itemCount === 0) {
+                addItem();
+                addItem();
+                addItem();
+                addItem();
+            }
+        }
+        
+        function closeCalculator() {
+            document.getElementById('split-modal').style.display = 'none';
+        }
+
+        function createStepper(inputId) {
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.alignItems = 'center';
+            container.style.border = '1px solid #ccc';
+            container.style.borderRadius = '6px';
+            container.style.overflow = 'hidden';
+            container.style.width = '100px';
+
+            const btnMinus = document.createElement('button');
+            btnMinus.innerText = '-';
+            btnMinus.style.width = '32px';
+            btnMinus.style.height = '32px';
+            btnMinus.style.border = 'none';
+            btnMinus.style.background = '#f0f0f0';
+            btnMinus.style.fontSize = '16px';
+            btnMinus.style.cursor = 'pointer';
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.id = inputId;
+            input.value = 1;
+            input.min = 1;
+            input.style.width = '36px';
+            input.style.height = '32px';
+            input.style.border = 'none';
+            input.style.textAlign = 'center';
+            input.style.fontSize = '14px';
+            input.style.boxSizing = 'border-box';
+            input.style.outline = 'none';
+            input.style.appearance = 'textfield';
+
+            const btnPlus = document.createElement('button');
+            btnPlus.innerText = '+';
+            btnPlus.style.width = '32px';
+            btnPlus.style.height = '32px';
+            btnPlus.style.border = 'none';
+            btnPlus.style.background = '#f0f0f0';
+            btnPlus.style.fontSize = '16px';
+            btnPlus.style.cursor = 'pointer';
+
+            btnMinus.onclick = () => {
+                let val = parseInt(input.value) || 1;
+                if(val > 1) input.value = val - 1;
+            };
+            btnPlus.onclick = () => {
+                let val = parseInt(input.value) || 1;
+                input.value = val + 1;
+            };
+
+            container.appendChild(btnMinus);
+            container.appendChild(input);
+            container.appendChild(btnPlus);
+            
+            return container;
+        }
+
+        function addItem() {
+            itemCount++;
+            const list = document.getElementById('item-list');
+            const itemName = String.fromCharCode(64 + itemCount); // A, B, C...
+            
+            const row = document.createElement('div');
+            row.id = `item-row-${itemCount}`;
+            row.style.display = 'flex';
+            row.style.gap = '10px';
+            row.style.marginBottom = '10px';
+            row.style.alignItems = 'center';
+            row.style.background = '#fafafa';
+            row.style.padding = '10px';
+            row.style.borderRadius = '8px';
+            
+            const label = document.createElement('input');
+            label.type = 'text';
+            label.id = `name-${itemCount}`;
+            label.value = itemName;
+            label.style.fontWeight = 'bold';
+            label.style.color = '#007aff';
+            label.style.width = '55px';
+            label.style.padding = '8px 4px';
+            label.style.border = '1px dashed #007aff';
+            label.style.borderRadius = '6px';
+            label.style.textAlign = 'center';
+            label.style.fontSize = '14px';
+            label.style.boxSizing = 'border-box';
+            label.onfocus = () => { if (label.value === itemName) label.select(); };
+            
+            const priceInput = document.createElement('input');
+            priceInput.type = 'number';
+            priceInput.id = `price-${itemCount}`;
+            priceInput.placeholder = '單價';
+            priceInput.style.flex = '1';
+            priceInput.style.padding = '8px';
+            priceInput.style.border = '1px solid #ccc';
+            priceInput.style.borderRadius = '6px';
+            priceInput.style.fontSize = '14px';
+            priceInput.style.minWidth = '0';
+            
+            const stepper = createStepper(`qty-${itemCount}`);
+            
+            const delBtn = document.createElement('button');
+            delBtn.innerHTML = '&times;';
+            delBtn.style.background = '#ffcccc';
+            delBtn.style.color = '#ff3366';
+            delBtn.style.border = 'none';
+            delBtn.style.borderRadius = '50%';
+            delBtn.style.width = '24px';
+            delBtn.style.height = '24px';
+            delBtn.style.display = 'flex';
+            delBtn.style.alignItems = 'center';
+            delBtn.style.justifyContent = 'center';
+            delBtn.style.cursor = 'pointer';
+            delBtn.onclick = () => {
+                list.removeChild(row);
+            };
+            
+            row.appendChild(label);
+            row.appendChild(priceInput);
+            row.appendChild(stepper);
+            row.appendChild(delBtn);
+            list.appendChild(row);
+        }
+
+        function calculateSplit() {
+            const list = document.getElementById('item-list');
+            const rows = list.children;
+            let items = [];
+            
+            let hasUnchangedNames = false;
+            for (let i = 0; i < rows.length; i++) {
+                const rowId = rows[i].id.split('-')[2];
+                const price = parseInt(document.getElementById(`price-${rowId}`).value);
+                const qty = parseInt(document.getElementById(`qty-${rowId}`).value);
+                const labelInput = document.getElementById(`name-${rowId}`);
+                let label = labelInput ? labelInput.value.trim() : "商品";
+                if (!label) label = "商品";
+                
+                if (price && qty && price > 0 && qty > 0) {
+                    if (/^[A-Z]$/.test(label)) {
+                        hasUnchangedNames = true;
+                    }
+                    for (let j = 0; j < qty; j++) {
+                        items.push({ name: label, price: price });
+                    }
+                }
+            }
+            
+            const resEl = document.getElementById('split-result');
+            resEl.style.display = 'block';
+            
+            if (items.length === 0) {
+                resEl.innerHTML = '<span style="color:#ff3366;">請輸入至少一項有效的商品金額與數量！</span>';
+                return;
+            }
+            if (hasUnchangedNames) {
+                const proceed = confirm("您尚未修改預設的商品名稱 (A, B, C...)，這樣代訂可能會不知道這代表什麼商品哦！\n\n按「確定」保持原樣送出\n按「取消」快速輸入商品名稱");
+                if (!proceed) {
+                    let updatedAny = false;
+                    for (let i = 0; i < rows.length; i++) {
+                        const rowId = rows[i].id.split('-')[2];
+                        const labelInput = document.getElementById(`name-${rowId}`);
+                        const price = parseInt(document.getElementById(`price-${rowId}`).value);
+                        
+                        if (price > 0 && labelInput && /^[A-Z]$/.test(labelInput.value.trim())) {
+                            let oldName = labelInput.value.trim();
+                            let newName = prompt(`請輸入【商品 ${oldName}】的實際名稱：\n(例如：大麥克、滷肉飯等)`, "");
+                            if (newName !== null && newName.trim() !== "") {
+                                labelInput.value = newName.trim();
+                                updatedAny = true;
+                            }
+                        }
+                    }
+                    
+                    if (updatedAny) {
+                        setTimeout(calculateSplit, 50);
+                    } else {
+                        resEl.style.display = 'none';
+                    }
+                    return;
+                }
+            }
+            items.sort((a, b) => b.price - a.price);
+
+            window.bestBins = null;
+            let bestBins = null;
+            let bestCost = Infinity;
+
+            for (let attempt = 0; attempt < 1000; attempt++) {
+                let bins = [];
+                let currentItems = [...items];
+                if (attempt > 0) {
+                    for (let i = currentItems.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [currentItems[i], currentItems[j]] = [currentItems[j], currentItems[i]];
+                    }
+                }
+
+                if (attempt === 0) {
+                    for (let item of currentItems) {
+                        let placed = false;
+                        for (let bin of bins) {
+                            if (bin.sum + item.price <= 285) {
+                                bin.items.push(item);
+                                bin.sum += item.price;
+                                placed = true;
+                                break;
+                            }
+                        }
+                        if (!placed) {
+                            bins.push({ items: [item], sum: item.price });
+                        }
+                    }
+                } else if (attempt === 1) {
+                    let sum = 0;
+                    for (let item of currentItems) sum += item.price;
+                    bins.push({ items: currentItems, sum: sum });
+                } else {
+                    for (let item of currentItems) {
+                        if (bins.length === 0) {
+                            bins.push({ items: [item], sum: item.price });
+                        } else {
+                            if (Math.random() < 0.3) {
+                                bins.push({ items: [item], sum: item.price });
+                            } else {
+                                let idx = Math.floor(Math.random() * bins.length);
+                                bins[idx].items.push(item);
+                                bins[idx].sum += item.price;
+                            }
+                        }
+                    }
+                }
+
+                let currentCost = 0;
+                let numBins = bins.length;
+                let feePerBin = numBins >= 2 ? 30 : 40; 
+                
+                for (let bin of bins) {
+                    let foodCost = Math.ceil(Math.min(bin.sum, 285) / 2) + Math.max(0, bin.sum - 285);
+                    currentCost += foodCost + feePerBin;
+                }
+
+                if (currentCost < bestCost) {
+                    bestCost = currentCost;
+                    bestBins = bins;
+                    window.bestBins = bins;
+                }
+            }
+
+            let html = `<div style="font-weight:bold; margin-bottom:10px; color:#00B900; text-align:center; font-size:16px;">✨ 最佳拆單方案 (共 ${bestBins.length} 單)</div>`;
+            
+            if (bestBins.length === 1) {
+                html += `<div style="text-align:center; color:#555;">總金額未超過限制，無需拆單。</div>`;
+                window.splitResultText = "";
+            } else {
+                let chatText = "【自動拆單結果】\n";
+                
+                bestBins.forEach((bin, i) => {
+                    let itemStrs = [];
+                    let counts = {};
+                    for (let item of bin.items) {
+                        let key = `${item.name}(${item.price}元)`;
+                        counts[key] = (counts[key] || 0) + 1;
+                    }
+                    for (let key in counts) {
+                        itemStrs.push(`${key}*${counts[key]}`);
+                    }
+
+                    html += `<div style="background: white; border: 1px solid #eee; padding: 10px; border-radius: 6px; margin-bottom: 8px;">`;
+                    html += `<div style="font-weight:bold; color:#007aff; margin-bottom:4px;">📦 第 ${i+1} 單：<span style="color:#ff3366;">$${bin.sum}</span></div>`;
+                    html += `<div style="font-size:13px; color:#666;">包含：${itemStrs.join(', ')}</div>`;
+                    html += `</div>`;
+                    
+                    chatText += `第 ${i+1} 單：${bin.sum} 元 (${itemStrs.join(', ')})\n`;
+                });
+                
+                window.splitResultText = chatText.trim();
+                
+                html += `<div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button onclick="sendFlexMessage('share')" style="flex: 1; padding: 12px 5px; border: none; background: #3498db; color: white; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">📤 分享至群組/好友</button>
+                        <button onclick="sendFlexMessage('send')" style="flex: 1; padding: 12px 5px; border: none; background: #00B900; color: white; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">💬 傳送至當前聊天室</button>
+                    </div>`;
+            }
+
+            resEl.innerHTML = html;
+        }
+
+
+    
+        
+        function buildFlexMessage() {
+            if (!window.bestBins) return null;
+            
+            let contents = [
+                {
+                    "type": "text",
+                    "text": "自動拆單試算結果",
+                    "weight": "bold",
+                    "color": "#1DB446",
+                    "size": "sm"
+                },
+                {
+                    "type": "text",
+                    "text": "美食預約單 ($285內半價)",
+                    "weight": "bold",
+                    "size": "xl",
+                    "margin": "md"
+                },
+                {
+                    "type": "separator",
+                    "margin": "xxl"
+                }
+            ];
+
+            let totalCost = 0;
+
+            window.bestBins.forEach((bin, index) => {
+                let itemsList = [];
+                let counts = {};
+                for (let item of bin.items) {
+                    let key = `${item.name} ($${item.price})`;
+                    counts[key] = (counts[key] || 0) + 1;
+                }
+                for (let key in counts) {
+                    itemsList.push({
+                        "type": "box",
+                        "layout": "horizontal",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": `${key} x${counts[key]}`,
+                                "size": "sm",
+                                "color": "#555555",
+                                "flex": 0
+                            }
+                        ]
+                    });
+                }
+
+                contents.push({
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "xxl",
+                    "spacing": "sm",
+                    "contents": [
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": `📦 第 ${index + 1} 單`,
+                                    "size": "sm",
+                                    "color": "#555555",
+                                    "flex": 0
+                                },
+                                {
+                                    "type": "text",
+                                    "text": `$${bin.sum}`,
+                                    "size": "sm",
+                                    "color": "#111111",
+                                    "align": "end"
+                                }
+                            ]
+                        },
+                        ...itemsList,
+                        {
+                            "type": "separator",
+                            "margin": "xxl"
+                        }
+                    ]
+                });
+                totalCost += bin.sum;
+            });
+
+            return {
+                "type": "flex",
+                "altText": "自動拆單試算結果出爐囉！",
+                "contents": {
+                    "type": "bubble",
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "contents": contents
+                    }
+                }
+            };
+        }
+
+        function sendFlexMessage(action) {
+            const flexMsg = buildFlexMessage();
+            if (!flexMsg) {
+                alert("請先完成試算");
+                return;
+            }
+
+            if (!liff.isLoggedIn()) {
+                alert("請先登入 LINE");
+                return;
+            }
+
+            const messages = [flexMsg];
+
+            if (action === 'share') {
+                if (!liff.isApiAvailable('shareTargetPicker')) {
+                    alert("此裝置不支援 shareTargetPicker");
+                    return;
+                }
+                liff.shareTargetPicker(messages)
+                    .then(function(res) {
+                        if (res) {
+                            alert("分享成功！");
+                            liff.closeWindow();
+                        }
+                    })
+                    .catch(function(error) {
+                        alert("分享失敗：" + error);
+                    });
+            } else if (action === 'send') {
+                if (!liff.isInClient()) {
+                    alert("只能在 LINE APP 內的聊天室使用此按鈕");
+                    return;
+                }
+                liff.sendMessages(messages)
+                    .then(function() {
+                        alert("已成功傳送至聊天室！");
+                        liff.closeWindow();
+                    })
+                    .catch(function(error) {
+                        alert("送出失敗：" + error);
+                    });
+            }
+        }
+
+
+
+    </script>
+
+</body>
+</html>
