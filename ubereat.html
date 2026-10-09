@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 12.0</title>
+<title>點餐系統 13.0</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -1744,6 +1744,17 @@ document.addEventListener("DOMContentLoaded", () => {
           // 不顯示成功訊息，讓使用者感覺無縫銜接
 
           isAddressSet = true;
+          
+          // [優化] 當切換地址時，清除搜尋快取，強制下次搜尋重新抓取新地址的店家資料
+          if (typeof lastSearchedQuery !== 'undefined') {
+              lastSearchedQuery = "";
+              if (typeof lastSearchedVertical !== 'undefined') lastSearchedVertical = "";
+          } else {
+              window.lastSearchedQuery = "";
+              window.lastSearchedVertical = "";
+          }
+          window.suggestionStores = [];
+
           if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
           revealSubSections();
           saveAddressHistory(lat, lng, title);
@@ -2529,7 +2540,7 @@ async function searchStores() {
       
       resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
       window.scrollTo(0, 0); // 確保每次搜尋完成後，畫面回到最上方優先顯示第一個結果
-    } catch (err) { statusEl.innerHTML = '錯誤: ' + err.message; }
+    } catch (err) { statusEl.innerHTML = '錯誤: ' + err.message; } finally { window._searchLock = false; }
 
   }
 
