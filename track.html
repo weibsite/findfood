@@ -31,7 +31,7 @@
 
     <script>
         
-                function parseOrderText(rawText) {
+                        function parseOrderText(rawText) {
             const lines = rawText.split('\n').map(l => l.trim()).filter(l => l);
             const isSplit = rawText.includes('【多單');
             
@@ -46,80 +46,73 @@
             if (isSplit) {
                 let currentSplit = null;
                 let inFooter = false;
-                let i = 0;
                 
-                while (i < lines.length) {
+                for (let i = 0; i < lines.length; i++) {
                     let line = lines[i];
                     
-                    if (line.match(/^【多單/)) {
+                    if (line.includes('【多單')) {
                         if (currentSplit) parsed.splits.push(currentSplit);
                         currentSplit = {
-                            title: line, store: '', url: '', items: [],
+                            title: line.replace('📦', '').trim(), store: '', url: '', items: [],
                             subtotal: '', discount: '', fees: [], total: ''
                         };
-                        
-                        if (i + 1 < lines.length && !lines[i+1].startsWith('網址') && !lines[i+1].match(/^\d+\./)) {
-                            currentSplit.store = lines[i+1];
-                            i++;
-                        }
-                        
-                        if (i + 1 < lines.length && (lines[i+1].startsWith('網址') || lines[i+1].startsWith('🔗'))) {
-                            let u = lines[i+1];
-                            let match = u.match(/\[(http[^\]]+)\]/);
-                            if (match) currentSplit.url = match[1];
-                            else if (u.includes('http')) currentSplit.url = u.substring(u.indexOf('http'));
-                            i++;
-                        }
-                        i++;
                         continue;
                     }
                     
                     if (line.includes('總結算金額') || line.includes('總計')) {
                         inFooter = true;
                         parsed.globalTotal = line.substring(line.indexOf(':')+1).trim();
-                        i++; continue;
+                        continue;
                     }
                     if (line.includes('外送備註')) {
                         inFooter = true;
                         parsed.deliveryNotes = line.substring(line.indexOf(':')+1).trim();
-                        i++; continue;
+                        continue;
                     }
                     if (line.includes('餐點備註')) {
                         inFooter = true;
                         parsed.foodNotes = line.substring(line.indexOf(':')+1).trim();
-                        i++; continue;
+                        continue;
                     }
                     if (line.includes('預訂折扣') || line.includes('活動折扣')) {
                         inFooter = true;
-                        parsed.globalDiscount = line;
-                        i++; continue;
+                        parsed.globalDiscount = line.replace(/🕒|🎉/g, '').trim();
+                        continue;
                     }
                     
                     if (currentSplit) {
-                        if (line.match(/^\d+\./)) {
-                            currentSplit.items.push({text: line, sub: []});
+                        if (line.startsWith('🏪') || (i>0 && lines[i-1].includes('【多單') && !line.includes('網址'))) {
+                            currentSplit.store = line.replace('🏪', '').trim();
+                        }
+                        else if (line.startsWith('🔗') || line.startsWith('網址')) {
+                            let u = line;
+                            let match = u.match(/\[(http[^\]]+)\]/);
+                            if (match) currentSplit.url = match[1];
+                            else if (u.includes('http')) currentSplit.url = u.substring(u.indexOf('http'));
+                        }
+                        else if (line.match(/^\d+\./)) {
+                            currentSplit.items.push({text: line.replace(/^[\s\u200B-\u200D\uFEFF]+/, ''), sub: []});
                         } else if (line.startsWith('-') && currentSplit.items.length > 0) {
                             currentSplit.items[currentSplit.items.length-1].sub.push(line);
-                        } else if (line.startsWith('小計')) {
+                        } else if (line.includes('小計') && line.includes(':')) {
                             currentSplit.subtotal = line.substring(line.indexOf(':')+1).trim();
-                        } else if (line.includes('優惠') && line.includes('-')) {
+                        } else if (line.includes('優惠') && line.includes('-') && line.includes(':')) {
                             currentSplit.discount = line.substring(line.indexOf(':')+1).trim();
-                        } else if (line.startsWith('結算')) {
+                        } else if (line.includes('結算') && line.includes(':')) {
                             currentSplit.total = line.substring(line.indexOf(':')+1).trim();
                         } else if (line.includes(':') && !line.includes('http')) {
                             let parts = line.split(':');
-                            currentSplit.fees.push({name: parts[0].trim(), value: parts[1].trim()});
+                            currentSplit.fees.push({name: parts[0].replace(/🎉|🏍️|🛵|🧑💼|🧑‍💼|📅/g,'').trim(), value: parts[1].trim()});
                         } else {
                             if (!inFooter) parsed.others.push(line);
                         }
                     } else {
                         if (line.includes('UberEats') || line.includes('揪團訂單')) parsed.header = line;
-                        else if (line.startsWith('地址') || line.startsWith('📍')) parsed.address = line.startsWith('地址') ? line.substring(line.indexOf(':')+1).trim() : line.replace('📍', '').trim();
-                        else if (line.startsWith('時間') || line.startsWith('🕒')) parsed.time = line.startsWith('時間') ? line.substring(line.indexOf(':')+1).trim() : line.replace('🕒', '').trim();
+                        else if (line.startsWith('📍') || line.startsWith('地址')) parsed.address = line.includes(':') ? line.substring(line.indexOf(':')+1).trim() : line.replace('📍', '').trim();
+                        else if (line.startsWith('🕒') || line.startsWith('時間')) parsed.time = line.includes(':') ? line.substring(line.indexOf(':')+1).trim() : line.replace('🕒', '').trim();
                         else if (line.startsWith('$') || line.startsWith('🏷️')) parsed.tag = line.replace('🏷️', '').trim();
                         else parsed.others.push(line);
                     }
-                    i++;
                 }
                 if (currentSplit) parsed.splits.push(currentSplit);
                 
@@ -127,8 +120,8 @@
                 let currentSection = 'header';
                 for(let line of lines) {
                     if (line.startsWith('🛵 UberEats') || line.includes('揪團訂單')) { parsed.header = line; continue; }
-                    if (line.startsWith('📍') || line.startsWith('地址')) { parsed.address = line.startsWith('地址') ? line.substring(line.indexOf(':')+1).trim() : line.replace('📍', '').trim(); continue; }
-                    if (line.startsWith('🕒') || line.startsWith('時間')) { parsed.time = line.startsWith('時間') ? line.substring(line.indexOf(':')+1).trim() : line.replace('🕒', '').trim(); continue; }
+                    if (line.startsWith('📍') || line.startsWith('地址')) { parsed.address = line.includes(':') ? line.substring(line.indexOf(':')+1).trim() : line.replace('📍', '').trim(); continue; }
+                    if (line.startsWith('🕒') || line.startsWith('時間')) { parsed.time = line.includes(':') ? line.substring(line.indexOf(':')+1).trim() : line.replace('🕒', '').trim(); continue; }
                     if (line.startsWith('🏪')) { parsed.store = line.replace('🏪', '').trim(); continue; }
                     if (line.startsWith('🔗') || line.startsWith('網址')) { 
                         let u = line;
@@ -144,7 +137,7 @@
                     if (line.startsWith('🎉') || (line.includes('優惠') && line.includes('-'))) { parsed.discount = line.substring(line.indexOf(':')+1).trim(); continue; }
                     if (line.startsWith('🏍️') || line.startsWith('🛵') || line.startsWith('🧑💼') || line.startsWith('🧑‍💼') || line.startsWith('📅') || (line.includes(':') && !line.includes('總') && !line.includes('備註') && !line.includes('http'))) {
                         let parts = line.split(':');
-                        if(parts.length > 1) { parsed.fees.push({ name: parts[0].replace(/🏍️|🛵|🧑💼|🧑‍💼|📅/g,'').trim(), value: parts[1].trim() }); }
+                        if(parts.length > 1) { parsed.fees.push({ name: parts[0].replace(/🎉|🏍️|🛵|🧑💼|🧑‍💼|📅/g,'').trim(), value: parts[1].trim() }); }
                         continue; 
                     }
                     if (line.startsWith('💰') || line.startsWith('總結算') || line.startsWith('總計')) { parsed.globalTotal = line.substring(line.indexOf(':')+1).trim(); parsed.total = parsed.globalTotal; continue; }
