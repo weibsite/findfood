@@ -1529,6 +1529,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     }
 
+    // 前端防呆2：如果有「號」但是沒有「縣市」或「行政區」，代表是極度容易定位錯亂的殘缺地址
+    if (q.includes('號') && !/(市|縣|區|鄉|鎮)/.test(q)) {
+        document.getElementById('addrStatus').innerText = '請加上「縣市」或「區域」 (例如: 桃園市八德區' + q + ')，以免定位到其他縣市';
+        updateAddrTitleState('error');
+        if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
+        document.getElementById('addrResults').innerHTML = '';
+        const btn = document.getElementById('searchAddrBtn');
+        const btn2 = document.getElementById('searchStoresBtn');
+        btn.disabled = false;
+        if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
+        return;
+    }
+
 
 
     
