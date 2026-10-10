@@ -4759,7 +4759,7 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-        if (preOrderDiscount > 0) msgText += `🕒 預訂折扣(3小時以上): -$${preOrderDiscount}\n`;
+        if (preOrderDiscount > 0) msgText += `🕒 預訂折扣(3小時以上): -$${preOrderDiscount * costRes.bins.length}\n`;
         if (isPickup) msgText += `🌟 優惠專區折扣: -$${10 * costRes.bins.length}\n`;
 
         msgText += `💰 總結算金額: $${grandTotal}`;
