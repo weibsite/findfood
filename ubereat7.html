@@ -26,7 +26,7 @@
 
   .app-header { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); z-index: 100; padding: 15px; border-bottom: 1px solid rgba(0,0,0,0.05); margin-bottom: 15px; font-size: 18px; font-weight: 800; margin-left: -15px; margin-right: -15px; }
 
-  .back-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #111; padding: 0; line-height: 1; width: 30px; text-align: left; transition: opacity 0.2s; }
+  .back-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #fff; padding: 0; line-height: 1; width: 30px; text-align: left; transition: opacity 0.2s; }
   .back-btn:active { opacity: 0.5; }
 
   .header-title { flex: 1; text-align: center; }
@@ -75,7 +75,7 @@
   #addrInput:-webkit-autofill:hover, 
   #addrInput:-webkit-autofill:focus, 
   #addrInput:-webkit-autofill:active {
-      -webkit-box-shadow: 0 0 0 30px #fff0f5 inset !important;
+      -webkit-box-shadow: 0 0 0 30px #fff inset !important;
       -webkit-text-fill-color: #111 !important;
   }
 
@@ -228,10 +228,10 @@
   /* New Design Overrides */
   body { background: #fff7f4; font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif; }
   .container { max-width: 480px; margin: 0 auto; background: transparent; padding: 0 0 80px 0; min-height: 100vh; }
-  .app-header { background: #fff7f4; border-bottom: none; }
+  .app-header { background: linear-gradient(135deg, #fb7185, #be123c); background-attachment: fixed; color: #fff; border-bottom: none; box-shadow: none; margin: 0; }
   
   .hero-banner { overflow: hidden; 
-      background: linear-gradient(135deg, #fb7185, #be123c);
+      background: linear-gradient(135deg, #fb7185, #be123c); background-attachment: fixed;
       padding: 40px 16px 80px 16px;
       color: #fff;
       border-radius: 0 0 32px 32px;
@@ -314,7 +314,7 @@
   <div id="storeSearchOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100dvh; background:#f7f7f7; z-index:900; box-sizing:border-box; flex-direction:column;">
      <div style="display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; background: #fff; flex-shrink:0; gap:10px;">
          <button onclick="toggleStoreSearch()" style="background:transparent; border:none; font-size:24px; font-weight:bold; cursor:pointer; padding:0; display:flex; align-items:center; color:#111;">←</button>
-         <div style="font-size: 16px; font-weight: bold; white-space:nowrap;">外送<span style="color: #f43f5e;">點單系統</span></div>
+         <div style="font-size: 16px; font-weight: bold; white-space:nowrap;"><a href="https://line.me/R/ti/p/@znx2009l" style="color: #111; text-decoration: none; font-family: 'Noto Sans TC', sans-serif;">外送點餐系統</a></div>
          <div style="flex:1;">
              <input type="text" id="storeSearchInputMobile" placeholder="搜尋菜單關鍵字..." oninput="syncStoreSearchInput(this.value); handleStoreSearch(true);" onkeydown="if(event.key==='Enter'){ event.preventDefault(); triggerListSearch(true); }" style="width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:20px; outline:none; font-size:14px; box-sizing:border-box; background:#f5f5f5;">
          </div>
@@ -360,7 +360,7 @@
 
     <button id="mainBackBtn" class="back-btn" onclick="handleMainBack()" style="visibility: hidden;">←</button>
 
-      <div class="header-title" id="headerTitleText" style="display:flex; align-items:center; justify-content:center; gap:8px;"><div id="serverStatusDot" style="width:10px; height:10px; border-radius:50%; background-color:#ddd; transition: background-color 0.3s; box-shadow: 0 0 5px rgba(0,0,0,0.2);"></div><div>外送 <a href="https://line.me/R/ti/p/@znx2009l" style="color: #10b981; text-decoration: none;">點餐系統</a></div></div>
+      <div class="header-title" id="headerTitleText" style="display:flex; align-items:center; justify-content:center; gap:8px;"><div id="serverStatusDot" style="width:10px; height:10px; border-radius:50%; background-color:#ddd; transition: background-color 0.3s; box-shadow: 0 0 5px rgba(0,0,0,0.2);"></div><a href="https://line.me/R/ti/p/@znx2009l" style="color: #fff; text-decoration: none; font-size: 16px; font-weight: 700; font-family: 'Noto Sans TC', sans-serif;">外送點餐系統</a></div>
 
       <div id="headerSearchBox" style="display:none; flex:1; margin: 0 10px;">
 
@@ -374,7 +374,7 @@
     <div style="pointer-events:none; display:flex; align-items:center; justify-content:center; width:100%; height:100%;">🔍</div>
 </div>
 
-        <button class="cart-btn" onclick="viewCart()"><div style="display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; background:#f5f0ee; color:#1c1917;">
+        <button class="cart-btn" onclick="viewCart()"><div style="display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.18); color:#fff;">
           <svg aria-hidden="true" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="20">
             <path d="M3 4h2l2.4 11h10.2L20 7H6.2"></path>
             <circle cx="9" cy="19.5" r="1.3"></circle>
@@ -400,7 +400,7 @@
           <svg aria-hidden="true" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
         </button>
       </div>
-      <div style="font-size:104px; font-weight:900; line-height:0.9; letter-spacing:-2px; margin-top:6px; margin-left:-5px;">半價</div>
+      <div style="font-size:104px; font-weight:900; line-height:0.9; letter-spacing:-2px; margin-top:-14px; margin-left:-5px;">半價</div>
       <div style="font-size:28px; font-weight:900; letter-spacing:1px;">幫你送到家</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <span class="hero-badge">免外送費</span>
@@ -1340,21 +1340,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (state === 'ok') {
 
-      section.style.backgroundColor = '#ffe0ea'; // 淡綠色背景
+      section.style.backgroundColor = '#fff'; // 淡綠色背景
 
-      section.style.borderColor = '#ffb3c6';
+      section.style.borderColor = 'transparent';
 
     } else if (state === 'error') {
 
-      section.style.backgroundColor = '#ffebee'; // 淡紅色背景
+      section.style.backgroundColor = '#fff5f5'; // 淡紅色背景
 
-      section.style.borderColor = '#ef9a9a';
+      section.style.borderColor = '#ff4444';
 
     } else {
 
-      section.style.backgroundColor = '#fff0f5'; // 恢復預設粉紅色
+      section.style.backgroundColor = '#fff'; // 恢復預設粉紅色
 
-      section.style.borderColor = '#ffb3c6';
+      section.style.borderColor = 'transparent';
 
     }
 
