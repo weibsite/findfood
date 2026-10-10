@@ -1463,7 +1463,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 console.error('Google fallback failed', err);
             }
             
-            statusEl.innerText = '找不到地址';
+            statusEl.innerText = '找不到地址'; showModal('找不到地址', '系統無法解析您輸入的地址，請嘗試輸入不同的關鍵字或更完整的門牌號碼。');
             if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
             return;
         }
@@ -1493,7 +1493,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     } catch (e) {
 
-        statusEl.innerText = '搜尋地址錯誤: ' + e.message;
+        statusEl.innerText = '搜尋地址發生錯誤'; showModal('搜尋地址發生錯誤', e.message);
 
         updateAddrTitleState('error');
         if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
@@ -1510,7 +1510,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (/[\u8def\u8857\u5df7\u5f04\u6bb5]$/.test(q)) {
 
-        document.getElementById('addrStatus').innerText = '請輸入包含「門牌號碼」的完整地址，不能僅輸入到路名';
+        document.getElementById('addrStatus').innerText = '地址無效'; showModal('地址無效', '請輸入包含「門牌號碼」的完整地址，不能僅輸入到路名');
 
         updateAddrTitleState('error');
         if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
@@ -1531,7 +1531,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 前端防呆2：如果有「號」但是沒有「縣市」或「行政區」，代表是極度容易定位錯亂的殘缺地址
     if (q.includes('號') && !/(市|縣|區|鄉|鎮)/.test(q)) {
-        document.getElementById('addrStatus').innerText = '請加上「縣市」或「區域」 (例如: 桃園市八德區' + q + ')，以免定位到其他縣市';
+        document.getElementById('addrStatus').innerText = '地址不完整'; showModal('地址不完整', '請加上「縣市」或「區域」\n(例如: 桃園市八德區' + q + ')\n以免定位到其他縣市而產生額外費用');
         updateAddrTitleState('error');
         if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
         document.getElementById('addrResults').innerHTML = '';
@@ -1562,7 +1562,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
               if (bestMatch.class === 'boundary' || bestMatch.type === 'administrative' || bestMatch.class === 'highway') {
 
-                  document.getElementById('addrStatus').innerText = '請輸入包含「門牌號碼」的完整地址 (例: 臺北市中正區重慶南路一段122號) 或具體地標 (例: 台北車站)';
+                  document.getElementById('addrStatus').innerText = '無效區域範圍'; showModal('無效區域範圍', '您輸入的地址範圍過大。\n請輸入包含「門牌號碼」的完整地址\n(例: 臺北市中正區重慶南路一段122號)\n或具體地標 (例: 台北車站)');
 
                   updateAddrTitleState('error');
         if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
@@ -1782,7 +1782,7 @@ document.addEventListener("DOMContentLoaded", () => {
           currentLng = prevLng;
           currentAddrTitle = prevTitle;
 
-          statusEl.innerText = '❌ 設定失敗: ' + json.message;
+          statusEl.innerText = '設定地址失敗'; showModal('設定地址失敗', json.message);
 
         updateAddrTitleState('error');
         if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
@@ -1796,7 +1796,7 @@ document.addEventListener("DOMContentLoaded", () => {
         currentLng = prevLng;
         currentAddrTitle = prevTitle;
 
-        statusEl.innerText = '❌ 連線伺服器失敗: ' + e.message;
+        statusEl.innerText = '連線伺服器失敗'; showModal('連線伺服器失敗', e.message);
 
       updateAddrTitleState('error');
         if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none'; 
