@@ -392,7 +392,7 @@
   <!-- 首頁 -->
   <div id="homeView">
     <div id="heroBanner" class="hero-banner">
-      <img src="http://weibsite.github.io/findDOG/image/logo2.png" style="position:absolute; top:-0px; right:-30px; width:220px; height:220px; border-radius:50%; object-fit:cover; opacity:1.00; z-index:0; pointer-events:none; filter: blur(0px);" />
+      <img id="heroLogoImage" src="http://weibsite.github.io/findDOG/image/logo2.png" style="position:absolute; top:45px; left:50%; transform:translateX(-50%); width:180px; height:180px; border-radius:50%; object-fit:cover; opacity:0.25; z-index:0; pointer-events:none;" />
       <div style="position:relative; z-index:1; height:100%; display:flex; flex-direction:column; justify-content:center;">
 
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -701,7 +701,7 @@ window.revealSubSections = function() {
 }
 
 // Override handleAddrBlur to properly restore
-const originalHandleAddrBlur = window.handleAddrBlur;
+var originalHandleAddrBlur = window.originalHandleAddrBlur || window.handleAddrBlur;
 window.handleAddrBlur = function() {
     setTimeout(() => {
         document.getElementById('addrResults').innerHTML = '';
@@ -711,9 +711,18 @@ window.handleAddrBlur = function() {
             
             const heroBanner = document.getElementById('heroBanner');
             if (heroBanner && heroBanner.classList.contains('shrunk')) {
+
                 heroBanner.classList.remove('shrunk');
                 heroBanner.style.paddingTop = '40px';
                 heroBanner.style.paddingBottom = '80px';
+                
+                const logo = document.getElementById('heroLogoImage');
+                if (logo) {
+                    logo.style.transition = 'top 0.3s ease, opacity 0.3s ease';
+                    logo.style.top = '45px';
+                    logo.style.opacity = '0.25';
+                }
+
                 Array.from(heroBanner.children).forEach(child => {
                     if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
                         child.style.display = child.dataset.oldDisplay || 'block';
@@ -731,7 +740,7 @@ window.handleAddrBlur = function() {
 }
 
 // Override switchVertical to update modern tabs UI
-const originalSwitchVertical = switchVertical;
+var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
 switchVertical = function(v) {
     originalSwitchVertical(v);
     if(v === 'SHOP') {
@@ -7632,7 +7641,7 @@ window.revealSubSections = function() {
 }
 
 // Override handleAddrBlur to properly restore
-const originalHandleAddrBlur = window.handleAddrBlur;
+var originalHandleAddrBlur = window.originalHandleAddrBlur || window.handleAddrBlur;
 window.handleAddrBlur = function() {
     setTimeout(() => {
         document.getElementById('addrResults').innerHTML = '';
@@ -7642,9 +7651,18 @@ window.handleAddrBlur = function() {
             
             const heroBanner = document.getElementById('heroBanner');
             if (heroBanner && heroBanner.classList.contains('shrunk')) {
+
                 heroBanner.classList.remove('shrunk');
                 heroBanner.style.paddingTop = '40px';
                 heroBanner.style.paddingBottom = '80px';
+                
+                const logo = document.getElementById('heroLogoImage');
+                if (logo) {
+                    logo.style.transition = 'top 0.3s ease, opacity 0.3s ease';
+                    logo.style.top = '45px';
+                    logo.style.opacity = '0.25';
+                }
+
                 Array.from(heroBanner.children).forEach(child => {
                     if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
                         child.style.display = child.dataset.oldDisplay || 'block';
@@ -7662,7 +7680,7 @@ window.handleAddrBlur = function() {
 }
 
 // Override switchVertical to update modern tabs UI
-const originalSwitchVertical = switchVertical;
+var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
 switchVertical = function(v) {
     originalSwitchVertical(v);
     if(v === 'SHOP') {
@@ -7915,7 +7933,7 @@ window.revealSubSections = function() {
 }
 
 // Override handleAddrBlur to properly restore
-const originalHandleAddrBlur = window.handleAddrBlur;
+var originalHandleAddrBlur = window.originalHandleAddrBlur || window.handleAddrBlur;
 window.handleAddrBlur = function() {
     setTimeout(() => {
         document.getElementById('addrResults').innerHTML = '';
@@ -7925,9 +7943,18 @@ window.handleAddrBlur = function() {
             
             const heroBanner = document.getElementById('heroBanner');
             if (heroBanner && heroBanner.classList.contains('shrunk')) {
+
                 heroBanner.classList.remove('shrunk');
                 heroBanner.style.paddingTop = '40px';
                 heroBanner.style.paddingBottom = '80px';
+                
+                const logo = document.getElementById('heroLogoImage');
+                if (logo) {
+                    logo.style.transition = 'top 0.3s ease, opacity 0.3s ease';
+                    logo.style.top = '45px';
+                    logo.style.opacity = '0.25';
+                }
+
                 Array.from(heroBanner.children).forEach(child => {
                     if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
                         child.style.display = child.dataset.oldDisplay || 'block';
@@ -7945,7 +7972,7 @@ window.handleAddrBlur = function() {
 }
 
 // Override switchVertical to update modern tabs UI
-const originalSwitchVertical = switchVertical;
+var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
 switchVertical = function(v) {
     originalSwitchVertical(v);
     if(v === 'SHOP') {
