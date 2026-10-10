@@ -149,7 +149,8 @@
             return parsed;
         }
 
-        function renderOrderDetails(parsed, rawText) {
+        function renderOrderDetails(parsed, rawText, tracking_urls = []) {
+            tracking_urls = tracking_urls || [];
             if (!parsed.isSplit && !parsed.store && parsed.items.length === 0) {
                 return `<pre style="white-space: pre-wrap; margin:0; font-family: monospace;">${rawText}</pre>`;
             }
@@ -177,7 +178,12 @@
                     html += `<div style="min-width: 85%; max-width: 85%; flex-shrink: 0; scroll-snap-align: center; background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 12px; box-sizing: border-box;">`;
                     html += `<div style="font-weight: bold; font-size: 15px; color: #1565c0; margin-bottom: 8px;">${split.title}</div>`;
                     if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 4px;">🏪 ${split.store}</div>`;
-                    if (split.url) html += `<a href="${split.url}" target="_blank" style="color: #06c167; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px;">🔗 前往餐廳菜單</a>`;
+                    let currentTrackUrl = (tracking_urls.length > idx) ? tracking_urls[idx] : null;
+                    if (currentTrackUrl) {
+                        html += `<a href="${currentTrackUrl}" target="_blank" style="color: #fff; background: #06c167; text-decoration: none; font-size: 13px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">🛵 追蹤訂單進度 ${idx + 1}</a>`;
+                    } else if (split.url) {
+                        html += `<a href="${split.url}" target="_blank" style="color: #06c167; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px;">🔗 前往餐廳菜單</a>`;
+                    }
                     
                     if (split.items.length > 0) {
                         html += `<ul style="list-style: none; padding: 0; margin: 0 0 10px 0;">`;
@@ -340,7 +346,7 @@
                         const data = await res.json();
                         if (data.status === 'success') {
                             const parsedData = parseOrderText(data.text);
-                            orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text);
+                            orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, data.tracking_urls);
                             orderTextArea.style.backgroundColor = 'transparent';
                             orderTextArea.style.border = 'none';
                             orderTextArea.style.padding = '0';
@@ -356,7 +362,7 @@
                                 data.tracking_urls.forEach((url, idx) => {
                                     statusHtml += `<a href="${url}" class="btn" style="margin-top: 10px;" target="_blank">📍 追蹤訂單 ${data.tracking_urls.length > 1 ? (idx + 1) : ''}</a>`;
                                 });
-                                if (data.tracking_urls.length === 1) {
+                                if (data.tracking_urls.length === 1 && !parsedData.isSplit) {
                                     setTimeout(() => { window.location.href = data.tracking_urls[0]; }, 500);
                                 }
                             } else if (data.tracking_url) {
@@ -364,9 +370,11 @@
                                     <h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 已取得追蹤網址</h3>
                                     <a href="${data.tracking_url}" class="btn">📍 如果沒有自動跳轉，請點此開啟</a>
                                 `;
-                                setTimeout(() => {
-                                    window.location.href = data.tracking_url;
-                                }, 500);
+                                if (!parsedData.isSplit) {
+                                    setTimeout(() => {
+                                        window.location.href = data.tracking_url;
+                                    }, 500);
+                                }
                             } else if (data.order_status === 'used') {
                                 statusHtml += `
                                     <h3 style="color: #007bff; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/LOADING.gif" style="width: 80px; vertical-align: middle; margin-right: 5px;"> 代訂已接收訂單</h3>
