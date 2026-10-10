@@ -226,9 +226,9 @@
   @keyframes slideDownTop { from { transform: translateY(-100%); } to { transform: translateY(0); } }
 
   /* New Design Overrides */
-  body { background: #faf9f5; font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif; }
+  body { background: #fff7f4; font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif; }
   .container { max-width: 480px; margin: 0 auto; background: transparent; padding: 0 0 80px 0; min-height: 100vh; }
-  .app-header { background: #faf9f5; border-bottom: none; }
+  .app-header { background: #fff7f4; border-bottom: none; }
   
   .hero-banner { overflow: hidden; 
       background: linear-gradient(135deg, #fb7185, #be123c);
@@ -452,8 +452,6 @@
     <div id="subSections" style="display:none; opacity:0; transition: opacity 0.5s ease;">
       <!-- 訂單細節 -->
       <div class="order-details-card">
-        <div style="font-size:20px; font-weight:900;">訂單細節</div>
-        
         <div>
           <label for="foodNotes" style="display:block; font-size:13px; font-weight:700; color:#57534e; margin-bottom:6px;">餐點備註</label>
           <input type="text" id="foodNotes" class="modern-input" placeholder="不要蔥、加辣..." list="food-notes-list" onchange="saveSimpleHistory('foodNotes')" />
@@ -462,21 +460,22 @@
 
         <div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <div style="font-size:13px; font-weight:700; color:#57534e;">外送方式</div>
+            <div style="font-size:13px; font-weight:700; color:#57534e;">外送方式與備註</div>
             <span onclick="showModal('外送方式說明', '', false, '<div style=\'text-align:center; font-size:15px; line-height:1.6; color:#555;\'><b>當面點交：</b>通常需要現場告知外送員PIN碼<br><br><b>放在門口：</b>放在您指定的位置，風險是有可能放錯位置。我們不負責賠償的責任</div>')" style="display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:#e0e0e0; color:#888; font-size:12px; cursor:pointer; font-weight:bold;">?</span>
           </div>
           
-          <div class="delivery-method-toggle">
-            <button id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')">當面點交</button>
-            <button id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')">放在門口</button>
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div class="delivery-method-toggle" style="flex:1; margin-bottom:0;">
+              <button id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')">當面點交</button>
+              <button id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')">放在門口</button>
+            </div>
+            <select id="deliveryMethod" style="display:none;">
+              <option value="當面點交" selected>當面點交</option>
+              <option value="放在門口">放在門口</option>
+            </select>
+            <input type="text" id="deliveryNotes" class="modern-input" style="flex:1;" placeholder="例如：到了打電話..." list="delivery-notes-list" onchange="saveSimpleHistory('deliveryNotes')" />
+            <datalist id="delivery-notes-list"></datalist>
           </div>
-          <select id="deliveryMethod" style="display:none;">
-            <option value="當面點交" selected>當面點交</option>
-            <option value="放在門口">放在門口</option>
-          </select>
-
-          <input type="text" id="deliveryNotes" class="modern-input" placeholder="例如：放在管理室、到了打電話..." list="delivery-notes-list" onchange="saveSimpleHistory('deliveryNotes')" />
-          <datalist id="delivery-notes-list"></datalist>
         </div>
 
         <div>
@@ -484,7 +483,6 @@
           <input type="tel" id="initPhone" class="modern-input" placeholder="您的手機號碼" oninput="syncPhone('init')" />
         </div>
       </div>
-
       <!-- 尋找想吃的餐點 -->
       <div class="search-food-card">
         <div style="display:flex; align-items:center; justify-content:space-between;">
@@ -664,6 +662,72 @@ function setDeliveryMethod(method) {
         document.getElementById('btnMethodFace').className = 'inactive';
         document.getElementById('btnMethodDoor').className = 'active';
     }
+}
+
+
+
+// Robust Hero Banner toggle logic
+window.revealSubSections = function() {
+    document.getElementById('subSections').style.display = 'block';
+    setTimeout(() => { document.getElementById('subSections').style.opacity = '1'; }, 50);
+    
+    const heroBtns = document.getElementById('heroActionButtons');
+    if (heroBtns && heroBtns.style.display !== 'none') {
+        heroBtns.style.opacity = '0';
+        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
+    }
+    
+    const heroBanner = document.getElementById('heroBanner');
+    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
+        heroBanner.classList.add('shrunk');
+        Array.from(heroBanner.children).forEach(child => {
+            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                child.style.transition = 'opacity 0.3s ease';
+                child.style.opacity = '0';
+                child.style.pointerEvents = 'none';
+                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
+            }
+        });
+        heroBanner.style.transition = 'padding 0.3s ease';
+        heroBanner.style.paddingTop = '10px';
+        heroBanner.style.paddingBottom = '60px'; 
+    }
+    
+    const section = document.getElementById('addrSection');
+    if(section) {
+        section.style.background = '#fff';
+        section.style.borderColor = '#f0f0f0';
+    }
+}
+
+// Override handleAddrBlur to properly restore
+const originalHandleAddrBlur = window.handleAddrBlur;
+window.handleAddrBlur = function() {
+    setTimeout(() => {
+        document.getElementById('addrResults').innerHTML = '';
+        if(!isAddressSet && document.getElementById('addrInput').value.trim() === '') {
+            const heroBtns = document.getElementById('heroActionButtons');
+            if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
+            
+            const heroBanner = document.getElementById('heroBanner');
+            if (heroBanner && heroBanner.classList.contains('shrunk')) {
+                heroBanner.classList.remove('shrunk');
+                heroBanner.style.paddingTop = '40px';
+                heroBanner.style.paddingBottom = '80px';
+                Array.from(heroBanner.children).forEach(child => {
+                    if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                        child.style.display = child.dataset.oldDisplay || 'block';
+                        if(child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
+                            setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
+                        }
+                    }
+                });
+            }
+            
+            document.getElementById('subSections').style.opacity = '0';
+            setTimeout(() => { document.getElementById('subSections').style.display = 'none'; }, 300);
+        }
+    }, 200);
 }
 
 // Override switchVertical to update modern tabs UI
@@ -7531,6 +7595,72 @@ function setDeliveryMethod(method) {
     }
 }
 
+
+
+// Robust Hero Banner toggle logic
+window.revealSubSections = function() {
+    document.getElementById('subSections').style.display = 'block';
+    setTimeout(() => { document.getElementById('subSections').style.opacity = '1'; }, 50);
+    
+    const heroBtns = document.getElementById('heroActionButtons');
+    if (heroBtns && heroBtns.style.display !== 'none') {
+        heroBtns.style.opacity = '0';
+        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
+    }
+    
+    const heroBanner = document.getElementById('heroBanner');
+    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
+        heroBanner.classList.add('shrunk');
+        Array.from(heroBanner.children).forEach(child => {
+            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                child.style.transition = 'opacity 0.3s ease';
+                child.style.opacity = '0';
+                child.style.pointerEvents = 'none';
+                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
+            }
+        });
+        heroBanner.style.transition = 'padding 0.3s ease';
+        heroBanner.style.paddingTop = '10px';
+        heroBanner.style.paddingBottom = '60px'; 
+    }
+    
+    const section = document.getElementById('addrSection');
+    if(section) {
+        section.style.background = '#fff';
+        section.style.borderColor = '#f0f0f0';
+    }
+}
+
+// Override handleAddrBlur to properly restore
+const originalHandleAddrBlur = window.handleAddrBlur;
+window.handleAddrBlur = function() {
+    setTimeout(() => {
+        document.getElementById('addrResults').innerHTML = '';
+        if(!isAddressSet && document.getElementById('addrInput').value.trim() === '') {
+            const heroBtns = document.getElementById('heroActionButtons');
+            if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
+            
+            const heroBanner = document.getElementById('heroBanner');
+            if (heroBanner && heroBanner.classList.contains('shrunk')) {
+                heroBanner.classList.remove('shrunk');
+                heroBanner.style.paddingTop = '40px';
+                heroBanner.style.paddingBottom = '80px';
+                Array.from(heroBanner.children).forEach(child => {
+                    if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                        child.style.display = child.dataset.oldDisplay || 'block';
+                        if(child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
+                            setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
+                        }
+                    }
+                });
+            }
+            
+            document.getElementById('subSections').style.opacity = '0';
+            setTimeout(() => { document.getElementById('subSections').style.display = 'none'; }, 300);
+        }
+    }, 200);
+}
+
 // Override switchVertical to update modern tabs UI
 const originalSwitchVertical = switchVertical;
 switchVertical = function(v) {
@@ -7746,6 +7876,72 @@ function setDeliveryMethod(method) {
         document.getElementById('btnMethodFace').className = 'inactive';
         document.getElementById('btnMethodDoor').className = 'active';
     }
+}
+
+
+
+// Robust Hero Banner toggle logic
+window.revealSubSections = function() {
+    document.getElementById('subSections').style.display = 'block';
+    setTimeout(() => { document.getElementById('subSections').style.opacity = '1'; }, 50);
+    
+    const heroBtns = document.getElementById('heroActionButtons');
+    if (heroBtns && heroBtns.style.display !== 'none') {
+        heroBtns.style.opacity = '0';
+        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
+    }
+    
+    const heroBanner = document.getElementById('heroBanner');
+    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
+        heroBanner.classList.add('shrunk');
+        Array.from(heroBanner.children).forEach(child => {
+            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                child.style.transition = 'opacity 0.3s ease';
+                child.style.opacity = '0';
+                child.style.pointerEvents = 'none';
+                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
+            }
+        });
+        heroBanner.style.transition = 'padding 0.3s ease';
+        heroBanner.style.paddingTop = '10px';
+        heroBanner.style.paddingBottom = '60px'; 
+    }
+    
+    const section = document.getElementById('addrSection');
+    if(section) {
+        section.style.background = '#fff';
+        section.style.borderColor = '#f0f0f0';
+    }
+}
+
+// Override handleAddrBlur to properly restore
+const originalHandleAddrBlur = window.handleAddrBlur;
+window.handleAddrBlur = function() {
+    setTimeout(() => {
+        document.getElementById('addrResults').innerHTML = '';
+        if(!isAddressSet && document.getElementById('addrInput').value.trim() === '') {
+            const heroBtns = document.getElementById('heroActionButtons');
+            if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
+            
+            const heroBanner = document.getElementById('heroBanner');
+            if (heroBanner && heroBanner.classList.contains('shrunk')) {
+                heroBanner.classList.remove('shrunk');
+                heroBanner.style.paddingTop = '40px';
+                heroBanner.style.paddingBottom = '80px';
+                Array.from(heroBanner.children).forEach(child => {
+                    if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                        child.style.display = child.dataset.oldDisplay || 'block';
+                        if(child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
+                            setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
+                        }
+                    }
+                });
+            }
+            
+            document.getElementById('subSections').style.opacity = '0';
+            setTimeout(() => { document.getElementById('subSections').style.display = 'none'; }, 300);
+        }
+    }, 200);
 }
 
 // Override switchVertical to update modern tabs UI
