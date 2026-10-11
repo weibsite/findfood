@@ -1162,7 +1162,7 @@ function renderModalTimes() {
         const st = w.startTime || 0;
         const et = w.endTime || 0;
         
-        // 自動排除當前時間之前的時段（例如現在 9:00，9:00 前的時段不顯示）
+        // 自動排除當前時間之前的時段
         if (isToday && st < currentMinutes) {
             return;
         }
@@ -1191,10 +1191,59 @@ function renderModalTimes() {
         opt.text = displayTitle;
         timeSelect.appendChild(opt);
     });
+    
+    // 即時同步第一個時段到畫面 (若非即時訂單模式)
+    if (typeof syncSelectedTimeToHome === 'function' && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
+        syncSelectedTimeToHome();
+    }
+}
+
+function syncSelectedTimeToHome() {
+    scheduleMode = 'SCHEDULE';
+    const modalTime = document.getElementById('modalTimeSelect');
+    const scheduleSelect = document.getElementById('scheduleTime');
+    if (modalTime && modalTime.selectedIndex >= 0 && scheduleSelect) {
+        const opt = modalTime.options[modalTime.selectedIndex];
+        scheduleSelect.innerHTML = '';
+        const newOpt = document.createElement('option');
+        newOpt.value = opt.value;
+        newOpt.text = opt.text;
+        scheduleSelect.appendChild(newOpt);
+        updateTriggerText();
+    }
 }
 
 function openTimePickerModal() {
     if (!uberTimeData || !uberTimeData.dates) return;
+    
+    // 同步當前已選的日期與時段到彈窗選單
+    const scheduleSelect = document.getElementById('scheduleTime');
+    if (scheduleMode === 'SCHEDULE' && scheduleSelect && scheduleSelect.value) {
+        try {
+            const parsed = JSON.parse(scheduleSelect.value);
+            const dateSelect = document.getElementById('modalDateSelect');
+            if (dateSelect && parsed.date) {
+                const dateIdx = Array.from(dateSelect.options).findIndex(o => o.value === parsed.date);
+                if (dateIdx !== -1 && dateSelect.selectedIndex !== dateIdx) {
+                    dateSelect.selectedIndex = dateIdx;
+                    renderModalTimes();
+                }
+            }
+            const timeSelect = document.getElementById('modalTimeSelect');
+            if (timeSelect) {
+                for (let i = 0; i < timeSelect.options.length; i++) {
+                    try {
+                        const optP = JSON.parse(timeSelect.options[i].value);
+                        if (optP.startTime === parsed.startTime && optP.endTime === parsed.endTime) {
+                            timeSelect.selectedIndex = i;
+                            break;
+                        }
+                    } catch(e) {}
+                }
+            }
+        } catch(e) {}
+    }
+    
     document.getElementById('timePickerModal').style.display = 'flex';
 }
 
@@ -1228,7 +1277,8 @@ function updateTriggerText() {
                 }
                 trigger.style.color = '#1c1917';
             } catch(e) {
-                const optText = scheduleSelect.options[scheduleSelect.selectedIndex >= 0 ? scheduleSelect.selectedIndex : 0].text;
+                let optText = scheduleSelect.options[scheduleSelect.selectedIndex >= 0 ? scheduleSelect.selectedIndex : 0].text;
+                if (optText.startsWith('今天 ')) optText = optText.substring(3);
                 trigger.innerText = optText || '選擇時間';
                 trigger.style.color = '#1c1917';
             }
@@ -7751,13 +7801,13 @@ function showToast(msg) {
   <div style="background:#fff; width:100%; max-width:500px; border-radius:0 0 16px 16px; padding:20px; box-sizing:border-box; position:relative; animation: slideDownTop 0.3s ease-out;">
     <h2 style="margin-top:0; font-size:24px; font-weight:bold; margin-bottom:20px;">挑選時間</h2>
     <div style="position:relative; margin-bottom:15px;">
-        <select id="modalDateSelect" onchange="renderModalTimes()" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
+        <select id="modalDateSelect" onchange="renderModalTimes(); if(typeof syncSelectedTimeToHome==='function') syncSelectedTimeToHome();" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
         <div style="position:absolute; right:15px; top:18px; pointer-events:none;">
             <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none"><path d="M17 11.7V14.9L12 11.1L7 14.9V11.7L12 7.9L17 11.7Z" fill="#333" transform="rotate(180, 12, 12)"></path></svg>
         </div>
     </div>
     <div style="position:relative; margin-bottom:25px;">
-        <select id="modalTimeSelect" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
+        <select id="modalTimeSelect" onchange="if(typeof syncSelectedTimeToHome==='function') syncSelectedTimeToHome();" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
         <div style="position:absolute; right:15px; top:18px; pointer-events:none;">
             <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none"><path d="M17 11.7V14.9L12 11.1L7 14.9V11.7L12 7.9L17 11.7Z" fill="#333" transform="rotate(180, 12, 12)"></path></svg>
         </div>
