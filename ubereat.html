@@ -467,8 +467,8 @@
           
           <div style="display:flex; gap:10px; align-items:center;">
             <div class="delivery-method-toggle" style="flex:1; margin-bottom:0;">
-              <button id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')" style="word-break: keep-all; line-height: 1.2;">當面<wbr>點交</button>
-              <button id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')" style="word-break: keep-all; line-height: 1.2;">放在<wbr>門口</button>
+              <button type="button" id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')" style="word-break: keep-all; line-height: 1.2;">當面<wbr>點交</button>
+              <button type="button" id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')" style="word-break: keep-all; line-height: 1.2;">放在<wbr>門口</button>
             </div>
             <select id="deliveryMethod" style="display:none;">
               <option value="當面點交" selected>當面點交</option>
@@ -650,20 +650,35 @@
 
 // New specific function to handle delivery method toggle since we hid the original select
 function setDeliveryMethod(method) {
+    const isDoor = (method === 'door' || method === '放在門口');
+    const actualMethod = isDoor ? '放在門口' : '當面點交';
+    window.selectedDeliveryMethod = actualMethod;
+    
     const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
+    if (sel) {
+        if (sel.value !== actualMethod) {
+            sel.value = actualMethod;
+            sel.dispatchEvent(new Event('change'));
+        }
     }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
+    const otherIds = ['checkoutDeliveryMethod', 'groceryDeliveryMethod'];
+    otherIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value !== actualMethod) el.value = actualMethod;
+    });
+    localStorage.setItem('userDeliveryMethod', actualMethod);
+
+    const f = document.getElementById('btnMethodFace');
+    const d = document.getElementById('btnMethodDoor');
+    if (isDoor) {
+        if (f) f.className = 'inactive';
+        if (d) d.className = 'active';
     } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
+        if (f) f.className = 'active';
+        if (d) d.className = 'inactive';
     }
 }
+window.setDeliveryMethod = setDeliveryMethod;
 
 
 
@@ -903,14 +918,21 @@ let isAddressSet = false;
       if (el) {
           if (savedMethod !== null) el.value = savedMethod;
           el.addEventListener('change', (e) => {
-              localStorage.setItem('userDeliveryMethod', e.target.value);
+              const val = e.target.value;
+              localStorage.setItem('userDeliveryMethod', val);
               // sync others
               methodIds.forEach(otherId => {
-                 if (otherId !== id && document.getElementById(otherId)) document.getElementById(otherId).value = e.target.value;
+                 if (otherId !== id && document.getElementById(otherId)) document.getElementById(otherId).value = val;
               });
+              if (typeof setDeliveryMethod === 'function') {
+                  setDeliveryMethod(val);
+              }
           });
       }
   });
+  if (savedMethod && typeof setDeliveryMethod === 'function') {
+      setDeliveryMethod(savedMethod);
+  }
 
   noteIds.forEach(id => {
       const el = document.getElementById(id);
@@ -7602,20 +7624,10 @@ window.switchSplitTab = function(plan, dir) {
 <script>
 
 
-// New specific function to handle delivery method toggle since we hid the original select
+// Specific function to handle delivery method toggle
 function setDeliveryMethod(method) {
-    const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
+    if (typeof window.setDeliveryMethod === 'function') {
+        window.setDeliveryMethod(method);
     }
 }
 
@@ -7821,20 +7833,10 @@ function showToast(msg) {
 <script>
 
 
-// New specific function to handle delivery method toggle since we hid the original select
+// Specific function to handle delivery method toggle
 function setDeliveryMethod(method) {
-    const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
+    if (typeof window.setDeliveryMethod === 'function') {
+        window.setDeliveryMethod(method);
     }
 }
 
@@ -8565,17 +8567,30 @@ window.handleHeroClick = function(vertical) {
 
 // 9. Keep delivery method toggle working
 window.setDeliveryMethod = function(method) {
-    window.selectedDeliveryMethod = method;
-    if (method === 'face') {
-        const f = document.getElementById('btnMethodFace');
-        const d = document.getElementById('btnMethodDoor');
-        if (f) f.className = 'active';
-        if (d) d.className = 'inactive';
-    } else {
-        const f = document.getElementById('btnMethodFace');
-        const d = document.getElementById('btnMethodDoor');
+    const isDoor = (method === 'door' || method === '放在門口');
+    const actualMethod = isDoor ? '放在門口' : '當面點交';
+    window.selectedDeliveryMethod = actualMethod;
+    
+    const sel = document.getElementById('deliveryMethod');
+    if (sel && sel.value !== actualMethod) {
+        sel.value = actualMethod;
+        sel.dispatchEvent(new Event('change'));
+    }
+    const otherIds = ['checkoutDeliveryMethod', 'groceryDeliveryMethod'];
+    otherIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value !== actualMethod) el.value = actualMethod;
+    });
+    localStorage.setItem('userDeliveryMethod', actualMethod);
+
+    const f = document.getElementById('btnMethodFace');
+    const d = document.getElementById('btnMethodDoor');
+    if (isDoor) {
         if (f) f.className = 'inactive';
         if (d) d.className = 'active';
+    } else {
+        if (f) f.className = 'active';
+        if (d) d.className = 'inactive';
     }
 };
 </script>
