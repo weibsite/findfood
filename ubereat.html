@@ -1103,12 +1103,11 @@ let isAddressSet = false;
     
     renderModalTimes();
     
-    // Automatically set default trigger text if not set yet
-    const trigger = document.getElementById('triggerTimeText');
-    if (trigger && (trigger.innerText.includes('下午...') || trigger.innerText.includes('選時間') || trigger.innerText.trim() === '')) {
-        const modalSelect = document.getElementById('modalTimeSelect');
-        const scheduleSelect = document.getElementById('scheduleTime');
-        if (modalSelect.options.length > 0 && scheduleSelect.options.length === 0) {
+    // Automatically set default trigger text
+    const modalSelect = document.getElementById('modalTimeSelect');
+    const scheduleSelect = document.getElementById('scheduleTime');
+    if (modalSelect && scheduleSelect && modalSelect.options.length > 0) {
+        if (scheduleSelect.options.length === 0) {
             const targetIdx = modalSelect.options.length > 1 ? 1 : 0;
             const newOpt = document.createElement('option');
             newOpt.value = modalSelect.options[targetIdx].value;
@@ -1206,28 +1205,36 @@ function closeTimePickerModal() {
 function updateTriggerText() {
     const trigger = document.getElementById('triggerTimeText');
     const scheduleSelect = document.getElementById('scheduleTime');
+    if (!trigger) return;
     
-    if (scheduleMode === 'ASAP') {
+    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
         trigger.innerText = '🚀 即時訂單 (約5~30分)';
         trigger.style.color = '#f43f5e';
     } else {
-        if (scheduleSelect.options.length > 0) {
-            const parsed = JSON.parse(scheduleSelect.value);
-            const d = new Date(parsed.date);
-            const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-            const today = new Date();
-            const tomorrow = new Date();
-            tomorrow.setDate(today.getDate() + 1);
-            if (d.toDateString() === today.toDateString()) {
-                trigger.innerText = `今天 ${parsed.title}`;
-            } else if (d.toDateString() === tomorrow.toDateString()) {
-                trigger.innerText = `明天 ${parsed.title}`;
-            } else {
-                trigger.innerText = `${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]} ${parsed.title}`;
+        if (scheduleSelect && scheduleSelect.options.length > 0) {
+            try {
+                const parsed = JSON.parse(scheduleSelect.value);
+                const d = new Date(parsed.date);
+                const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+                const today = new Date();
+                const tomorrow = new Date();
+                tomorrow.setDate(today.getDate() + 1);
+                if (d.toDateString() === today.toDateString()) {
+                    trigger.innerText = `今天 ${parsed.title}`;
+                } else if (d.toDateString() === tomorrow.toDateString()) {
+                    trigger.innerText = `明天 ${parsed.title}`;
+                } else {
+                    trigger.innerText = `${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]} ${parsed.title}`;
+                }
+                trigger.style.color = '#1c1917';
+            } catch(e) {
+                const optText = scheduleSelect.options[scheduleSelect.selectedIndex >= 0 ? scheduleSelect.selectedIndex : 0].text;
+                trigger.innerText = optText || '選擇時間';
+                trigger.style.color = '#1c1917';
             }
-            trigger.style.color = '#000';
         } else {
             trigger.innerText = '選擇時間';
+            trigger.style.color = '#57534e';
         }
     }
 }
