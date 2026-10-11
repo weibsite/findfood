@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 14.0</title>
+<title>點餐系統 13.0</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -26,12 +26,12 @@
 
   .app-header { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); z-index: 100; padding: 15px; border-bottom: 1px solid rgba(0,0,0,0.05); margin-bottom: 15px; font-size: 18px; font-weight: 800; margin-left: -15px; margin-right: -15px; }
 
-  .back-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #fff; padding: 0; line-height: 1; width: 30px; text-align: left; transition: opacity 0.2s; }
+  .back-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #111; padding: 0; line-height: 1; width: 30px; text-align: left; transition: opacity 0.2s; }
   .back-btn:active { opacity: 0.5; }
 
   .header-title { flex: 1; text-align: center; }
 
-  .cart-btn { background: none; border: none; cursor: pointer; padding: 0; position: relative; transition: transform 0.2s; display: flex; align-items: center; justify-content: center; }
+  .cart-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #111; padding: 0; line-height: 1; width: 30px; text-align: right; position: relative; transition: transform 0.2s; }
   .cart-btn:active { transform: scale(0.9); }
 
   .cart-badge { position: absolute; top: -5px; right: -8px; background: #f43f5e; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 10px; display: none; font-weight: bold; box-shadow: 0 2px 4px rgba(255,51,102,0.3); }
@@ -75,7 +75,7 @@
   #addrInput:-webkit-autofill:hover, 
   #addrInput:-webkit-autofill:focus, 
   #addrInput:-webkit-autofill:active {
-      -webkit-box-shadow: 0 0 0 30px #fff inset !important;
+      -webkit-box-shadow: 0 0 0 30px #fff0f5 inset !important;
       -webkit-text-fill-color: #111 !important;
   }
 
@@ -224,81 +224,6 @@
   .store-top-nav button:active { background: #e0e0e0; }
 
   @keyframes slideDownTop { from { transform: translateY(-100%); } to { transform: translateY(0); } }
-
-  /* New Design Overrides */
-  body { background: #fff7f4; font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif; }
-  .container { max-width: 480px; margin: 0 auto; background: transparent; padding: 0 0 80px 0; min-height: 100vh; }
-  .app-header { background: linear-gradient(135deg, #fb7185, #be123c); background-attachment: fixed; color: #fff; border-bottom: none; box-shadow: none; margin: 0; }
-  
-  .hero-banner { overflow: hidden; 
-      background: linear-gradient(135deg, #fb7185, #be123c); background-attachment: fixed;
-      padding: 40px 16px 80px 16px;
-      color: #fff;
-      border-radius: 0 0 32px 32px;
-      position: relative;
-  }
-  
-  .hero-badge {
-      padding: 7px 14px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.18);
-      font-size: 14px;
-      font-weight: 700;
-  }
-  .hero-badge-highlight {
-      background: #fff;
-      color: #9f1239;
-  }
-  
-  .addr-time-card {
-      border: 2px solid transparent; transition: border-color 0.3s, background-color 0.3s;
-      margin: -56px 16px 0;
-      background: #fff;
-      border-radius: 24px;
-      box-shadow: 0 10px 30px rgba(120, 20, 40, 0.14);
-      display: flex;
-      flex-direction: column;
-      position: relative;
-      z-index: 10;
-  }
-  
-  .category-btn {
-      flex: 1; height: 84px; border-radius: 20px; font-size: 16px; font-weight: 900; 
-      display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 16px; cursor: pointer; transition: transform 0.1s;
-  }
-  .category-btn:active { transform: scale(0.97); }
-  .category-btn.shop { background: #fff; color: #1c1917; border: 2px solid #fecdd3; }
-  .category-btn.rest { background: #1c1917; color: #fff; border: 0; }
-  
-  .order-details-card {
-      margin: 16px 16px 0; background: #fff; border-radius: 24px; padding: 20px 18px; 
-      display: flex; flex-direction: column; gap: 16px; box-shadow: 0 4px 16px rgba(120, 20, 40, 0.06);
-  }
-  
-  .search-food-card {
-      margin: 16px 16px 0; background: #1c1917; color: #fff; border-radius: 24px; padding: 20px 18px; 
-      display: flex; flex-direction: column; gap: 14px;
-  }
-  
-  .modern-input {
-      width: 100%; box-sizing: border-box; height: 48px; border: 1.5px solid #e7ddd9; 
-      border-radius: 14px; padding: 0 14px; font-size: 16px; outline: 0; background: #fffaf8; color: #1c1917;
-  }
-  .modern-input:focus { border-color: #be123c; }
-  
-  .delivery-method-toggle { display: flex; background: #f5f0ee; border-radius: 14px; padding: 4px; gap: 4px; margin-bottom: 8px; }
-  .delivery-method-toggle button { flex: 1; height: 40px; border: 0; border-radius: 11px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
-  .delivery-method-toggle button.active { background: #fff; color: #1c1917; box-shadow: 0 1px 4px rgba(0,0,0,.12); font-weight: 900; }
-  .delivery-method-toggle button.inactive { background: transparent; color: #57534e; }
-  
-  .search-tab-toggle { display: flex; background: #3a3532; border-radius: 999px; padding: 3px; }
-  .search-tab-toggle button { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s; }
-  .search-tab-toggle button.active { background: #fff; color: #9f1239; font-weight: 900; }
-  .search-tab-toggle button.inactive { background: transparent; color: #d6d3d1; }
-  
-  .search-modern-input-wrapper { display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 16px; height: 52px; padding: 0 14px; color: #78716c; }
-  .search-modern-input-wrapper input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 16px; background: transparent; color: #1c1917; }
-
 </style>
 
 </head>
@@ -315,7 +240,7 @@
   <div id="storeSearchOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100dvh; background:#f7f7f7; z-index:900; box-sizing:border-box; flex-direction:column;">
      <div style="display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; background: #fff; flex-shrink:0; gap:10px;">
          <button onclick="toggleStoreSearch()" style="background:transparent; border:none; font-size:24px; font-weight:bold; cursor:pointer; padding:0; display:flex; align-items:center; color:#111;">←</button>
-         <div style="font-size: 16px; font-weight: bold; white-space:nowrap;"><a href="https://line.me/R/ti/p/@znx2009l" style="color: #111; text-decoration: none; font-family: 'Noto Sans TC', sans-serif;">外送點餐系統</a></div>
+         <div style="font-size: 16px; font-weight: bold; white-space:nowrap;">外送<span style="color: #f43f5e;">點單系統</span></div>
          <div style="flex:1;">
              <input type="text" id="storeSearchInputMobile" placeholder="搜尋菜單關鍵字..." oninput="syncStoreSearchInput(this.value); handleStoreSearch(true);" onkeydown="if(event.key==='Enter'){ event.preventDefault(); triggerListSearch(true); }" style="width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:20px; outline:none; font-size:14px; box-sizing:border-box; background:#f5f5f5;">
          </div>
@@ -361,7 +286,7 @@
 
     <button id="mainBackBtn" class="back-btn" onclick="handleMainBack()" style="visibility: hidden;">←</button>
 
-      <div class="header-title" id="headerTitleText" style="display:flex; align-items:center; justify-content:center; gap:8px;"><div id="serverStatusDot" style="width:10px; height:10px; border-radius:50%; background-color:#ddd; transition: background-color 0.3s; box-shadow: 0 0 5px rgba(0,0,0,0.2);"></div><a href="https://line.me/R/ti/p/@znx2009l" style="color: #fff; text-decoration: none; font-size: 16px; font-weight: 700; font-family: 'Noto Sans TC', sans-serif;">外送點餐系統</a></div>
+      <div class="header-title" id="headerTitleText" style="display:flex; align-items:center; justify-content:center; gap:8px;"><div id="serverStatusDot" style="width:10px; height:10px; border-radius:50%; background-color:#ddd; transition: background-color 0.3s; box-shadow: 0 0 5px rgba(0,0,0,0.2);"></div><div>外送 <a href="https://line.me/R/ti/p/@znx2009l" style="color: #10b981; text-decoration: none;">點餐系統</a></div></div>
 
       <div id="headerSearchBox" style="display:none; flex:1; margin: 0 10px;">
 
@@ -375,13 +300,7 @@
     <div style="pointer-events:none; display:flex; align-items:center; justify-content:center; width:100%; height:100%;">🔍</div>
 </div>
 
-        <button class="cart-btn" onclick="viewCart()"><div style="display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.18); color:#fff;">
-          <svg aria-hidden="true" fill="none" height="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="20">
-            <path d="M3 4h2l2.4 11h10.2L20 7H6.2"></path>
-            <circle cx="9" cy="19.5" r="1.3"></circle>
-            <circle cx="17" cy="19.5" r="1.3"></circle>
-          </svg>
-        </div><span id="headerCartBadge" class="cart-badge">0</span></button>
+        <button class="cart-btn" onclick="viewCart()">🛒<span id="headerCartBadge" class="cart-badge">0</span></button>
 
       </div>
 
@@ -389,125 +308,149 @@
 
 
 
-  
   <!-- 首頁 -->
+
   <div id="homeView">
-    <div id="heroBanner" class="hero-banner">
-      <img id="heroLogoImage" src="http://weibsite.github.io/findDOG/image/logo2.png" style="position:absolute; top:0px; left:80%; transform:translateX(-50%); width:180px; height:180px; border-radius:50%; object-fit:cover; opacity:1.00; z-index:0; pointer-events:none;" />
-      <div style="position:relative; z-index:1; height:100%; display:flex; flex-direction:column; justify-content:center;">
 
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <button onclick="handleMainBack()" style="background:transparent; border:none; color:#fff; cursor:pointer; display:none;" id="heroBackBtn">
-          <svg aria-hidden="true" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>
-        </button>
-      </div>
-      <div style="font-size:104px; font-weight:900; line-height:0.9; letter-spacing:-2px; margin-top:-14px; margin-left:-5px;">半價</div>
-      <div style="font-size:28px; font-weight:900; letter-spacing:1px;">幫你送到家</div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-        <span class="hero-badge">免外送費</span>
-        <span class="hero-badge">免服務費</span>
-        <span class="hero-badge hero-badge-highlight">結帳 5 折</span>
-      </div>
+  <!-- ===== Brand Hero Banner ===== -->
+  <div id="heroBanner" style="text-align: center; padding: 24px 20px 20px 20px; margin: -15px -15px 0 -15px; background: linear-gradient(180deg, #fff0f5 0%, #ffffff 100%); transition: opacity 0.3s ease;">
+    <div style="position: relative; display: inline-block; margin-bottom: 20px;">
+      <img src="http://weibsite.github.io/findDOG/image/logo2.png" alt="Logo" style="width: 140px; height: 140px; border-radius: 50%; object-fit: cover; opacity: 1; display: block;" />
+      <h2 style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); margin: 0; font-size: 26px; font-weight: 800; color: #111; letter-spacing: 1px; white-space: nowrap; text-shadow: 2px 2px 4px rgba(255,255,255,0.9), -2px -2px 4px rgba(255,255,255,0.9), 0px 0px 8px rgba(255,255,255,1);">半價幫你送到家</h2>
     </div>
+    <p style="margin: 0; font-size: 15px; color: #f43f5e; font-weight: 700; letter-spacing: 0.5px;">免外送費 · 免服務費 · 結帳 5 折</p>
+  </div>
 
-    </div>
-    <!-- Address & Time Card -->
-    <div id="addrSection" class="addr-time-card">
-      <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid #f5e6e2;">
-        <button onclick="getCurrentLocation()" title="使用目前位置" style="width:44px; height:44px; border-radius:14px; border:0; background:#ffe4e9; color:#be123c; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer;">
-          <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="22"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.800 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle></svg>
-        </button>
-        <div style="flex:1; min-width:0;">
-          <label for="addrInput" style="display:block; font-size:12px; font-weight:700; color:#be123c;">外送地址</label>
-          <input type="text" id="addrInput" placeholder="輸入外送地址" list="addr-list" onkeydown="if(event.key==='Enter') { clearTimeout(window.addrDebounceTimer); searchAddress(true); }" oninput="handleAddrInput()" onblur="handleAddrBlur()" style="width:100%; border:0; outline:0; padding:2px 0; font-size:17px; font-weight:700; color:#1c1917; background:transparent;" />
-          <datalist id="addr-list"></datalist>
-        </div>
-      </div>
-      <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer;" onclick="openTimePickerModal()">
-        <div style="width:44px; height:44px; border-radius:14px; background:#f5f0ee; color:#44403c; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-          <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="22"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
-        </div>
-        <div style="flex:1;">
-          <div style="font-size:12px; font-weight:700; color:#57534e;">外送時間</div>
-          <div id="triggerTimeText" style="font-size:17px; font-weight:700;">下載中...</div>
-          <select id="scheduleTime" style="display:none;"></select>
-        </div>
-        <svg aria-hidden="true" fill="none" height="20" stroke="#78716c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" viewBox="0 0 24 24" width="20"><path d="M6 9l6 6 6-6"></path></svg>
-      </div>
+  <!-- ===== Address & Time Card ===== -->
+  <div class="section" id="addrSection" style="background: #fff0f5; border-radius: 18px; padding: 0; margin: 20px 0; box-shadow: 0 6px 24px rgba(0,0,0,0.07); border: 1px solid #ffb3c6; overflow: hidden; transition: background-color 0.3s, border-color 0.3s;">
+    
+    <!-- Address Input Row -->
+    <div style="display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid #ffe0ea; background: transparent;">
+      <button onclick="getCurrentLocation()" style="background: transparent; border: none; padding: 0; font-size: 22px; cursor: pointer; color: #f43f5e; margin-right: 12px; display: flex; align-items: center;" title="使用目前位置">📍</button>
+      <input type="text" id="addrInput" placeholder="輸入外送地址" list="addr-list" onkeydown="if(event.key==='Enter') { clearTimeout(window.addrDebounceTimer); searchAddress(true); }" oninput="handleAddrInput()" onblur="handleAddrBlur()" style="flex: 1; border: none; background: transparent; font-size: 16px; outline: none; padding: 6px 0; color: #111; font-weight: bold;" />
+      <datalist id="addr-list"></datalist>
     </div>
     
-    <div id="addrStatus" style="font-size: 13px; color: #be123c; margin-top: 5px; text-align: center;"></div>
-    <div id="addrResults" class="addr-results" style="margin: 0 16px;"></div>
-
-    <div id="heroActionButtons" style="display:flex; gap:12px; margin:16px 16px 0;">
-      <button class="category-btn shop" onclick="handleHeroClick('SHOP')">
-        <svg aria-hidden="true" fill="none" height="28" stroke="#be123c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="28"><path d="M4 9h16l-1.600 10H5.600z"></path><path d="M8 9l3-5M16 9l-3-5"></path></svg>
-        生鮮雜貨
-      </button>
-      <button class="category-btn rest" onclick="handleHeroClick('RESTAURANTS')">
-        <svg aria-hidden="true" fill="none" height="28" stroke="#fda4af" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="28"><path d="M7 3v8a2 2 0 0 0 2 2v8M11 3v8M7 7h4M17 21V3c-2.500 1.500-3.500 4-3.500 7.500 0 1.500 1 2.500 3.500 2.500"></path></svg>
-        尋找美食
-      </button>
+    <!-- Time Picker Row -->
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; cursor: pointer; transition: background 0.2s;" onclick="openTimePickerModal()" onmousedown="this.style.background='#f9f9f9'" onmouseup="this.style.background='transparent'" onmouseleave="this.style.background='transparent'">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 22px;">🕒</span>
+        <span id="triggerTimeText" style="font-size: 16px; font-weight: 600; color: #333;">下載中...</span>
+      </div>
+      <span style="font-size: 12px; color: #aaa;">▼</span>
+      <!-- Hidden original select to preserve compatibility -->
+      <select id="scheduleTime" style="display:none;"></select>
     </div>
-
-    <div id="subSections" style="display:none; opacity:0; transition: opacity 0.5s ease;">
-      <!-- 訂單細節 -->
-      <div class="order-details-card">
-        <div>
-          <label for="foodNotes" style="display:block; font-size:13px; font-weight:700; color:#57534e; margin-bottom:6px;">餐點備註</label>
-          <input type="text" id="foodNotes" class="modern-input" placeholder="不要蔥、加辣..." list="food-notes-list" onchange="saveSimpleHistory('foodNotes')" />
-          <datalist id="food-notes-list"></datalist>
-        </div>
-
-        <div>
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <div style="font-size:13px; font-weight:700; color:#57534e;">外送方式與備註</div>
-            <span onclick="showModal('外送方式說明', '', false, '<div style=\'text-align:center; font-size:15px; line-height:1.6; color:#555;\'><b>當面點交：</b>通常需要現場告知外送員PIN碼<br><br><b>放在門口：</b>放在您指定的位置，風險是有可能放錯位置。我們不負責賠償的責任</div>')" style="display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:#e0e0e0; color:#888; font-size:12px; cursor:pointer; font-weight:bold;">?</span>
-          </div>
-          
-          <div style="display:flex; gap:10px; align-items:center;">
-            <div class="delivery-method-toggle" style="flex:1; margin-bottom:0;">
-              <button id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')" style="word-break: keep-all; line-height: 1.2;">當面<wbr>點交</button>
-              <button id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')" style="word-break: keep-all; line-height: 1.2;">放在<wbr>門口</button>
-            </div>
-            <select id="deliveryMethod" style="display:none;">
-              <option value="當面點交" selected>當面點交</option>
-              <option value="放在門口">放在門口</option>
-            </select>
-            <input type="text" id="deliveryNotes" class="modern-input" style="flex:1;" placeholder="例如：到了打電話..." list="delivery-notes-list" onchange="saveSimpleHistory('deliveryNotes')" />
-            <datalist id="delivery-notes-list"></datalist>
-          </div>
-        </div>
-
-        <div>
-          <label for="initPhone" style="display:block; font-size:13px; font-weight:700; color:#57534e; margin-bottom:6px;">手機號碼</label>
-          <input type="tel" id="initPhone" class="modern-input" placeholder="您的手機號碼" oninput="syncPhone('init')" />
-        </div>
-      </div>
-      <!-- 尋找想吃的餐點 -->
-      <div class="search-food-card">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <div style="font-size:20px; font-weight:900;">尋找想吃的餐點</div>
-          <div class="search-tab-toggle">
-            <button id="verticalBtnShop" class="inactive" onclick="switchVertical('SHOP')">生鮮雜貨</button>
-            <button id="verticalBtnRest" class="active" onclick="switchVertical('RESTAURANTS')">美食餐廳</button>
-          </div>
-        </div>
-        
-        <div class="search-modern-input-wrapper">
-          <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-width="2.2" viewBox="0 0 24 24" width="22"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
-          <input type="text" id="query" autocomplete="off" onfocus="openQueryOverlay()" oninput="updateQueryOverlay()" placeholder="想吃什麼？ (例如: 麥當勞)" onkeydown="if(event.key==='Enter') searchStores()" />
-        </div>
-        
-        <div style="display:flex; gap:10px;">
-          <button onclick="randomSearch()" style="width:104px; height:52px; border-radius:16px; border:1.5px solid #57534e; background:transparent; color:#fff; font-size:16px; font-weight:700; cursor:pointer;">不知道</button>
-          <button id="searchMainBtn" onclick="searchStores()" style="flex:1; height:52px; border-radius:16px; border:0; background:#e11d48; color:#fff; font-size:17px; font-weight:900; cursor:pointer;">尋找食物</button>
-        </div>
-      </div>
-    </div> <!-- end subSections -->
-
   </div>
 
+  <div id="addrStatus" style="font-size: 13px; color: #666; margin-top: -12px; margin-bottom: 8px; text-align: center;"></div>
+  <div id="addrResults" class="addr-results" style="margin-top: 5px;"></div>
+
+  <!-- ===== Category Buttons ===== -->
+  <div id="heroActionButtons" style="display: flex; gap: 14px; margin-top: 10px; transition: opacity 0.3s ease;">
+    <button onclick="handleHeroClick('SHOP')" style="flex: 1; background: #fff; color: #111; border: none; border-radius: 16px; padding: 24px 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 3px 12px rgba(0,0,0,0.06); border: 1px solid #f0f0f0;" onmousedown="this.style.transform='scale(0.96)'; this.style.boxShadow='0 1px 6px rgba(0,0,0,0.08)'" onmouseup="this.style.transform='scale(1)'; this.style.boxShadow='0 3px 12px rgba(0,0,0,0.06)'" onmouseleave="this.style.transform='scale(1)'; this.style.boxShadow='0 3px 12px rgba(0,0,0,0.06)'">
+      <span style="display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #d1fae5, #6ee7b7); font-size: 28px;">🛒</span>
+      <span>生鮮雜貨</span>
+    </button>
+    <button onclick="handleHeroClick('RESTAURANTS')" style="flex: 1; background: #fff; color: #111; border: none; border-radius: 16px; padding: 24px 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 3px 12px rgba(0,0,0,0.06); border: 1px solid #f0f0f0;" onmousedown="this.style.transform='scale(0.96)'; this.style.boxShadow='0 1px 6px rgba(0,0,0,0.08)'" onmouseup="this.style.transform='scale(1)'; this.style.boxShadow='0 3px 12px rgba(0,0,0,0.06)'" onmouseleave="this.style.transform='scale(1)'; this.style.boxShadow='0 3px 12px rgba(0,0,0,0.06)'">
+      <span style="display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #fff3e0, #ffe8cc); font-size: 28px;">🍔</span>
+      <span>尋找美食</span>
+    </button>
+  </div>
+
+
+<div id="subSections" style="display:none; opacity: 0; transition: opacity 0.5s ease;">
+    <div class="section" style="padding: 10px 15px; margin-bottom: 10px;">
+
+      <div class="section-title" style="margin-bottom: 6px;">🍽️ 餐點備註</div>
+
+      <div class="input-row">
+
+        <input type="text" id="foodNotes" placeholder="不要蔥、加辣..." list="food-notes-list" onchange="saveSimpleHistory('foodNotes')" />
+
+        <datalist id="food-notes-list"></datalist>
+
+      </div>
+
+    </div>
+
+    
+
+    <div class="section">
+
+      <div class="section-title" style="display:flex; align-items:center;">
+
+        🚚 外送備註
+
+        <span onclick="showModal('外送方式說明', '', false, '<div style=\'text-align:center; font-size:15px; line-height:1.6; color:#555;\'><b>當面點交：</b>通常需要現場告知外送員PIN碼<br><br><b>放在門口：</b>放在您指定的位置，風險是有可能放錯位置。我們不負責賠償的責任</div>')" style="display:inline-flex; align-items:center; justify-content:center; margin-left:8px; width:20px; height:20px; border-radius:50%; background:#e0e0e0; color:#888; font-size:12px; cursor:pointer; font-weight:bold; transition: background 0.2s;">?</span>
+
+      </div>
+
+      <div class="input-row">
+
+        <select id="deliveryMethod" style="flex:0 0 auto; padding:12px 12px; border-radius:10px; border:1px solid #e8e8e8; font-size:15px; background:#fafafa; outline:none; cursor:pointer; font-weight:600; color:#333; appearance:none; -webkit-appearance:none; background-image: url('data:image/svg+xml;utf8,<svg fill=&quot;%23999&quot; viewBox=&quot;0 0 24 24&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;><path d=&quot;M7 10l5 5 5-5z&quot;/></svg>'); background-repeat:no-repeat; background-position:right 8px center; background-size:18px; padding-right:30px;">
+
+          <option value="當面點交">當面點交</option>
+
+          <option value="放在門口">放在門口</option>
+
+        </select>
+
+        <input type="text" id="deliveryNotes" placeholder="例如：放在管理室、到了打電話..." list="delivery-notes-list" onchange="saveSimpleHistory('deliveryNotes')" />
+
+        <datalist id="delivery-notes-list"></datalist>
+
+      </div>
+
+    </div>
+
+
+
+    <div class="section">
+
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+
+        <span>🔍 尋找想吃的餐點</span>
+
+        <div style="display:flex; align-items:center; background:#f5f5f5; border-radius:20px; padding:3px;">
+            <button id="verticalBtnShop" onclick="switchVertical('SHOP')" style="padding:5px 14px; font-size:12px; font-weight:700; border-radius:17px; border:none; background:transparent; color:#aaa; cursor:pointer; width:auto; flex-shrink:0; transition: all 0.2s;">生鮮雜貨</button>
+            <button id="verticalBtnRest" onclick="switchVertical('RESTAURANTS')" style="padding:5px 14px; font-size:12px; font-weight:700; border-radius:17px; border:none; background:#fff; color:#f43f5e; box-shadow:0 1px 4px rgba(0,0,0,0.1); cursor:pointer; width:auto; flex-shrink:0; transition: all 0.2s;">美食餐廳</button>
+        </div>
+
+      </div>
+
+      
+      <div class="input-row" id="queryInputRow">
+
+        <input type="text" id="query" autocomplete="off" onfocus="openQueryOverlay()" oninput="updateQueryOverlay()"  placeholder="想吃什麼？ (例如: 麥當勞)"  onkeydown="if(event.key==='Enter') searchStores()" />
+
+        
+
+        <button class="secondary" onclick="randomSearch()">不知道</button>
+
+        <button id="searchMainBtn" onclick="searchStores()" style="background:#f43f5e; color:#fff;">尋找食物</button>
+
+      </div>
+
+    </div>
+
+    <div class="section">
+
+      <div class="section-title">📱 手機號碼</div>
+
+      <div class="input-row">
+
+        <input type="tel" id="initPhone" placeholder="您的手機號碼" oninput="syncPhone('init')" />
+
+      </div>
+
+    </div>
+    </div> <!-- end subSections -->
+
+
+
+
+  </div>
 
 
 
@@ -547,7 +490,7 @@
 
   <!-- 全局懸浮購物車按鈕 -->
 
-  <button id="floatingCartBtn" class="floating-cart" onclick="viewCart()">🛍️ 檢視購物車 (0)</button>
+  <button id="floatingCartBtn" class="floating-cart" onclick="viewCart()">🛒 檢視購物車 (0)</button>
 
 
 
@@ -647,47 +590,8 @@
 
 <script>
 
-
-// New specific function to handle delivery method toggle since we hid the original select
-function setDeliveryMethod(method) {
-    const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
-    }
-}
-
-
-
-// Override switchVertical to update modern tabs UI
-var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
-switchVertical = function(v) {
-    originalSwitchVertical(v);
-    if(v === 'SHOP') {
-        document.getElementById('verticalBtnShop').className = 'active';
-        document.getElementById('verticalBtnRest').className = 'inactive';
-    } else {
-        document.getElementById('verticalBtnShop').className = 'inactive';
-        document.getElementById('verticalBtnRest').className = 'active';
-    }
-};
-
-// Restore visual state on load for delivery method
-document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-        const savedMethod = localStorage.getItem('userDeliveryMethod') || '當面點交';
-        setDeliveryMethod(savedMethod);
-    }, 500);
-});
-function getSelectedScheduleTimestamp() {
+  
+  function getSelectedScheduleTimestamp() {
       const ts = document.getElementById('scheduleTime');
       if (!ts || !ts.value) return 0;
       try {
@@ -700,9 +604,9 @@ function getSelectedScheduleTimestamp() {
       }
   }
 
-  let API_BASE_URL = 'https://api.9ysong.shop';
+  let API_BASE_URL = '';
 
-  let WS_URL = 'wss://api.9ysong.shop/ws';
+  let WS_URL = '';
 
   
 
@@ -1001,14 +905,14 @@ let isAddressSet = false;
 
   
   async function fetchDeliveryTimes() {
+    
     if (uberTimeData && uberTimeData.dates && uberTimeData.dates.length > 0) return; // Do not fetch again if we already have it
     
     isDeliveryTimesLoading = true;
     isDeliveryTimesLoaded = false;
     
     try {
-      const targetUrl = API_BASE_URL ? `${API_BASE_URL}/api/delivery-times_v3` : 'https://api.9ysong.shop/api/delivery-times_v3';
-      const res = await fetch(targetUrl, {
+                  const res = await fetch(`${API_BASE_URL}/api/delivery-times_v3`, {
         method: 'GET'
       });
       let data;
@@ -1030,9 +934,8 @@ let isAddressSet = false;
         throw new Error('無法取得時段');
       }
     } catch (e) {
-      console.warn('線上時段取得失敗，啟用本地時段生成備援:', e);
-      generateFallbackDeliveryTimes();
-    }
+      console.error(e);
+      }
 
     isDeliveryTimesLoading = false;
     isDeliveryTimesLoaded = true;
@@ -1041,37 +944,6 @@ let isAddressSet = false;
         onDeliveryTimesLoadedCallback();
         onDeliveryTimesLoadedCallback = null;
     }
-  }
-
-  function generateFallbackDeliveryTimes() {
-    const dates = [];
-    const timeRanges = {};
-    const now = new Date();
-    
-    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-        const d = new Date(now);
-        d.setDate(d.getDate() + dayOffset);
-        const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        dates.push(dStr);
-        
-        const ranges = [];
-        let startMin = 0;
-        if (dayOffset === 0) {
-            const curTotalMin = now.getHours() * 60 + now.getMinutes();
-            startMin = Math.ceil((curTotalMin + 15) / 15) * 15;
-        }
-        
-        for (let m = startMin; m < 24 * 60; m += 15) {
-            ranges.push({
-                startTime: m,
-                endTime: m + 30
-            });
-        }
-        timeRanges[dStr] = ranges;
-    }
-    
-    uberTimeData = { dates, timeRanges };
-    renderDates();
   }
 
   function renderDates() {
@@ -1086,14 +958,14 @@ let isAddressSet = false;
     let firstAvailableDate = null;
     uberTimeData.dates.forEach((dStr, idx) => {
         const d = new Date(dStr);
-        const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+        const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
         let label = '';
         if (d.toDateString() === today.toDateString()) {
-            label = `今天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
+            label = `今天，${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
         } else if (d.toDateString() === tomorrow.toDateString()) {
-            label = `明天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
+            label = `明天，${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
         } else {
-            label = `${d.getMonth()+1}/${d.getDate()} (週${dayNames[d.getDay()]})`;
+            label = `${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
         }
         const opt = document.createElement('option');
         opt.value = dStr;
@@ -1104,8 +976,7 @@ let isAddressSet = false;
     renderModalTimes();
     
     // Automatically set default trigger text if not set yet
-    const trigger = document.getElementById('triggerTimeText');
-    if (trigger && (trigger.innerText.includes('下午...') || trigger.innerText.includes('選時間') || trigger.innerText.trim() === '')) {
+    if (document.getElementById('triggerTimeText').innerText.includes('下載中')) {
         const modalSelect = document.getElementById('modalTimeSelect');
         const scheduleSelect = document.getElementById('scheduleTime');
         if (modalSelect.options.length > 0 && scheduleSelect.options.length === 0) {
@@ -1119,6 +990,7 @@ let isAddressSet = false;
     }
     autoFixEmptyTime();
 }
+
 
 function autoFixEmptyTime() {
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') return;
@@ -1144,29 +1016,16 @@ function autoFixEmptyTime() {
 }
 
 function renderModalTimes() {
-    const dateSelect = document.getElementById('modalDateSelect');
-    if (!dateSelect) return;
-    const dateStr = dateSelect.value;
+    const dateStr = document.getElementById('modalDateSelect').value;
     const timeSelect = document.getElementById('modalTimeSelect');
-    if (!timeSelect) return;
     timeSelect.innerHTML = '';
     
     if (!uberTimeData || !uberTimeData.timeRanges || !uberTimeData.timeRanges[dateStr]) return;
-    
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const isToday = (dateStr === todayStr) || (new Date(dateStr).toDateString() === now.toDateString());
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
     
     const ranges = uberTimeData.timeRanges[dateStr];
     ranges.forEach(w => {
         const st = w.startTime || 0;
         const et = w.endTime || 0;
-        
-        // 自動排除當前時間之前的時段（例如現在 9:00，9:00 前的時段不顯示）
-        if (isToday && st < currentMinutes) {
-            return;
-        }
         
         const h = Math.floor(st / 60);
         const m = st % 60;
@@ -1194,7 +1053,7 @@ function renderModalTimes() {
     });
 }
 
-function openTimePickerModal()function openTimePickerModal() {
+function openTimePickerModal() {
     if (!uberTimeData || !uberTimeData.dates) return;
     document.getElementById('timePickerModal').style.display = 'flex';
 }
@@ -1315,21 +1174,36 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function updateAddrTitleState(state) {
-    const section = document.getElementById('addrSection');
-    if (!section) return;
-    if (state === 'ok') {
-      section.style.backgroundColor = '#f0fdf4'; 
-      section.style.borderColor = '#4ade80';
-    } else if (state === 'error') {
-      section.style.backgroundColor = '#fff5f5'; 
-      section.style.borderColor = '#ef4444';
-    } else {
-      section.style.backgroundColor = '#fff'; 
-      section.style.borderColor = 'transparent';
-    }
-}
 
-window.addrDebounceTimer = null;
+    const section = document.getElementById('addrSection');
+
+    if (!section) return;
+
+    if (state === 'ok') {
+
+      section.style.backgroundColor = '#ffe0ea'; // 淡綠色背景
+
+      section.style.borderColor = '#ffb3c6';
+
+    } else if (state === 'error') {
+
+      section.style.backgroundColor = '#ffebee'; // 淡紅色背景
+
+      section.style.borderColor = '#ef9a9a';
+
+    } else {
+
+      section.style.backgroundColor = '#fff0f5'; // 恢復預設粉紅色
+
+      section.style.borderColor = '#ffb3c6';
+
+    }
+
+  }
+
+
+
+  window.addrDebounceTimer = null;
 
   window.lastSearchedAddr = "";
 
@@ -1663,7 +1537,7 @@ window.addrDebounceTimer = null;
         document.getElementById('addrResults').innerHTML = '';
         const btn = document.getElementById('searchAddrBtn');
         const btn2 = document.getElementById('searchStoresBtn');
-        if(btn) if(btn) btn.disabled = false;
+        btn.disabled = false;
         if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
         return;
     }
@@ -3572,7 +3446,7 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
     if (btn) {
 
-      btn.innerText = `🛍️ 檢視購物車(${totalQty})`;
+      btn.innerText = `🛒 檢視購物車(${totalQty})`;
 
       btn.style.display = (totalQty > 0) ? 'block' : 'none';
 
@@ -7543,48 +7417,7 @@ window.switchSplitTab = function(plan, dir) {
 
 </script>
 <script>
-
-
-// New specific function to handle delivery method toggle since we hid the original select
-function setDeliveryMethod(method) {
-    const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
-    }
-}
-
-
-
-// Override switchVertical to update modern tabs UI
-var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
-switchVertical = function(v) {
-    originalSwitchVertical(v);
-    if(v === 'SHOP') {
-        document.getElementById('verticalBtnShop').className = 'active';
-        document.getElementById('verticalBtnRest').className = 'inactive';
-    } else {
-        document.getElementById('verticalBtnShop').className = 'inactive';
-        document.getElementById('verticalBtnRest').className = 'active';
-    }
-};
-
-// Restore visual state on load for delivery method
-document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-        const savedMethod = localStorage.getItem('userDeliveryMethod') || '當面點交';
-        setDeliveryMethod(savedMethod);
-    }, 500);
-});
-window.doStoreKeywordSearch = function(kw) {
+  window.doStoreKeywordSearch = function(kw) {
 
       const box = document.getElementById('headerSearchBox');
 
@@ -7764,45 +7597,6 @@ function showToast(msg) {
 <script>
 
 
-// New specific function to handle delivery method toggle since we hid the original select
-function setDeliveryMethod(method) {
-    const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
-    }
-}
-
-
-
-// Override switchVertical to update modern tabs UI
-var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
-switchVertical = function(v) {
-    originalSwitchVertical(v);
-    if(v === 'SHOP') {
-        document.getElementById('verticalBtnShop').className = 'active';
-        document.getElementById('verticalBtnRest').className = 'inactive';
-    } else {
-        document.getElementById('verticalBtnShop').className = 'inactive';
-        document.getElementById('verticalBtnRest').className = 'active';
-    }
-};
-
-// Restore visual state on load for delivery method
-document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-        const savedMethod = localStorage.getItem('userDeliveryMethod') || '當面點交';
-        setDeliveryMethod(savedMethod);
-    }, 500);
-});
 let queryDebounceTimer = null;
 let lastSearchedQuery = "";
 let lastSearchedVertical = "";
@@ -8264,264 +8058,5 @@ function updateStatusDot(type) {
     dot.title = "系統狀態: " + type;
 }
 </script>
-
-<script>
-// ==========================================
-// MASTER OVERRIDE: ADDRESS VALIDATION & HERO BANNER
-// ==========================================
-
-// 1. Comprehensive Address Format Checker
-window.checkAddressFormat = function(q) {
-    if (!q) return { valid: false, reason: 'empty' };
-    
-    // 防呆1：如果字串是以「路、街、巷、弄、段」結尾，代表沒有門牌號碼
-    if (/[\u8def\u8857\u5df7\u5f04\u6bb5]$/.test(q)) {
-        return {
-            valid: false,
-            title: '地址無效',
-            msg: '請輸入包含「門牌號碼」的完整地址，不能僅輸入到路名'
-        };
-    }
-    
-    // 防呆2：如果包含「門牌號碼」（有「號」或數字），但沒有「縣市」或「區域/鄉鎮市區」
-    const hasHouseNumber = q.includes('號') || /\d+/.test(q);
-    const hasAdminRegion = /(市|縣|區|鄉|鎮)/.test(q);
-    
-    if (hasHouseNumber && !hasAdminRegion) {
-        return {
-            valid: false,
-            title: '地址不完整',
-            msg: `請加上「縣市」或「區域」\n(例如: 桃園市八德區${q})\n以免定位到其他縣市`
-        };
-    }
-    
-    return { valid: true };
-};
-
-// 2. Visual State for Address Input Card (Red light / Green light)
-window.updateAddrTitleState = function(state) {
-    const card = document.getElementById('addrSection') || document.querySelector('.addr-time-card');
-    if (!card) return;
-    if (state === 'error') {
-        card.style.borderColor = '#ef4444';
-        card.style.backgroundColor = '#fff5f5';
-        card.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.25)';
-    } else if (state === 'ok') {
-        card.style.borderColor = '#22c55e';
-        card.style.backgroundColor = '#f0fdf4';
-        card.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.15)';
-    } else {
-        card.style.borderColor = 'transparent';
-        card.style.backgroundColor = '#fff';
-        card.style.boxShadow = '0 2px 10px rgba(0,0,0,0.04)';
-    }
-};
-
-// 3. Hero Banner Toggle & Logo2 Push Down Animation
-window.revealSubSections = function() {
-    const sub = document.getElementById('subSections');
-    if (sub) {
-        sub.style.display = 'block';
-        setTimeout(() => { sub.style.opacity = '1'; }, 50);
-    }
-    
-    const heroBtns = document.getElementById('heroActionButtons');
-    if (heroBtns && heroBtns.style.display !== 'none') {
-        heroBtns.style.opacity = '0';
-        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
-    }
-    
-    const heroBanner = document.getElementById('heroBanner');
-    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
-        heroBanner.classList.add('shrunk');
-        Array.from(heroBanner.children).forEach(child => {
-            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                child.style.transition = 'opacity 0.3s ease';
-                child.style.opacity = '0';
-                child.style.pointerEvents = 'none';
-                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
-            }
-        });
-        heroBanner.style.transition = 'padding 0.3s ease';
-        heroBanner.style.paddingTop = '10px';
-        heroBanner.style.paddingBottom = '60px'; 
-    }
-    
-    // Hide logo2 by pushing it down out of view
-    const logo = document.getElementById('heroLogoImage');
-    if (logo) {
-        logo.style.transition = 'top 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-        logo.style.top = '150px';
-        logo.style.opacity = '0';
-        logo.style.transform = 'translateX(-50%) translateY(40px)';
-    }
-};
-
-// 4. Restore Hero Banner & Logo2 Slide Up Animation
-window.restoreHeroBanner = function() {
-    const addrInput = document.getElementById('addrInput');
-    if (!isAddressSet && addrInput && addrInput.value.trim() === '') {
-        const heroBtns = document.getElementById('heroActionButtons');
-        if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
-        
-        const heroBanner = document.getElementById('heroBanner');
-        if (heroBanner && heroBanner.classList.contains('shrunk')) {
-            heroBanner.classList.remove('shrunk');
-            heroBanner.style.paddingTop = '40px';
-            heroBanner.style.paddingBottom = '80px';
-            
-            Array.from(heroBanner.children).forEach(child => {
-                if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                    child.style.display = child.dataset.oldDisplay || 'block';
-                    if (child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
-                        setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
-                    }
-                }
-            });
-        }
-        
-        // Restore logo2 by sliding it back up
-        const logo = document.getElementById('heroLogoImage');
-        if (logo) {
-            logo.style.transition = 'top 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-            logo.style.top = '0px';
-            logo.style.opacity = '1.0';
-            logo.style.transform = 'translateX(-50%) translateY(0)';
-        }
-        
-        const sub = document.getElementById('subSections');
-        if (sub) {
-            sub.style.opacity = '0';
-            setTimeout(() => { sub.style.display = 'none'; }, 300);
-        }
-        
-        const resEl = document.getElementById('addrResults');
-        if (resEl) resEl.innerHTML = '';
-        const stEl = document.getElementById('addrStatus');
-        if (stEl) stEl.innerText = '';
-        updateAddrTitleState('default');
-    }
-};
-
-// 5. Input Event Handlers
-window.handleAddrInput = function() {
-    isAddressSet = false;
-    updateAddrTitleState('default');
-    clearTimeout(window.addrDebounceTimer);
-    window.addrDebounceTimer = setTimeout(() => {
-        window.handleAddrBlur();
-    }, 1200);
-};
-
-window.handleAddrBlur = function() {
-    if (typeof scrollAddrToEnd === 'function') scrollAddrToEnd();
-    clearTimeout(window.addrDebounceTimer);
-    const addrInput = document.getElementById('addrInput');
-    const q = addrInput ? addrInput.value.trim() : '';
-    
-    if (q) {
-        const check = window.checkAddressFormat(q);
-        if (!check.valid) {
-            updateAddrTitleState('error');
-            const stEl = document.getElementById('addrStatus');
-            if (stEl) stEl.innerText = check.title;
-            showModal(check.title, check.msg);
-            const resEl = document.getElementById('addrResults');
-            if (resEl) resEl.innerHTML = '';
-            if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
-            return;
-        }
-        searchAddress(false);
-    } else {
-        window.restoreHeroBanner();
-    }
-};
-
-// 6. Intercept searchAddress to guarantee front-end validation
-var _baseSearchAddress = window.searchAddress;
-window.searchAddress = async function(force = false) {
-    const addrInput = document.getElementById('addrInput');
-    let q = addrInput ? addrInput.value.trim() : '';
-    if (q) {
-        const check = window.checkAddressFormat(q);
-        if (!check.valid) {
-            updateAddrTitleState('error');
-            const stEl = document.getElementById('addrStatus');
-            if (stEl) stEl.innerText = check.title;
-            showModal(check.title, check.msg);
-            const resEl = document.getElementById('addrResults');
-            if (resEl) resEl.innerHTML = '';
-            if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
-            return;
-        }
-    }
-    if (_baseSearchAddress) return _baseSearchAddress.apply(this, arguments);
-};
-
-// 7. Intercept searchStores to guarantee validation before searching
-var _baseSearchStores = window.searchStores;
-window.searchStores = async function() {
-    const addrInput = document.getElementById('addrInput');
-    const addrVal = addrInput ? addrInput.value.trim() : '';
-    
-    if (!isAddressSet) {
-        if (!addrVal) {
-            updateAddrTitleState('error');
-            showModal('請輸入地址', '請先輸入完整外送地址');
-            return;
-        }
-        const check = window.checkAddressFormat(addrVal);
-        if (!check.valid) {
-            updateAddrTitleState('error');
-            showModal(check.title, check.msg);
-            return;
-        }
-    }
-    if (_baseSearchStores) return _baseSearchStores.apply(this, arguments);
-};
-
-// 8. Intercept handleHeroClick for category buttons
-var _baseHandleHeroClick = window.handleHeroClick;
-window.handleHeroClick = function(vertical) {
-    if (typeof switchVertical === 'function') switchVertical(vertical);
-    const addrInput = document.getElementById('addrInput');
-    const addrVal = addrInput ? addrInput.value.trim() : '';
-    
-    if (!isAddressSet) {
-        if (addrVal) {
-            const check = window.checkAddressFormat(addrVal);
-            if (!check.valid) {
-                updateAddrTitleState('error');
-                showModal(check.title, check.msg);
-                if (addrInput) addrInput.focus();
-                return;
-            }
-            searchAddress(true);
-        } else {
-            if (addrInput) addrInput.focus();
-        }
-    } else {
-        const qInput = document.getElementById('query');
-        if (qInput) qInput.focus();
-    }
-};
-
-// 9. Keep delivery method toggle working
-window.setDeliveryMethod = function(method) {
-    window.selectedDeliveryMethod = method;
-    if (method === 'face') {
-        const f = document.getElementById('btnMethodFace');
-        const d = document.getElementById('btnMethodDoor');
-        if (f) f.className = 'active';
-        if (d) d.className = 'inactive';
-    } else {
-        const f = document.getElementById('btnMethodFace');
-        const d = document.getElementById('btnMethodDoor');
-        if (f) f.className = 'inactive';
-        if (d) d.className = 'active';
-    }
-};
-</script>
-
 </body>
 </html>
