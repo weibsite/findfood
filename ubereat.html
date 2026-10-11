@@ -1220,7 +1220,7 @@ function updateTriggerText() {
                 const tomorrow = new Date();
                 tomorrow.setDate(today.getDate() + 1);
                 if (d.toDateString() === today.toDateString()) {
-                    trigger.innerText = `今天 ${parsed.title}`;
+                    trigger.innerText = parsed.title;
                 } else if (d.toDateString() === tomorrow.toDateString()) {
                     trigger.innerText = `明天 ${parsed.title}`;
                 } else {
