@@ -700,9 +700,9 @@ function getSelectedScheduleTimestamp() {
       }
   }
 
-  let API_BASE_URL = '';
+  let API_BASE_URL = 'https://api.9ysong.shop';
 
-  let WS_URL = '';
+  let WS_URL = 'wss://api.9ysong.shop/ws';
 
   
 
@@ -1001,14 +1001,14 @@ let isAddressSet = false;
 
   
   async function fetchDeliveryTimes() {
-    
     if (uberTimeData && uberTimeData.dates && uberTimeData.dates.length > 0) return; // Do not fetch again if we already have it
     
     isDeliveryTimesLoading = true;
     isDeliveryTimesLoaded = false;
     
     try {
-                  const res = await fetch(`${API_BASE_URL}/api/delivery-times_v3`, {
+      const targetUrl = API_BASE_URL ? `${API_BASE_URL}/api/delivery-times_v3` : 'https://api.9ysong.shop/api/delivery-times_v3';
+      const res = await fetch(targetUrl, {
         method: 'GET'
       });
       let data;
@@ -1030,8 +1030,9 @@ let isAddressSet = false;
         throw new Error('無法取得時段');
       }
     } catch (e) {
-      console.error(e);
-      }
+      console.warn('線上時段取得失敗，啟用本地時段生成備援:', e);
+      generateFallbackDeliveryTimes();
+    }
 
     isDeliveryTimesLoading = false;
     isDeliveryTimesLoaded = true;
@@ -1040,6 +1041,37 @@ let isAddressSet = false;
         onDeliveryTimesLoadedCallback();
         onDeliveryTimesLoadedCallback = null;
     }
+  }
+
+  function generateFallbackDeliveryTimes() {
+    const dates = [];
+    const timeRanges = {};
+    const now = new Date();
+    
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + dayOffset);
+        const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        dates.push(dStr);
+        
+        const ranges = [];
+        let startMin = 0;
+        if (dayOffset === 0) {
+            const curTotalMin = now.getHours() * 60 + now.getMinutes();
+            startMin = Math.ceil((curTotalMin + 15) / 15) * 15;
+        }
+        
+        for (let m = startMin; m < 24 * 60; m += 15) {
+            ranges.push({
+                startTime: m,
+                endTime: m + 30
+            });
+        }
+        timeRanges[dStr] = ranges;
+    }
+    
+    uberTimeData = { dates, timeRanges };
+    renderDates();
   }
 
   function renderDates() {
@@ -1054,14 +1086,14 @@ let isAddressSet = false;
     let firstAvailableDate = null;
     uberTimeData.dates.forEach((dStr, idx) => {
         const d = new Date(dStr);
-        const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+        const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
         let label = '';
         if (d.toDateString() === today.toDateString()) {
-            label = `今天，${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
+            label = `今天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
         } else if (d.toDateString() === tomorrow.toDateString()) {
-            label = `明天，${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
+            label = `明天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
         } else {
-            label = `${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
+            label = `${d.getMonth()+1}/${d.getDate()} (週${dayNames[d.getDay()]})`;
         }
         const opt = document.createElement('option');
         opt.value = dStr;
@@ -1072,7 +1104,8 @@ let isAddressSet = false;
     renderModalTimes();
     
     // Automatically set default trigger text if not set yet
-    if (document.getElementById('triggerTimeText').innerText.includes('下載中')) {
+    const trigger = document.getElementById('triggerTimeText');
+    if (trigger && (trigger.innerText.includes('下午...') || trigger.innerText.includes('選時間') || trigger.innerText.trim() === '')) {
         const modalSelect = document.getElementById('modalTimeSelect');
         const scheduleSelect = document.getElementById('scheduleTime');
         if (modalSelect.options.length > 0 && scheduleSelect.options.length === 0) {
@@ -1086,7 +1119,6 @@ let isAddressSet = false;
     }
     autoFixEmptyTime();
 }
-
 
 function autoFixEmptyTime() {
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') return;
@@ -1112,16 +1144,29 @@ function autoFixEmptyTime() {
 }
 
 function renderModalTimes() {
-    const dateStr = document.getElementById('modalDateSelect').value;
+    const dateSelect = document.getElementById('modalDateSelect');
+    if (!dateSelect) return;
+    const dateStr = dateSelect.value;
     const timeSelect = document.getElementById('modalTimeSelect');
+    if (!timeSelect) return;
     timeSelect.innerHTML = '';
     
     if (!uberTimeData || !uberTimeData.timeRanges || !uberTimeData.timeRanges[dateStr]) return;
+    
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isToday = (dateStr === todayStr) || (new Date(dateStr).toDateString() === now.toDateString());
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
     
     const ranges = uberTimeData.timeRanges[dateStr];
     ranges.forEach(w => {
         const st = w.startTime || 0;
         const et = w.endTime || 0;
+        
+        // 自動排除當前時間之前的時段（例如現在 9:00，9:00 前的時段不顯示）
+        if (isToday && st < currentMinutes) {
+            return;
+        }
         
         const h = Math.floor(st / 60);
         const m = st % 60;
@@ -1149,7 +1194,7 @@ function renderModalTimes() {
     });
 }
 
-function openTimePickerModal() {
+function openTimePickerModal()function openTimePickerModal() {
     if (!uberTimeData || !uberTimeData.dates) return;
     document.getElementById('timePickerModal').style.display = 'flex';
 }
