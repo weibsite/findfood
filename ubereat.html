@@ -8098,6 +8098,16 @@ function closeQueryOverlay() {
 
 let suggestionsBarDebounceTimer = null;
 let lastSuggestionsKey = '';
+let latestSuggestionsBarReqId = 0;
+let suggestionsBarAbortController = null;
+let latestStoreSuggestionsReqId = 0;
+
+function getCurrentActiveQuery() {
+    const mobileInput = document.getElementById('globalSearchInputMobile');
+    const headerInput = document.getElementById('query');
+    const raw = (mobileInput && mobileInput === document.activeElement) ? mobileInput.value : (headerInput ? headerInput.value : '');
+    return (raw || '').trim();
+}
 
 // --- [輸入法組字與有效文字判定] ---
 let isImeComposing = false;
@@ -8135,6 +8145,11 @@ function isValidSearchQuery(text) {
 
 function hideSuggestionsBars() {
     lastSuggestionsKey = '';
+    latestSuggestionsBarReqId++;
+    if (suggestionsBarAbortController) {
+        try { suggestionsBarAbortController.abort(); } catch (e) {}
+        suggestionsBarAbortController = null;
+    }
     const barMob = document.getElementById('searchSuggestionsBarMobile');
     const barHome = document.getElementById('searchSuggestionsBarHome');
     if (barMob) {
@@ -8230,6 +8245,13 @@ function fetchSuggestionsBar(query) {
     suggestionsBarDebounceTimer = setTimeout(async () => {
         if (key === lastSuggestionsKey) return;
         lastSuggestionsKey = key;
+
+        // 取消前一個尚未完成的請求，並核發最新請求序號
+        if (suggestionsBarAbortController) {
+            try { suggestionsBarAbortController.abort(); } catch (e) {}
+        }
+        suggestionsBarAbortController = new AbortController();
+        const reqId = ++latestSuggestionsBarReqId;
         
         try {
             const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
@@ -8244,14 +8266,26 @@ function fetchSuggestionsBar(query) {
             const res = await fetch(`${apiBase}/api/getSearchSuggestionsV1`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: suggestionsBarAbortController.signal
             });
             
+            // [防覆蓋保護] 若已有更新的請求發出，或輸入框當前文字已不是 q，直接丟棄過時結果
+            if (reqId !== latestSuggestionsBarReqId || getCurrentActiveQuery() !== q) {
+                return;
+            }
+
             if (!res.ok) {
                 console.warn('[Suggestions] API 回應失敗 HTTP', res.status);
                 return;
             }
             const resJson = await res.json();
+
+            // [雙重確認] 解析完 JSON 後再次確認是否仍為最新文字
+            if (reqId !== latestSuggestionsBarReqId || getCurrentActiveQuery() !== q) {
+                return;
+            }
+
             if (resJson.status === 'success' && Array.isArray(resJson.data)) {
                 // 1. 關鍵詞：過濾出 keyword，顯示在輸入框上方一排橫列
                 const keywordItems = resJson.data.filter(it => it.type === 'keyword');
@@ -8263,8 +8297,8 @@ function fetchSuggestionsBar(query) {
                 // 2. 店家：過濾出 store，顯示在關聯餐廳/店家列表中 (先出現，等待 search_v3 覆蓋)
                 const storeItems = resJson.data.filter(it => it.type === 'store');
                 if (storeItems.length > 0) {
-                    // 若當前搜尋詞尚未被 search_v3 覆蓋完成，先由 Suggestion 店家搶先展示
-                    if (window.suggestionStoreSource !== 'search_v3' || window.suggestionStoreQuery !== q) {
+                    // 僅當目前這個關鍵字 q 尚未被 search_v3 覆蓋完成時，才先由 Suggestion 店家搶先展示
+                    if (!(window.suggestionStoreSource === 'search_v3' && window.suggestionStoreQuery === q)) {
                         window.suggestionStores = storeItems.map(s => ({
                             title: { text: s.title },
                             storeUuid: s.uuid,
@@ -8281,6 +8315,7 @@ function fetchSuggestionsBar(query) {
             }
             // 若 API 取得 0 筆或失敗，不呼叫 hideSuggestionsBars()，保留畫面上現有的建議
         } catch (e) {
+            if (e && e.name === 'AbortError') return;
             console.error('fetchSuggestionsBar error:', e);
         }
     }, 180);
@@ -8342,6 +8377,7 @@ async function fetchStoreSuggestions(q) {
     if (!q || !currentLat || !currentLng) return;
     
     isFetchingSuggestions = true;
+    const reqId = ++latestStoreSuggestionsReqId;
     
     try {
         const searchPayload = { 
@@ -8370,9 +8406,6 @@ async function fetchStoreSuggestions(q) {
             }
         }
 
-        
-
-        
         const apiBase = typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '';
         if(!apiBase) {
             isFetchingSuggestions = false;
@@ -8389,6 +8422,12 @@ async function fetchStoreSuggestions(q) {
         const textRes = await res.text();
         const json = JSON.parse(textRes);
         
+        // [防覆蓋保護] 若回應回來時，使用者輸入框已經變成別的字 (例如已打到「烤肉飯」)，直接放棄舊字「烤」的結果
+        const currentActiveQ = getCurrentActiveQuery();
+        if (reqId !== latestStoreSuggestionsReqId || (currentActiveQ && currentActiveQ !== q)) {
+            return;
+        }
+
         if (json.status !== 'failure') {
             let stores = [];
             (json.data.feedItems || []).forEach(item => {
@@ -8434,6 +8473,7 @@ async function fetchStoreSuggestions(q) {
             });
             if (!hasPxmart) {
                 fetchPxmartAsapStores(q).then(pxStores => {
+                    if (reqId !== latestStoreSuggestionsReqId || getCurrentActiveQuery() !== q) return;
                     if (pxStores && pxStores.length > 0) {
                         const existingUuids = new Set(stores.map(s => s.storeUuid));
                         const newPx = pxStores.filter(ps => !existingUuids.has(ps.storeUuid));
@@ -8459,12 +8499,13 @@ async function fetchStoreSuggestions(q) {
         isFetchingSuggestions = false;
         
         // If the user typed something else while we were waiting, fetch it now!
-        if (pendingSuggestionQuery && pendingSuggestionQuery !== lastSearchedQuery && !window._searchLock) {
-            const nextQ = pendingSuggestionQuery;
+        const latestInputQ = getCurrentActiveQuery();
+        const nextTargetQ = pendingSuggestionQuery || (latestInputQ && isValidSearchQuery(latestInputQ) && latestInputQ !== lastSearchedQuery ? latestInputQ : "");
+        if (nextTargetQ && nextTargetQ !== q && !window._searchLock) {
             pendingSuggestionQuery = "";
-            lastSearchedQuery = nextQ;
-            fetchStoreSuggestions(nextQ);
-        } else {
+            lastSearchedQuery = nextTargetQ;
+            fetchStoreSuggestions(nextTargetQ);
+        } else if (getCurrentActiveQuery() === q) {
             // Re-render the overlay to show newly fetched stores, hide spinner, or show error/empty state
             if (typeof renderOverlayHTML === 'function') renderOverlayHTML();
         }
