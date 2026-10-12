@@ -8935,10 +8935,45 @@ window.latestAddrSuggestReqId = 0;
 window.latestAddrCandidates = [];
 window.latestAddrQuery = '';
 
+// 將輸入地址拆分為「送給 Uber 搜尋的門牌基準地址 (searchQuery)」與「後方樓層/備註尾綴 (extraSuffix)」
+// 例外保護：完整保留「17-8」、「17號之8」、「17號-8」等門牌附號，不會誤切
+window.splitAddressForUber = function(rawAddr) {
+    const clean = (rawAddr || '').replace(/^📍\s*/, '').trim();
+    if (!clean) return { searchQuery: '', extraSuffix: '' };
+
+    // 1. 擷取到「號」（含「17-8號」、「17號之8」、「17號-8」），將後方的「8樓」、「B1」等拆為 extraSuffix
+    const mDoor = clean.match(/^(.*?\d+(?:\s*[-－之]\s*\d+)*\s*號(?:\s*(?:之|[-－])\s*\d+(?![\d]*[樓Ff])\s*號?)?)(.*)$/);
+    if (mDoor) {
+        const searchQuery = mDoor[1].trim();
+        let extraSuffix = (mDoor[2] || '').replace(/^[,，\s]+/, '').trim();
+        if (extraSuffix === '之' || extraSuffix === '-' || extraSuffix === '－') {
+            extraSuffix = '';
+        }
+        return { searchQuery, extraSuffix };
+    }
+
+    // 2. 若未輸入「號」字但有門牌附號加樓層（例如「公園路17-8 8樓」），保留「17-8」並拆出後方樓層
+    const mNoHao = clean.match(/^(.*?\d+\s*[-－之]\s*\d+)(\s+\d+\s*[樓Ff].*|\s*[一二三四五六七八九十]+\s*樓.*|\s+[Bb]\d+.*)$/);
+    if (mNoHao) {
+        return {
+            searchQuery: mNoHao[1].trim(),
+            extraSuffix: (mNoHao[2] || '').replace(/^[,，\s]+/, '').trim()
+        };
+    }
+
+    return { searchQuery: clean, extraSuffix: '' };
+};
+
 window.fetchAddrSuggestions = async function(q) {
-    const cleanQ = (q || '').trim();
-    if (!cleanQ || isAddressSet) return;
-    if (typeof isValidSearchQuery === 'function' && !isValidSearchQuery(cleanQ)) return;
+    const { searchQuery } = window.splitAddressForUber(q);
+    if (!searchQuery || isAddressSet) return;
+    if (typeof isValidSearchQuery === 'function' && !isValidSearchQuery(searchQuery)) return;
+
+    // 若門牌基準地址（號以前）未變動且已有備選清單（例如使用者正在補打「8樓」），直接重繪備選清單即可，不需重複請求
+    if (window.latestAddrQuery === searchQuery && Array.isArray(window.latestAddrCandidates) && window.latestAddrCandidates.length > 0) {
+        window.renderAddrCandidates(window.latestAddrCandidates);
+        return;
+    }
 
     if (window.addrSuggestAbortController) {
         try { window.addrSuggestAbortController.abort(); } catch (e) {}
@@ -8949,7 +8984,7 @@ window.fetchAddrSuggestions = async function(q) {
     try {
         const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
         const payload = {
-            query: cleanQ,
+            query: searchQuery,
             lat: typeof currentLat !== 'undefined' && currentLat ? currentLat : 24.274120399999997,
             lng: typeof currentLng !== 'undefined' && currentLng ? currentLng : 120.5702076
         };
@@ -8961,17 +8996,17 @@ window.fetchAddrSuggestions = async function(q) {
         });
 
         const addrInput = document.getElementById('addrInput');
-        const currentInputVal = addrInput ? addrInput.value.trim() : '';
-        if (reqId !== window.latestAddrSuggestReqId || isAddressSet || currentInputVal !== cleanQ) return;
+        const currentSplit = window.splitAddressForUber(addrInput ? addrInput.value : '');
+        if (reqId !== window.latestAddrSuggestReqId || isAddressSet || currentSplit.searchQuery !== searchQuery) return;
         if (!res.ok) return;
 
         const resJson = await res.json();
-        const afterInputVal = addrInput ? addrInput.value.trim() : '';
-        if (reqId !== window.latestAddrSuggestReqId || isAddressSet || afterInputVal !== cleanQ) return;
+        const afterSplit = window.splitAddressForUber(addrInput ? addrInput.value : '');
+        if (reqId !== window.latestAddrSuggestReqId || isAddressSet || afterSplit.searchQuery !== searchQuery) return;
 
         if (resJson.status === 'success' && Array.isArray(resJson.data)) {
             window.latestAddrCandidates = resJson.data;
-            window.latestAddrQuery = cleanQ;
+            window.latestAddrQuery = searchQuery;
             window.renderAddrCandidates(resJson.data);
         }
     } catch (e) {
@@ -8991,6 +9026,12 @@ window.renderAddrCandidates = function(items) {
     if (stEl) {
         stEl.innerText = '請點選下方備選地址（或按 Enter 選取第一個）：';
     }
+    const addrInput = document.getElementById('addrInput');
+    const { extraSuffix } = window.splitAddressForUber(addrInput ? addrInput.value : '');
+    const suffixHtml = extraSuffix
+        ? ` <span style="color:#be123c; font-weight:800;">${typeof escapeHTML === 'function' ? escapeHTML(extraSuffix) : extraSuffix}</span>`
+        : '';
+
     resEl.innerHTML = items.slice(0, 6).map((item, idx) => {
         const l1 = typeof escapeHTML === 'function' ? escapeHTML(item.addressLine1 || item.fullAddress || '') : (item.addressLine1 || '');
         const l2 = typeof escapeHTML === 'function' ? escapeHTML(item.addressLine2 || '') : (item.addressLine2 || '');
@@ -9001,7 +9042,7 @@ window.renderAddrCandidates = function(items) {
             <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
                 <span style="font-size:18px; flex-shrink:0;">📍</span>
                 <div style="min-width:0; flex:1;">
-                    <div style="font-size:15px; font-weight:800; color:#1c1917; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${l1}</div>
+                    <div style="font-size:15px; font-weight:800; color:#1c1917; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${l1}${suffixHtml}</div>
                     ${l2 ? `<div style="font-size:12px; color:#78716c; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${l2}</div>` : ''}
                 </div>
             </div>
@@ -9023,9 +9064,17 @@ window.selectUberAddrCandidate = async function(idx) {
     const addrInput = document.getElementById('addrInput');
     const stEl = document.getElementById('addrStatus');
     const resEl = document.getElementById('addrResults');
-    const fullAddr = (item.fullAddress || item.addressLine1 || '').trim();
 
-    if (addrInput) addrInput.value = fullAddr;
+    // 先從目前輸入框提取使用者在「號」後面輸入的樓層或備註（例如「8樓」），以便在定位完成後完整保留於地址文字中
+    const rawUserText = addrInput ? addrInput.value.trim() : '';
+    const { extraSuffix } = window.splitAddressForUber(rawUserText);
+
+    const baseFullAddr = (item.fullAddress || item.addressLine1 || '').trim();
+    const previewFullAddr = (extraSuffix && !baseFullAddr.endsWith(extraSuffix))
+        ? `${baseFullAddr}${extraSuffix}`
+        : baseFullAddr;
+
+    if (addrInput) addrInput.value = previewFullAddr;
     if (resEl) resEl.innerHTML = '';
     if (stEl) stEl.innerText = '正在確認地址座標...';
 
@@ -9049,7 +9098,10 @@ window.selectUberAddrCandidate = async function(idx) {
             if (res.ok) {
                 const data = await res.json();
                 if (data.status === 'success' && data.lat && data.lng) {
-                    const resolvedTitle = data.title || fullAddr;
+                    let resolvedTitle = (data.title || baseFullAddr).trim();
+                    if (extraSuffix && !resolvedTitle.endsWith(extraSuffix)) {
+                        resolvedTitle = `${resolvedTitle}${extraSuffix}`;
+                    }
                     window.lastSearchedAddr = resolvedTitle;
                     await setAddress(data.lat, data.lng, resolvedTitle);
                     return;
@@ -9089,7 +9141,8 @@ window.handleAddrInput = function() {
     }
 
     // 即時呼叫 Uber mapsSearchV1 提供備選地址 (180ms 防抖)
-    if (typeof isValidSearchQuery !== 'function' || isValidSearchQuery(q)) {
+    const { searchQuery } = window.splitAddressForUber(q);
+    if (typeof isValidSearchQuery !== 'function' || isValidSearchQuery(searchQuery)) {
         window.addrSuggestDebounceTimer = setTimeout(() => {
             window.fetchAddrSuggestions(q);
         }, 180);
@@ -9120,12 +9173,14 @@ window.searchAddress = async function(force = false) {
         return;
     }
 
-    // 若目前已載入對應此輸入文字的備選清單，直接選取第一個
-    if (window.latestAddrCandidates && window.latestAddrCandidates.length > 0 && window.latestAddrQuery === q) {
+    const { searchQuery } = window.splitAddressForUber(q);
+
+    // 若目前已載入對應此門牌基準文字的備選清單，直接選取第一個（並自動保留後方樓層）
+    if (window.latestAddrCandidates && window.latestAddrCandidates.length > 0 && window.latestAddrQuery === searchQuery) {
         return await window.selectUberAddrCandidate(0);
     }
 
-    // 若使用者按 Enter 太快（備選清單尚未回傳），立刻即時查詢 mapsSearchV1 並自動選取第一個
+    // 若使用者按 Enter 太快（備選清單尚未回傳），立刻以 searchQuery 查詢 mapsSearchV1 並自動選取第一個
     try {
         if (stEl) stEl.innerText = '正在搜尋備選地址...';
         const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
@@ -9133,7 +9188,7 @@ window.searchAddress = async function(force = false) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                query: q,
+                query: searchQuery,
                 lat: typeof currentLat !== 'undefined' && currentLat ? currentLat : 24.274120399999997,
                 lng: typeof currentLng !== 'undefined' && currentLng ? currentLng : 120.5702076
             })
@@ -9142,7 +9197,7 @@ window.searchAddress = async function(force = false) {
             const resJson = await res.json();
             if (resJson.status === 'success' && Array.isArray(resJson.data) && resJson.data.length > 0) {
                 window.latestAddrCandidates = resJson.data;
-                window.latestAddrQuery = q;
+                window.latestAddrQuery = searchQuery;
                 return await window.selectUberAddrCandidate(0);
             }
         }
