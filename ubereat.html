@@ -2986,7 +2986,7 @@ async function searchStoresPickup(q) {
         }
 
         const safeQ = (q || '').replace(/'/g, "\\\'").replace(/"/g, '&quot;');
-        const titleText = keyword ? `為您推薦與${safeKw}有關的優惠餐廳：` : `為您推薦 ${stores.length} 家優惠餐廳：`;
+        const titleText = keyword ? `與${safeKw}有關的優惠餐廳：` : `為您推薦 ${stores.length} 家優惠餐廳：`;
         statusEl.innerHTML = `<div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                                 <div>${titleText}</div>
                                 <button onclick="searchStores()" style="background:#f43f5e; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">回到一般外送</button>
@@ -4420,11 +4420,13 @@ function openGroceryCheckoutSummary() {
 
 
 
+  const isForcedPxmart = typeof isPxmartName === 'function' ? isPxmartName(currentStoreName) : (currentStoreName && currentStoreName.includes('全聯') && !currentStoreName.includes('大全聯'));
+
   let timeText = '盡快送達';
 
   let isPreOrder = false;
 
-  if (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
+  if (!isForcedPxmart && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
 
     const timeSelect = document.getElementById('scheduleTime');
 
@@ -4512,7 +4514,14 @@ function openGroceryCheckoutSummary() {
 
 
 
-            <div style="margin-bottom:15px; display:flex; align-items:center;"><strong>外送時間:</strong> <span style="margin-left:5px;">${escapeHTML(timeText)}</span> <button onclick="openTimePickerModal()" style="margin-left:10px; padding:2px 10px; font-size:12px; cursor:pointer; background:#fff; border:1px solid #000; border-radius:15px; font-weight:bold; color:#000;">修改</button></div>
+      ${isForcedPxmart ? `
+        <div style="margin-bottom:15px; display:flex; align-items:center;">
+          <strong>外送時間:</strong> <span style="margin-left:5px;">盡快送達</span>
+          <span onclick="showModal('外送時間說明', '', false, '<div style=\\\'text-align:center; font-size:15px; line-height:1.6; color:#555;\\\'>因為這個店家只接受即時訂單<br>無法預約時段下單</div>')" style="display:inline-block; margin-left:8px; width:18px; height:18px; line-height:18px; text-align:center; border-radius:50%; background:#ccc; color:#fff; font-size:12px; cursor:pointer; font-weight:bold;" title="查看說明">?</span>
+        </div>
+      ` : `
+        <div style="margin-bottom:15px; display:flex; align-items:center;"><strong>外送時間:</strong> <span style="margin-left:5px;">${escapeHTML(timeText)}</span> <button onclick="openTimePickerModal()" style="margin-left:10px; padding:2px 10px; font-size:12px; cursor:pointer; background:#fff; border:1px solid #000; border-radius:15px; font-weight:bold; color:#000;">修改</button></div>
+      `}
 
       ${isPreOrder ? `<div style="color:#f43f5e; margin-bottom:4px;">預約優惠(3小時以上): -$20</div>` : ''}
 
@@ -7658,6 +7667,8 @@ function buildSplitSuggestionHtml(result) {
     
     if (title === '代訂睡覺中') {
         document.getElementById('errorModalIcon').innerHTML = '<img src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">';
+    } else if (title === '外送時間說明' || title === '外送方式說明') {
+        document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
     } else {
         document.getElementById('errorModalIcon').innerHTML = isError ? '<img src="https://weibsite.github.io/findfood/image/wait.png" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">' : '✅';
     }
