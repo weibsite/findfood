@@ -415,15 +415,20 @@
 
     </div>
     <!-- Address & Time Card -->
-    <div id="addrSection" class="addr-time-card">
-      <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid #f5e6e2;">
+    <div id="addrSection" class="addr-time-card" style="position:relative; z-index:200;">
+      <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid #f5e6e2; position:relative;">
         <button onclick="getCurrentLocation()" title="使用目前位置" style="width:44px; height:44px; border-radius:14px; border:0; background:#ffe4e9; color:#be123c; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer;">
           <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="22"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.800 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle></svg>
         </button>
-        <div style="flex:1; min-width:0;">
-          <label for="addrInput" style="display:block; font-size:12px; font-weight:700; color:#be123c;">外送地址</label>
-          <input type="text" id="addrInput" placeholder="輸入外送地址" autocomplete="off" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); clearTimeout(window.addrDebounceTimer); clearTimeout(window.addrSuggestDebounceTimer); window.searchAddress(true); }" oninput="handleAddrInput()" onblur="handleAddrBlur()" style="width:100%; border:0; outline:0; padding:2px 0; font-size:17px; font-weight:700; color:#1c1917; background:transparent;" />
+        <div style="flex:1; min-width:0; cursor:text;" onclick="const a=document.getElementById('addrInput'); if(a && event.target!==a) a.focus();">
+          <label for="addrInput" style="display:block; font-size:12px; font-weight:700; color:#be123c; cursor:text;">外送地址</label>
+          <input type="text" id="addrInput" placeholder="輸入外送地址" autocomplete="off" onfocus="if(typeof window.handleAddrFocus==='function') window.handleAddrFocus()" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); clearTimeout(window.addrDebounceTimer); clearTimeout(window.addrSuggestDebounceTimer); window.searchAddress(true); }" oninput="handleAddrInput()" onblur="handleAddrBlur()" style="width:100%; border:0; outline:0; padding:2px 0; font-size:17px; font-weight:700; color:#1c1917; background:transparent;" />
           <datalist id="addr-list"></datalist>
+        </div>
+        <!-- 漂浮備選地址視窗 (絕對定位於外送地址輸入列正下方，不影響打字、不推動下方版面) -->
+        <div id="addrFloatingPopup" onmousedown="event.preventDefault();" style="display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:rgba(255,255,255,0.98); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border:1.5px solid #fecdd3; border-radius:20px; box-shadow:0 16px 36px rgba(28,25,23,0.22); padding:10px; z-index:999; max-height:330px; overflow-y:auto;">
+          <div id="addrStatus" style="display:none; font-size:12px; color:#be123c; font-weight:700; padding:2px 6px 8px; text-align:left;"></div>
+          <div id="addrResults" class="addr-results" style="margin:0; gap:6px;"></div>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer;" onclick="openTimePickerModal()">
@@ -438,9 +443,6 @@
         <svg aria-hidden="true" fill="none" height="20" stroke="#78716c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" viewBox="0 0 24 24" width="20"><path d="M6 9l6 6 6-6"></path></svg>
       </div>
     </div>
-    
-    <div id="addrStatus" style="font-size: 13px; color: #be123c; margin-top: 5px; text-align: center;"></div>
-    <div id="addrResults" class="addr-results" style="margin: 0 16px;"></div>
 
     <div id="heroActionButtons" style="display:flex; gap:12px; margin:16px 16px 0;">
       <button class="category-btn shop" onclick="handleHeroClick('SHOP')">
@@ -9015,12 +9017,49 @@ window.fetchAddrSuggestions = async function(q) {
     }
 };
 
+window.syncAddrFloatingPopup = function(forceHide = false) {
+    const popup = document.getElementById('addrFloatingPopup');
+    const resEl = document.getElementById('addrResults');
+    const stEl = document.getElementById('addrStatus');
+    if (!popup) return;
+    if (forceHide) {
+        popup.style.display = 'none';
+        return;
+    }
+    const hasResults = resEl && resEl.innerHTML.trim() !== '';
+    const hasStatus = stEl && stEl.innerText.trim() !== '';
+    if (stEl) {
+        stEl.style.display = hasStatus ? 'block' : 'none';
+    }
+    popup.style.display = (hasResults || hasStatus) ? 'block' : 'none';
+};
+
+// 自動監聽 #addrResults 與 #addrStatus 內容變化（例如 setAddress 清空內容時自動收起漂浮視窗）
+(function initAddrPopupObserver() {
+    const setup = () => {
+        const resEl = document.getElementById('addrResults');
+        const stEl = document.getElementById('addrStatus');
+        if (!resEl && !stEl) return;
+        const obs = new MutationObserver(() => {
+            window.syncAddrFloatingPopup();
+        });
+        if (resEl) obs.observe(resEl, { childList: true, subtree: true, characterData: true });
+        if (stEl) obs.observe(stEl, { childList: true, subtree: true, characterData: true });
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setup);
+    } else {
+        setup();
+    }
+})();
+
 window.renderAddrCandidates = function(items) {
     const resEl = document.getElementById('addrResults');
     const stEl = document.getElementById('addrStatus');
     if (!resEl) return;
     if (!items || items.length === 0) {
         resEl.innerHTML = '';
+        window.syncAddrFloatingPopup();
         return;
     }
     if (stEl) {
@@ -9038,7 +9077,7 @@ window.renderAddrCandidates = function(items) {
         const badgeHtml = idx === 0
             ? `<span style="font-size:11px; color:#15803d; background:#dcfce7; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">Enter / 選取</span>`
             : `<span style="font-size:11px; color:#57534e; background:#f5f0ee; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">選取</span>`;
-        return `<div class="addr-item" onmousedown="event.preventDefault();" onclick="window.selectUberAddrCandidate(${idx})" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border:1px solid ${idx === 0 ? '#bbf7d0' : '#f0e4e2'}; border-radius:14px; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        return `<div class="addr-item" onmousedown="event.preventDefault();" onclick="window.selectUberAddrCandidate(${idx})" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; border:1px solid ${idx === 0 ? '#bbf7d0' : '#f0e4e2'}; border-radius:14px; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
             <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
                 <span style="font-size:18px; flex-shrink:0;">📍</span>
                 <div style="min-width:0; flex:1;">
@@ -9049,6 +9088,7 @@ window.renderAddrCandidates = function(items) {
             ${badgeHtml}
         </div>`;
     }).join('');
+    window.syncAddrFloatingPopup();
 };
 
 window.selectUberAddrCandidate = async function(idx) {
@@ -9077,6 +9117,7 @@ window.selectUberAddrCandidate = async function(idx) {
     if (addrInput) addrInput.value = previewFullAddr;
     if (resEl) resEl.innerHTML = '';
     if (stEl) stEl.innerText = '正在確認地址座標...';
+    window.syncAddrFloatingPopup();
 
     if (item.id) {
         try {
@@ -9104,6 +9145,7 @@ window.selectUberAddrCandidate = async function(idx) {
                     }
                     window.lastSearchedAddr = resolvedTitle;
                     await setAddress(data.lat, data.lng, resolvedTitle);
+                    window.syncAddrFloatingPopup(true);
                     return;
                 }
             }
@@ -9113,7 +9155,14 @@ window.selectUberAddrCandidate = async function(idx) {
     }
 
     if (stEl) stEl.innerText = '無法取得該地址座標，請重新選取';
+    window.syncAddrFloatingPopup();
     if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
+};
+
+window.handleAddrFocus = function() {
+    if (!isAddressSet) {
+        window.syncAddrFloatingPopup();
+    }
 };
 
 window.handleAddrInput = function() {
@@ -9136,6 +9185,7 @@ window.handleAddrInput = function() {
         }
         if (resEl) resEl.innerHTML = '';
         if (stEl) stEl.innerText = '';
+        window.syncAddrFloatingPopup(true);
         window.restoreHeroBanner();
         return;
     }
@@ -9154,6 +9204,7 @@ window.handleAddrBlur = function() {
     clearTimeout(window.addrDebounceTimer);
     const addrInput = document.getElementById('addrInput');
     const q = addrInput ? addrInput.value.trim() : '';
+    window.syncAddrFloatingPopup(true);
     if (!q) {
         window.restoreHeroBanner();
     }
@@ -9183,6 +9234,7 @@ window.searchAddress = async function(force = false) {
     // 若使用者按 Enter 太快（備選清單尚未回傳），立刻以 searchQuery 查詢 mapsSearchV1 並自動選取第一個
     try {
         if (stEl) stEl.innerText = '正在搜尋備選地址...';
+        window.syncAddrFloatingPopup();
         const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
         const res = await fetch(`${apiBase}/api/mapsSearchV1`, {
             method: 'POST',
@@ -9206,6 +9258,7 @@ window.searchAddress = async function(force = false) {
     }
 
     if (stEl) stEl.innerText = '找不到相符的備選地址，請嘗試輸入其他關鍵字';
+    window.syncAddrFloatingPopup();
     if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
 };
 
