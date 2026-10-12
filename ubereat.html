@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 14.0</title>
+<title>點餐系統 14.5</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -8129,14 +8129,13 @@ function renderSuggestionsBar(items) {
     items.forEach(item => {
         const title = item.title || '';
         if (!title) return;
-        const icon = '🔍';
         
         const safeTitleAttr = title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const safeTitleDisplay = typeof escapeHTML === 'function' ? escapeHTML(title) : title;
         
-        mobHtml += `<button type="button" data-title="${safeTitleAttr}" class="suggestion-tag-pill-mob" style="display:inline-flex; align-items:center; gap:5px; background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span></button>`;
+        mobHtml += `<button type="button" data-title="${safeTitleAttr}" class="suggestion-tag-pill-mob" style="display:inline-flex; align-items:center; background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; font-size:13px; font-weight:600; padding:5px 12px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05); user-select:none; -webkit-tap-highlight-color:transparent;">${safeTitleDisplay}</button>`;
         
-        homeHtml += `<button type="button" data-title="${safeTitleAttr}" class="suggestion-tag-pill-home" style="display:inline-flex; align-items:center; gap:5px; background:#292524; border:1px solid #44403c; color:#f5f5f4; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.2); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span></button>`;
+        homeHtml += `<button type="button" data-title="${safeTitleAttr}" class="suggestion-tag-pill-home" style="display:inline-flex; align-items:center; background:#292524; border:1px solid #44403c; color:#f5f5f4; font-size:13px; font-weight:600; padding:5px 12px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.2); user-select:none; -webkit-tap-highlight-color:transparent;">${safeTitleDisplay}</button>`;
     });
     
     if (barMob) {
