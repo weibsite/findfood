@@ -9063,7 +9063,7 @@ window.renderAddrCandidates = function(items) {
         return;
     }
     if (stEl) {
-        stEl.innerText = '請點選下方備選地址（或按 Enter 選取第一個）：';
+        stEl.innerText = '請選擇正確地址：';
     }
     const addrInput = document.getElementById('addrInput');
     const { extraSuffix } = window.splitAddressForUber(addrInput ? addrInput.value : '');
@@ -9075,7 +9075,7 @@ window.renderAddrCandidates = function(items) {
         const l1 = typeof escapeHTML === 'function' ? escapeHTML(item.addressLine1 || item.fullAddress || '') : (item.addressLine1 || '');
         const l2 = typeof escapeHTML === 'function' ? escapeHTML(item.addressLine2 || '') : (item.addressLine2 || '');
         const badgeHtml = idx === 0
-            ? `<span style="font-size:11px; color:#15803d; background:#dcfce7; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">Enter / 選取</span>`
+            ? `<span style="font-size:11px; color:#15803d; background:#dcfce7; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">選取</span>`
             : `<span style="font-size:11px; color:#57534e; background:#f5f0ee; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">選取</span>`;
         return `<div class="addr-item" onmousedown="event.preventDefault();" onclick="window.selectUberAddrCandidate(${idx})" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; border:1px solid ${idx === 0 ? '#bbf7d0' : '#f0e4e2'}; border-radius:14px; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
             <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
