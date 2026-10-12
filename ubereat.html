@@ -344,10 +344,10 @@
         <!-- 建議詞橫列容器 (即時橫排建議) -->
         <div id="searchSuggestionsBarMobile" class="search-suggestions-bar" style="display:none; overflow-x:auto; white-space:nowrap; padding:4px 0 8px 0; gap:8px; align-items:center; -webkit-overflow-scrolling:touch; scrollbar-width:none;"></div>
         <div class="input-row" style="margin:0; box-shadow:none; display:flex; gap:10px;">
-            <div style="flex:1; display:flex; align-items:center; background:#f5f5f5; border:1px solid #ddd; border-radius:25px; padding:0 15px; box-sizing:border-box; overflow:hidden;">
-                <span id="searchPrefix" style="display:none; color:#f43f5e; font-size:16px; font-weight:bold; white-space:nowrap; margin-right:2px;">🔍 搜尋 "</span>
+            <div onclick="handleSearchBoxContainerClick(event)" onmousedown="if(event.target !== document.getElementById('globalSearchInputMobile')) { event.preventDefault(); handleSearchBoxContainerClick(event); }" style="flex:1; display:flex; align-items:center; background:#f5f5f5; border:1px solid #ddd; border-radius:25px; padding:0 15px; box-sizing:border-box; overflow:hidden; cursor:text;">
+                <span id="searchPrefix" style="display:none; color:#f43f5e; font-size:16px; font-weight:bold; white-space:nowrap; margin-right:2px; user-select:none;">🔍 搜尋 "</span>
                 <input type="text" id="globalSearchInputMobile" autocomplete="off" placeholder="想吃什麼？ (例如: 麥當勞)" oninput="updateQueryOverlay()" onkeydown="if(event.key==='Enter'){ searchStores(); }" style="flex:1; padding:10px 0; border:none; outline:none; font-size:16px; background:transparent; min-width:0; caret-color:#111;" />
-                <span id="searchSuffix" style="display:none; color:#f43f5e; font-size:16px; font-weight:bold; margin-left:0px;">"</span>
+                <span id="searchSuffix" style="display:none; color:#f43f5e; font-size:16px; font-weight:bold; margin-left:0px; user-select:none;">"</span>
                 <span id="searchGhost" style="position:absolute; visibility:hidden; font-size:16px; font-weight:bold; white-space:pre; pointer-events:none;"></span>
             </div>
             <button id="searchMainBtnMobile" onclick="searchStores()" style="border-radius:25px; padding:10px 20px; font-weight:bold; background:#f43f5e; color:#000; border:none; white-space:nowrap; cursor:pointer;">尋找食物</button>
@@ -500,7 +500,7 @@
         <!-- 建議詞橫列容器 (即時橫排建議) -->
         <div id="searchSuggestionsBarHome" class="search-suggestions-bar" style="display:none; overflow-x:auto; white-space:nowrap; padding:4px 0 6px 0; gap:8px; align-items:center; -webkit-overflow-scrolling:touch; scrollbar-width:none;"></div>
 
-        <div class="search-modern-input-wrapper">
+        <div class="search-modern-input-wrapper" style="cursor:text;" onclick="const q=document.getElementById('query'); if(q){ q.focus(); if(typeof openQueryOverlay==='function') openQueryOverlay(); }">
           <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-width="2.2" viewBox="0 0 24 24" width="22"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
           <input type="text" id="query" autocomplete="off" onfocus="openQueryOverlay()" oninput="updateQueryOverlay()" placeholder="想吃什麼？ (例如: 麥當勞)" onkeydown="if(event.key==='Enter') searchStores()" />
         </div>
@@ -8107,6 +8107,24 @@ function getCurrentActiveQuery() {
     const headerInput = document.getElementById('query');
     const raw = (mobileInput && mobileInput === document.activeElement) ? mobileInput.value : (headerInput ? headerInput.value : '');
     return (raw || '').trim();
+}
+
+function handleSearchBoxContainerClick(event) {
+    const mobInput = document.getElementById('globalSearchInputMobile');
+    if (!mobInput) return;
+    // 若使用者直接點擊在輸入文字本身 (<input>)，保留瀏覽器原生游標定位
+    if (event && event.target === mobInput) return;
+    mobInput.focus();
+    const len = (mobInput.value || '').length;
+    try {
+        if (event && event.target && event.target.id === 'searchPrefix') {
+            // 點擊左側「🔍 搜尋 "」時，游標移至文字最開頭
+            mobInput.setSelectionRange(0, 0);
+        } else {
+            // 點擊右側「"」或整個輸入框右側空白區域時，游標移至文字最末端
+            mobInput.setSelectionRange(len, len);
+        }
+    } catch (e) {}
 }
 
 // --- [輸入法組字與有效文字判定] ---
