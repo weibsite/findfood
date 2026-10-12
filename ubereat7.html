@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 13.0</title>
+<title>點餐系統 14.0</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -298,6 +298,7 @@
   
   .search-modern-input-wrapper { display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 16px; height: 52px; padding: 0 14px; color: #78716c; }
   .search-modern-input-wrapper input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 16px; background: transparent; color: #1c1917; }
+  .search-suggestions-bar::-webkit-scrollbar { display: none; }
 
 </style>
 
@@ -340,6 +341,8 @@
                 <button id="verticalBtnRestMobile" onclick="switchVertical('RESTAURANTS')" style="padding:6px 16px; font-size:13px; font-weight:bold; border-radius:15px; border:none; background:#fff; color:#f43f5e; box-shadow:0 1px 3px rgba(0,0,0,0.1); cursor:pointer;">美食餐廳</button>
             </div>
         </div>
+        <!-- 建議詞橫列容器 (即時橫排建議) -->
+        <div id="searchSuggestionsBarMobile" class="search-suggestions-bar" style="display:none; overflow-x:auto; white-space:nowrap; padding:4px 0 8px 0; gap:8px; align-items:center; -webkit-overflow-scrolling:touch; scrollbar-width:none;"></div>
         <div class="input-row" style="margin:0; box-shadow:none; display:flex; gap:10px;">
             <div style="flex:1; display:flex; align-items:center; background:#f5f5f5; border:1px solid #ddd; border-radius:25px; padding:0 15px; box-sizing:border-box; overflow:hidden;">
                 <span id="searchPrefix" style="display:none; color:#f43f5e; font-size:16px; font-weight:bold; white-space:nowrap; margin-right:2px;">🔍 搜尋 "</span>
@@ -393,7 +396,7 @@
   <!-- 首頁 -->
   <div id="homeView">
     <div id="heroBanner" class="hero-banner">
-      <img id="heroLogoImage" src="http://weibsite.github.io/findDOG/image/logo2.png" style="position:absolute; top:45px; left:50%; transform:translateX(-50%); width:180px; height:180px; border-radius:50%; object-fit:cover; opacity:0.25; z-index:0; pointer-events:none;" />
+      <img id="heroLogoImage" src="http://weibsite.github.io/findDOG/image/logo2.png" style="position:absolute; top:0px; left:80%; transform:translateX(-50%); width:180px; height:180px; border-radius:50%; object-fit:cover; opacity:1.00; z-index:0; pointer-events:none;" />
       <div style="position:relative; z-index:1; height:100%; display:flex; flex-direction:column; justify-content:center;">
 
       <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -467,8 +470,8 @@
           
           <div style="display:flex; gap:10px; align-items:center;">
             <div class="delivery-method-toggle" style="flex:1; margin-bottom:0;">
-              <button id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')" style="word-break: keep-all; line-height: 1.2;">當面<wbr>點交</button>
-              <button id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')" style="word-break: keep-all; line-height: 1.2;">放在<wbr>門口</button>
+              <button type="button" id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')" style="word-break: keep-all; line-height: 1.2;">當面<wbr>點交</button>
+              <button type="button" id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')" style="word-break: keep-all; line-height: 1.2;">放在<wbr>門口</button>
             </div>
             <select id="deliveryMethod" style="display:none;">
               <option value="當面點交" selected>當面點交</option>
@@ -494,6 +497,9 @@
           </div>
         </div>
         
+        <!-- 建議詞橫列容器 (即時橫排建議) -->
+        <div id="searchSuggestionsBarHome" class="search-suggestions-bar" style="display:none; overflow-x:auto; white-space:nowrap; padding:4px 0 6px 0; gap:8px; align-items:center; -webkit-overflow-scrolling:touch; scrollbar-width:none;"></div>
+
         <div class="search-modern-input-wrapper">
           <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-width="2.2" viewBox="0 0 24 24" width="22"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
           <input type="text" id="query" autocomplete="off" onfocus="openQueryOverlay()" oninput="updateQueryOverlay()" placeholder="想吃什麼？ (例如: 麥當勞)" onkeydown="if(event.key==='Enter') searchStores()" />
@@ -650,95 +656,37 @@
 
 // New specific function to handle delivery method toggle since we hid the original select
 function setDeliveryMethod(method) {
+    const isDoor = (method === 'door' || method === '放在門口');
+    const actualMethod = isDoor ? '放在門口' : '當面點交';
+    window.selectedDeliveryMethod = actualMethod;
+    
     const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
-    }
-}
-
-
-
-// Robust Hero Banner toggle logic
-window.revealSubSections = function() {
-    document.getElementById('subSections').style.display = 'block';
-    setTimeout(() => { document.getElementById('subSections').style.opacity = '1'; }, 50);
-    
-    const heroBtns = document.getElementById('heroActionButtons');
-    if (heroBtns && heroBtns.style.display !== 'none') {
-        heroBtns.style.opacity = '0';
-        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
-    }
-    
-    const heroBanner = document.getElementById('heroBanner');
-    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
-        heroBanner.classList.add('shrunk');
-        Array.from(heroBanner.children).forEach(child => {
-            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                child.style.transition = 'opacity 0.3s ease';
-                child.style.opacity = '0';
-                child.style.pointerEvents = 'none';
-                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
-            }
-        });
-        heroBanner.style.transition = 'padding 0.3s ease';
-        heroBanner.style.paddingTop = '10px';
-        heroBanner.style.paddingBottom = '60px'; 
-    }
-    
-    const section = document.getElementById('addrSection');
-    if(section) {
-        section.style.background = '#fff';
-        section.style.borderColor = '#f0f0f0';
-    }
-}
-
-// Override handleAddrBlur to properly restore
-var originalHandleAddrBlur = window.originalHandleAddrBlur || window.handleAddrBlur;
-window.handleAddrBlur = function() {
-    setTimeout(() => {
-        document.getElementById('addrResults').innerHTML = '';
-        if(!isAddressSet && document.getElementById('addrInput').value.trim() === '') {
-            const heroBtns = document.getElementById('heroActionButtons');
-            if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
-            
-            const heroBanner = document.getElementById('heroBanner');
-            if (heroBanner && heroBanner.classList.contains('shrunk')) {
-
-                heroBanner.classList.remove('shrunk');
-                heroBanner.style.paddingTop = '40px';
-                heroBanner.style.paddingBottom = '80px';
-                
-                const logo = document.getElementById('heroLogoImage');
-                if (logo) {
-                    logo.style.transition = 'top 0.3s ease, opacity 0.3s ease';
-                    logo.style.top = '45px';
-                    logo.style.opacity = '0.25';
-                }
-
-                Array.from(heroBanner.children).forEach(child => {
-                    if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                        child.style.display = child.dataset.oldDisplay || 'block';
-                        if(child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
-                            setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
-                        }
-                    }
-                });
-            }
-            
-            document.getElementById('subSections').style.opacity = '0';
-            setTimeout(() => { document.getElementById('subSections').style.display = 'none'; }, 300);
+    if (sel) {
+        if (sel.value !== actualMethod) {
+            sel.value = actualMethod;
+            sel.dispatchEvent(new Event('change'));
         }
-    }, 200);
+    }
+    const otherIds = ['checkoutDeliveryMethod', 'groceryDeliveryMethod'];
+    otherIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value !== actualMethod) el.value = actualMethod;
+    });
+    localStorage.setItem('userDeliveryMethod', actualMethod);
+
+    const f = document.getElementById('btnMethodFace');
+    const d = document.getElementById('btnMethodDoor');
+    if (isDoor) {
+        if (f) f.className = 'inactive';
+        if (d) d.className = 'active';
+    } else {
+        if (f) f.className = 'active';
+        if (d) d.className = 'inactive';
+    }
 }
+window.setDeliveryMethod = setDeliveryMethod;
+
+
 
 // Override switchVertical to update modern tabs UI
 var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
@@ -773,9 +721,9 @@ function getSelectedScheduleTimestamp() {
       }
   }
 
-  let API_BASE_URL = '';
+  let API_BASE_URL = 'https://api.9ysong.shop';
 
-  let WS_URL = '';
+  let WS_URL = 'wss://api.9ysong.shop/ws';
 
   
 
@@ -976,14 +924,21 @@ let isAddressSet = false;
       if (el) {
           if (savedMethod !== null) el.value = savedMethod;
           el.addEventListener('change', (e) => {
-              localStorage.setItem('userDeliveryMethod', e.target.value);
+              const val = e.target.value;
+              localStorage.setItem('userDeliveryMethod', val);
               // sync others
               methodIds.forEach(otherId => {
-                 if (otherId !== id && document.getElementById(otherId)) document.getElementById(otherId).value = e.target.value;
+                 if (otherId !== id && document.getElementById(otherId)) document.getElementById(otherId).value = val;
               });
+              if (typeof setDeliveryMethod === 'function') {
+                  setDeliveryMethod(val);
+              }
           });
       }
   });
+  if (savedMethod && typeof setDeliveryMethod === 'function') {
+      setDeliveryMethod(savedMethod);
+  }
 
   noteIds.forEach(id => {
       const el = document.getElementById(id);
@@ -1074,14 +1029,14 @@ let isAddressSet = false;
 
   
   async function fetchDeliveryTimes() {
-    
     if (uberTimeData && uberTimeData.dates && uberTimeData.dates.length > 0) return; // Do not fetch again if we already have it
     
     isDeliveryTimesLoading = true;
     isDeliveryTimesLoaded = false;
     
     try {
-                  const res = await fetch(`${API_BASE_URL}/api/delivery-times_v3`, {
+      const targetUrl = API_BASE_URL ? `${API_BASE_URL}/api/delivery-times_v3` : 'https://api.9ysong.shop/api/delivery-times_v3';
+      const res = await fetch(targetUrl, {
         method: 'GET'
       });
       let data;
@@ -1103,8 +1058,9 @@ let isAddressSet = false;
         throw new Error('無法取得時段');
       }
     } catch (e) {
-      console.error(e);
-      }
+      console.warn('線上時段取得失敗，啟用本地時段生成備援:', e);
+      generateFallbackDeliveryTimes();
+    }
 
     isDeliveryTimesLoading = false;
     isDeliveryTimesLoaded = true;
@@ -1113,6 +1069,37 @@ let isAddressSet = false;
         onDeliveryTimesLoadedCallback();
         onDeliveryTimesLoadedCallback = null;
     }
+  }
+
+  function generateFallbackDeliveryTimes() {
+    const dates = [];
+    const timeRanges = {};
+    const now = new Date();
+    
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + dayOffset);
+        const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        dates.push(dStr);
+        
+        const ranges = [];
+        let startMin = 0;
+        if (dayOffset === 0) {
+            const curTotalMin = now.getHours() * 60 + now.getMinutes();
+            startMin = Math.ceil((curTotalMin + 15) / 15) * 15;
+        }
+        
+        for (let m = startMin; m < 24 * 60; m += 15) {
+            ranges.push({
+                startTime: m,
+                endTime: m + 30
+            });
+        }
+        timeRanges[dStr] = ranges;
+    }
+    
+    uberTimeData = { dates, timeRanges };
+    renderDates();
   }
 
   function renderDates() {
@@ -1127,14 +1114,14 @@ let isAddressSet = false;
     let firstAvailableDate = null;
     uberTimeData.dates.forEach((dStr, idx) => {
         const d = new Date(dStr);
-        const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+        const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
         let label = '';
         if (d.toDateString() === today.toDateString()) {
-            label = `今天，${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
+            label = `今天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
         } else if (d.toDateString() === tomorrow.toDateString()) {
-            label = `明天，${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
+            label = `明天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
         } else {
-            label = `${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]}`;
+            label = `${d.getMonth()+1}/${d.getDate()} (週${dayNames[d.getDay()]})`;
         }
         const opt = document.createElement('option');
         opt.value = dStr;
@@ -1144,11 +1131,11 @@ let isAddressSet = false;
     
     renderModalTimes();
     
-    // Automatically set default trigger text if not set yet
-    if (document.getElementById('triggerTimeText').innerText.includes('下載中')) {
-        const modalSelect = document.getElementById('modalTimeSelect');
-        const scheduleSelect = document.getElementById('scheduleTime');
-        if (modalSelect.options.length > 0 && scheduleSelect.options.length === 0) {
+    // Automatically set default trigger text
+    const modalSelect = document.getElementById('modalTimeSelect');
+    const scheduleSelect = document.getElementById('scheduleTime');
+    if (modalSelect && scheduleSelect && modalSelect.options.length > 0) {
+        if (scheduleSelect.options.length === 0) {
             const targetIdx = modalSelect.options.length > 1 ? 1 : 0;
             const newOpt = document.createElement('option');
             newOpt.value = modalSelect.options[targetIdx].value;
@@ -1159,7 +1146,6 @@ let isAddressSet = false;
     }
     autoFixEmptyTime();
 }
-
 
 function autoFixEmptyTime() {
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') return;
@@ -1185,16 +1171,29 @@ function autoFixEmptyTime() {
 }
 
 function renderModalTimes() {
-    const dateStr = document.getElementById('modalDateSelect').value;
+    const dateSelect = document.getElementById('modalDateSelect');
+    if (!dateSelect) return;
+    const dateStr = dateSelect.value;
     const timeSelect = document.getElementById('modalTimeSelect');
+    if (!timeSelect) return;
     timeSelect.innerHTML = '';
     
     if (!uberTimeData || !uberTimeData.timeRanges || !uberTimeData.timeRanges[dateStr]) return;
+    
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isToday = (dateStr === todayStr) || (new Date(dateStr).toDateString() === now.toDateString());
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
     
     const ranges = uberTimeData.timeRanges[dateStr];
     ranges.forEach(w => {
         const st = w.startTime || 0;
         const et = w.endTime || 0;
+        
+        // 自動排除當前時間之前的時段
+        if (isToday && st < currentMinutes) {
+            return;
+        }
         
         const h = Math.floor(st / 60);
         const m = st % 60;
@@ -1220,10 +1219,59 @@ function renderModalTimes() {
         opt.text = displayTitle;
         timeSelect.appendChild(opt);
     });
+    
+    // 即時同步第一個時段到畫面 (若非即時訂單模式)
+    if (typeof syncSelectedTimeToHome === 'function' && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
+        syncSelectedTimeToHome();
+    }
+}
+
+function syncSelectedTimeToHome() {
+    scheduleMode = 'SCHEDULE';
+    const modalTime = document.getElementById('modalTimeSelect');
+    const scheduleSelect = document.getElementById('scheduleTime');
+    if (modalTime && modalTime.selectedIndex >= 0 && scheduleSelect) {
+        const opt = modalTime.options[modalTime.selectedIndex];
+        scheduleSelect.innerHTML = '';
+        const newOpt = document.createElement('option');
+        newOpt.value = opt.value;
+        newOpt.text = opt.text;
+        scheduleSelect.appendChild(newOpt);
+        updateTriggerText();
+    }
 }
 
 function openTimePickerModal() {
     if (!uberTimeData || !uberTimeData.dates) return;
+    
+    // 同步當前已選的日期與時段到彈窗選單
+    const scheduleSelect = document.getElementById('scheduleTime');
+    if (scheduleMode === 'SCHEDULE' && scheduleSelect && scheduleSelect.value) {
+        try {
+            const parsed = JSON.parse(scheduleSelect.value);
+            const dateSelect = document.getElementById('modalDateSelect');
+            if (dateSelect && parsed.date) {
+                const dateIdx = Array.from(dateSelect.options).findIndex(o => o.value === parsed.date);
+                if (dateIdx !== -1 && dateSelect.selectedIndex !== dateIdx) {
+                    dateSelect.selectedIndex = dateIdx;
+                    renderModalTimes();
+                }
+            }
+            const timeSelect = document.getElementById('modalTimeSelect');
+            if (timeSelect) {
+                for (let i = 0; i < timeSelect.options.length; i++) {
+                    try {
+                        const optP = JSON.parse(timeSelect.options[i].value);
+                        if (optP.startTime === parsed.startTime && optP.endTime === parsed.endTime) {
+                            timeSelect.selectedIndex = i;
+                            break;
+                        }
+                    } catch(e) {}
+                }
+            }
+        } catch(e) {}
+    }
+    
     document.getElementById('timePickerModal').style.display = 'flex';
 }
 
@@ -1234,28 +1282,37 @@ function closeTimePickerModal() {
 function updateTriggerText() {
     const trigger = document.getElementById('triggerTimeText');
     const scheduleSelect = document.getElementById('scheduleTime');
+    if (!trigger) return;
     
-    if (scheduleMode === 'ASAP') {
+    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
         trigger.innerText = '🚀 即時訂單 (約5~30分)';
         trigger.style.color = '#f43f5e';
     } else {
-        if (scheduleSelect.options.length > 0) {
-            const parsed = JSON.parse(scheduleSelect.value);
-            const d = new Date(parsed.date);
-            const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-            const today = new Date();
-            const tomorrow = new Date();
-            tomorrow.setDate(today.getDate() + 1);
-            if (d.toDateString() === today.toDateString()) {
-                trigger.innerText = `今天 ${parsed.title}`;
-            } else if (d.toDateString() === tomorrow.toDateString()) {
-                trigger.innerText = `明天 ${parsed.title}`;
-            } else {
-                trigger.innerText = `${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]} ${parsed.title}`;
+        if (scheduleSelect && scheduleSelect.options.length > 0) {
+            try {
+                const parsed = JSON.parse(scheduleSelect.value);
+                const d = new Date(parsed.date);
+                const dayNames = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+                const today = new Date();
+                const tomorrow = new Date();
+                tomorrow.setDate(today.getDate() + 1);
+                if (d.toDateString() === today.toDateString()) {
+                    trigger.innerText = parsed.title;
+                } else if (d.toDateString() === tomorrow.toDateString()) {
+                    trigger.innerText = `明天 ${parsed.title}`;
+                } else {
+                    trigger.innerText = `${d.getMonth()+1}月${d.getDate()}日${dayNames[d.getDay()]} ${parsed.title}`;
+                }
+                trigger.style.color = '#1c1917';
+            } catch(e) {
+                let optText = scheduleSelect.options[scheduleSelect.selectedIndex >= 0 ? scheduleSelect.selectedIndex : 0].text;
+                if (optText.startsWith('今天 ')) optText = optText.substring(3);
+                trigger.innerText = optText || '選擇時間';
+                trigger.style.color = '#1c1917';
             }
-            trigger.style.color = '#000';
         } else {
             trigger.innerText = '選擇時間';
+            trigger.style.color = '#57534e';
         }
     }
 }
@@ -7573,97 +7630,14 @@ window.switchSplitTab = function(plan, dir) {
 <script>
 
 
-// New specific function to handle delivery method toggle since we hid the original select
+// Specific function to handle delivery method toggle
 function setDeliveryMethod(method) {
-    const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
+    if (typeof window.setDeliveryMethod === 'function') {
+        window.setDeliveryMethod(method);
     }
 }
 
 
-
-// Robust Hero Banner toggle logic
-window.revealSubSections = function() {
-    document.getElementById('subSections').style.display = 'block';
-    setTimeout(() => { document.getElementById('subSections').style.opacity = '1'; }, 50);
-    
-    const heroBtns = document.getElementById('heroActionButtons');
-    if (heroBtns && heroBtns.style.display !== 'none') {
-        heroBtns.style.opacity = '0';
-        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
-    }
-    
-    const heroBanner = document.getElementById('heroBanner');
-    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
-        heroBanner.classList.add('shrunk');
-        Array.from(heroBanner.children).forEach(child => {
-            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                child.style.transition = 'opacity 0.3s ease';
-                child.style.opacity = '0';
-                child.style.pointerEvents = 'none';
-                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
-            }
-        });
-        heroBanner.style.transition = 'padding 0.3s ease';
-        heroBanner.style.paddingTop = '10px';
-        heroBanner.style.paddingBottom = '60px'; 
-    }
-    
-    const section = document.getElementById('addrSection');
-    if(section) {
-        section.style.background = '#fff';
-        section.style.borderColor = '#f0f0f0';
-    }
-}
-
-// Override handleAddrBlur to properly restore
-var originalHandleAddrBlur = window.originalHandleAddrBlur || window.handleAddrBlur;
-window.handleAddrBlur = function() {
-    setTimeout(() => {
-        document.getElementById('addrResults').innerHTML = '';
-        if(!isAddressSet && document.getElementById('addrInput').value.trim() === '') {
-            const heroBtns = document.getElementById('heroActionButtons');
-            if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
-            
-            const heroBanner = document.getElementById('heroBanner');
-            if (heroBanner && heroBanner.classList.contains('shrunk')) {
-
-                heroBanner.classList.remove('shrunk');
-                heroBanner.style.paddingTop = '40px';
-                heroBanner.style.paddingBottom = '80px';
-                
-                const logo = document.getElementById('heroLogoImage');
-                if (logo) {
-                    logo.style.transition = 'top 0.3s ease, opacity 0.3s ease';
-                    logo.style.top = '45px';
-                    logo.style.opacity = '0.25';
-                }
-
-                Array.from(heroBanner.children).forEach(child => {
-                    if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                        child.style.display = child.dataset.oldDisplay || 'block';
-                        if(child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
-                            setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
-                        }
-                    }
-                });
-            }
-            
-            document.getElementById('subSections').style.opacity = '0';
-            setTimeout(() => { document.getElementById('subSections').style.display = 'none'; }, 300);
-        }
-    }, 200);
-}
 
 // Override switchVertical to update modern tabs UI
 var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
@@ -7845,13 +7819,13 @@ function showToast(msg) {
   <div style="background:#fff; width:100%; max-width:500px; border-radius:0 0 16px 16px; padding:20px; box-sizing:border-box; position:relative; animation: slideDownTop 0.3s ease-out;">
     <h2 style="margin-top:0; font-size:24px; font-weight:bold; margin-bottom:20px;">挑選時間</h2>
     <div style="position:relative; margin-bottom:15px;">
-        <select id="modalDateSelect" onchange="renderModalTimes()" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
+        <select id="modalDateSelect" onchange="renderModalTimes(); if(typeof syncSelectedTimeToHome==='function') syncSelectedTimeToHome();" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
         <div style="position:absolute; right:15px; top:18px; pointer-events:none;">
             <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none"><path d="M17 11.7V14.9L12 11.1L7 14.9V11.7L12 7.9L17 11.7Z" fill="#333" transform="rotate(180, 12, 12)"></path></svg>
         </div>
     </div>
     <div style="position:relative; margin-bottom:25px;">
-        <select id="modalTimeSelect" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
+        <select id="modalTimeSelect" onchange="if(typeof syncSelectedTimeToHome==='function') syncSelectedTimeToHome();" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
         <div style="position:absolute; right:15px; top:18px; pointer-events:none;">
             <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none"><path d="M17 11.7V14.9L12 11.1L7 14.9V11.7L12 7.9L17 11.7Z" fill="#333" transform="rotate(180, 12, 12)"></path></svg>
         </div>
@@ -7865,97 +7839,14 @@ function showToast(msg) {
 <script>
 
 
-// New specific function to handle delivery method toggle since we hid the original select
+// Specific function to handle delivery method toggle
 function setDeliveryMethod(method) {
-    const sel = document.getElementById('deliveryMethod');
-    if(sel) {
-        sel.value = method;
-        sel.dispatchEvent(new Event('change')); // Trigger any bound listeners
-    }
-    localStorage.setItem('userDeliveryMethod', method);
-    if (method === '當面點交') {
-        document.getElementById('btnMethodFace').className = 'active';
-        document.getElementById('btnMethodDoor').className = 'inactive';
-    } else {
-        document.getElementById('btnMethodFace').className = 'inactive';
-        document.getElementById('btnMethodDoor').className = 'active';
+    if (typeof window.setDeliveryMethod === 'function') {
+        window.setDeliveryMethod(method);
     }
 }
 
 
-
-// Robust Hero Banner toggle logic
-window.revealSubSections = function() {
-    document.getElementById('subSections').style.display = 'block';
-    setTimeout(() => { document.getElementById('subSections').style.opacity = '1'; }, 50);
-    
-    const heroBtns = document.getElementById('heroActionButtons');
-    if (heroBtns && heroBtns.style.display !== 'none') {
-        heroBtns.style.opacity = '0';
-        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
-    }
-    
-    const heroBanner = document.getElementById('heroBanner');
-    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
-        heroBanner.classList.add('shrunk');
-        Array.from(heroBanner.children).forEach(child => {
-            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                child.style.transition = 'opacity 0.3s ease';
-                child.style.opacity = '0';
-                child.style.pointerEvents = 'none';
-                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
-            }
-        });
-        heroBanner.style.transition = 'padding 0.3s ease';
-        heroBanner.style.paddingTop = '10px';
-        heroBanner.style.paddingBottom = '60px'; 
-    }
-    
-    const section = document.getElementById('addrSection');
-    if(section) {
-        section.style.background = '#fff';
-        section.style.borderColor = '#f0f0f0';
-    }
-}
-
-// Override handleAddrBlur to properly restore
-var originalHandleAddrBlur = window.originalHandleAddrBlur || window.handleAddrBlur;
-window.handleAddrBlur = function() {
-    setTimeout(() => {
-        document.getElementById('addrResults').innerHTML = '';
-        if(!isAddressSet && document.getElementById('addrInput').value.trim() === '') {
-            const heroBtns = document.getElementById('heroActionButtons');
-            if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
-            
-            const heroBanner = document.getElementById('heroBanner');
-            if (heroBanner && heroBanner.classList.contains('shrunk')) {
-
-                heroBanner.classList.remove('shrunk');
-                heroBanner.style.paddingTop = '40px';
-                heroBanner.style.paddingBottom = '80px';
-                
-                const logo = document.getElementById('heroLogoImage');
-                if (logo) {
-                    logo.style.transition = 'top 0.3s ease, opacity 0.3s ease';
-                    logo.style.top = '45px';
-                    logo.style.opacity = '0.25';
-                }
-
-                Array.from(heroBanner.children).forEach(child => {
-                    if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
-                        child.style.display = child.dataset.oldDisplay || 'block';
-                        if(child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
-                            setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
-                        }
-                    }
-                });
-            }
-            
-            document.getElementById('subSections').style.opacity = '0';
-            setTimeout(() => { document.getElementById('subSections').style.display = 'none'; }, 300);
-        }
-    }, 200);
-}
 
 // Override switchVertical to update modern tabs UI
 var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
@@ -8030,6 +7921,136 @@ function closeQueryOverlay() {
     if (headerInput && mobileInput) {
         headerInput.value = mobileInput.value;
     }
+    hideSuggestionsBars();
+}
+
+let suggestionsBarDebounceTimer = null;
+let lastSuggestionsKey = '';
+
+function hideSuggestionsBars() {
+    lastSuggestionsKey = '';
+    const barMob = document.getElementById('searchSuggestionsBarMobile');
+    const barHome = document.getElementById('searchSuggestionsBarHome');
+    if (barMob) {
+        barMob.innerHTML = '';
+        barMob.style.display = 'none';
+    }
+    if (barHome) {
+        barHome.innerHTML = '';
+        barHome.style.display = 'none';
+    }
+}
+
+function selectSuggestionTag(text, uuid) {
+    const headerInput = document.getElementById('query');
+    const mobileInput = document.getElementById('globalSearchInputMobile');
+    if (headerInput) headerInput.value = text;
+    if (mobileInput) mobileInput.value = text;
+    
+    hideSuggestionsBars();
+    
+    if (typeof closeQueryOverlay === 'function') {
+        closeQueryOverlay();
+    }
+    
+    if (uuid && typeof openStore === 'function') {
+        openStore(uuid, text);
+    } else {
+        searchStores();
+    }
+}
+
+function renderSuggestionsBar(items) {
+    const barMob = document.getElementById('searchSuggestionsBarMobile');
+    const barHome = document.getElementById('searchSuggestionsBarHome');
+    if (!items || items.length === 0) {
+        hideSuggestionsBars();
+        return;
+    }
+    
+    let mobHtml = '';
+    let homeHtml = '';
+    
+    items.forEach(item => {
+        const title = item.title || '';
+        if (!title) return;
+        const isStore = item.type === 'store';
+        const icon = isStore ? '🏪' : '🔍';
+        const uuid = item.uuid || '';
+        
+        const safeTitleAttr = title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const safeTitleDisplay = typeof escapeHTML === 'function' ? escapeHTML(title) : title;
+        
+        mobHtml += `<button type="button" data-title="${safeTitleAttr}" data-uuid="${uuid}" class="suggestion-tag-pill-mob" style="display:inline-flex; align-items:center; gap:5px; background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span>${isStore ? '<span style="font-size:10px; background:#e0e7ff; color:#4338ca; padding:1px 5px; border-radius:8px; margin-left:2px;">店家</span>' : ''}</button>`;
+        
+        homeHtml += `<button type="button" data-title="${safeTitleAttr}" data-uuid="${uuid}" class="suggestion-tag-pill-home" style="display:inline-flex; align-items:center; gap:5px; background:#292524; border:1px solid #44403c; color:#f5f5f4; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.2); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span>${isStore ? '<span style="font-size:10px; background:#44403c; color:#f43f5e; padding:1px 5px; border-radius:8px; margin-left:2px;">店家</span>' : ''}</button>`;
+    });
+    
+    if (barMob) {
+        barMob.innerHTML = mobHtml;
+        barMob.style.display = 'flex';
+        barMob.querySelectorAll('.suggestion-tag-pill-mob').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectSuggestionTag(btn.getAttribute('data-title'), btn.getAttribute('data-uuid'));
+            });
+        });
+    }
+    if (barHome) {
+        barHome.innerHTML = homeHtml;
+        barHome.style.display = 'flex';
+        barHome.querySelectorAll('.suggestion-tag-pill-home').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectSuggestionTag(btn.getAttribute('data-title'), btn.getAttribute('data-uuid'));
+            });
+        });
+    }
+}
+
+function fetchSuggestionsBar(query) {
+    clearTimeout(suggestionsBarDebounceTimer);
+    const q = (query || '').trim();
+    if (!q) {
+        hideSuggestionsBars();
+        return;
+    }
+    
+    const curVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
+    const key = q + '_' + curVert;
+    
+    suggestionsBarDebounceTimer = setTimeout(async () => {
+        if (key === lastSuggestionsKey) return;
+        lastSuggestionsKey = key;
+        
+        try {
+            const apiBase = typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '';
+            const payload = {
+                query: q,
+                lat: typeof currentLat !== 'undefined' && currentLat ? currentLat : 24.9670998,
+                lng: typeof currentLng !== 'undefined' && currentLng ? currentLng : 121.2981634,
+                vertical: curVert
+            };
+            
+            const res = await fetch(`${apiBase}/api/getSearchSuggestionsV1`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!res.ok) return;
+            const resJson = await res.json();
+            if (resJson.status === 'success' && Array.isArray(resJson.data) && resJson.data.length > 0) {
+                renderSuggestionsBar(resJson.data);
+            } else {
+                hideSuggestionsBars();
+            }
+        } catch (e) {
+            console.error('fetchSuggestionsBar error:', e);
+        }
+    }, 220);
 }
 
 function updateQueryOverlay() {
@@ -8048,6 +8069,9 @@ function updateQueryOverlay() {
     
     // Immediate feedback in UI (shows typed text)
     renderOverlayHTML();
+    
+    // 即時取得 Suggestions API 建議詞 (顯示在輸入框上方一排橫列)
+    fetchSuggestionsBar(val);
     
     // Clear previous debounce timer
     clearTimeout(queryDebounceTimer);
@@ -8438,5 +8462,277 @@ function updateStatusDot(type) {
     dot.title = "系統狀態: " + type;
 }
 </script>
+
+<script>
+// ==========================================
+// MASTER OVERRIDE: ADDRESS VALIDATION & HERO BANNER
+// ==========================================
+
+// 1. Comprehensive Address Format Checker
+window.checkAddressFormat = function(q) {
+    if (!q) return { valid: false, reason: 'empty' };
+    
+    // 防呆1：如果字串是以「路、街、巷、弄、段」結尾，代表沒有門牌號碼
+    if (/[\u8def\u8857\u5df7\u5f04\u6bb5]$/.test(q)) {
+        return {
+            valid: false,
+            title: '地址無效',
+            msg: '請輸入包含「門牌號碼」的完整地址，不能僅輸入到路名'
+        };
+    }
+    
+    // 防呆2：如果包含「門牌號碼」（有「號」或數字），但沒有「縣市」或「區域/鄉鎮市區」
+    const hasHouseNumber = q.includes('號') || /\d+/.test(q);
+    const hasAdminRegion = /(市|縣|區|鄉|鎮)/.test(q);
+    
+    if (hasHouseNumber && !hasAdminRegion) {
+        return {
+            valid: false,
+            title: '地址不完整',
+            msg: `請加上「縣市」或「區域」\n(例如: 桃園市八德區${q})\n以免定位到其他縣市`
+        };
+    }
+    
+    return { valid: true };
+};
+
+// 2. Visual State for Address Input Card (Red light / Green light)
+window.updateAddrTitleState = function(state) {
+    const card = document.getElementById('addrSection') || document.querySelector('.addr-time-card');
+    if (!card) return;
+    if (state === 'error') {
+        card.style.borderColor = '#ef4444';
+        card.style.backgroundColor = '#fff5f5';
+        card.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.25)';
+    } else if (state === 'ok') {
+        card.style.borderColor = '#22c55e';
+        card.style.backgroundColor = '#f0fdf4';
+        card.style.boxShadow = '0 0 0 3px rgba(34, 197, 94, 0.15)';
+    } else {
+        card.style.borderColor = 'transparent';
+        card.style.backgroundColor = '#fff';
+        card.style.boxShadow = '0 2px 10px rgba(0,0,0,0.04)';
+    }
+};
+
+// 3. Hero Banner Toggle & Logo2 Push Down Animation
+window.revealSubSections = function() {
+    const sub = document.getElementById('subSections');
+    if (sub) {
+        sub.style.display = 'block';
+        setTimeout(() => { sub.style.opacity = '1'; }, 50);
+    }
+    
+    const heroBtns = document.getElementById('heroActionButtons');
+    if (heroBtns && heroBtns.style.display !== 'none') {
+        heroBtns.style.opacity = '0';
+        setTimeout(() => { heroBtns.style.display = 'none'; }, 300);
+    }
+    
+    const heroBanner = document.getElementById('heroBanner');
+    if (heroBanner && !heroBanner.classList.contains('shrunk')) {
+        heroBanner.classList.add('shrunk');
+        Array.from(heroBanner.children).forEach(child => {
+            if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                child.style.transition = 'opacity 0.3s ease';
+                child.style.opacity = '0';
+                child.style.pointerEvents = 'none';
+                setTimeout(() => { child.dataset.oldDisplay = child.style.display; child.style.display = 'none'; }, 300);
+            }
+        });
+        heroBanner.style.transition = 'padding 0.3s ease';
+        heroBanner.style.paddingTop = '10px';
+        heroBanner.style.paddingBottom = '60px'; 
+    }
+    
+    // Hide logo2 by pushing it down out of view
+    const logo = document.getElementById('heroLogoImage');
+    if (logo) {
+        logo.style.transition = 'top 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+        logo.style.top = '150px';
+        logo.style.opacity = '0';
+        logo.style.transform = 'translateX(-50%) translateY(40px)';
+    }
+};
+
+// 4. Restore Hero Banner & Logo2 Slide Up Animation
+window.restoreHeroBanner = function() {
+    const addrInput = document.getElementById('addrInput');
+    if (!isAddressSet && addrInput && addrInput.value.trim() === '') {
+        const heroBtns = document.getElementById('heroActionButtons');
+        if (heroBtns) { heroBtns.style.display = 'flex'; setTimeout(() => { heroBtns.style.opacity = '1'; }, 50); }
+        
+        const heroBanner = document.getElementById('heroBanner');
+        if (heroBanner && heroBanner.classList.contains('shrunk')) {
+            heroBanner.classList.remove('shrunk');
+            heroBanner.style.paddingTop = '40px';
+            heroBanner.style.paddingBottom = '80px';
+            
+            Array.from(heroBanner.children).forEach(child => {
+                if (child.tagName !== 'IMG' && child.id !== 'heroBackBtn' && !child.hasAttribute('data-keep')) {
+                    child.style.display = child.dataset.oldDisplay || 'block';
+                    if (child.style.display === 'flex' || child.style.display === 'block' || child.style.display === '') {
+                        setTimeout(() => { child.style.opacity = '1'; child.style.pointerEvents = 'auto'; }, 50);
+                    }
+                }
+            });
+        }
+        
+        // Restore logo2 by sliding it back up
+        const logo = document.getElementById('heroLogoImage');
+        if (logo) {
+            logo.style.transition = 'top 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+            logo.style.top = '0px';
+            logo.style.opacity = '1.0';
+            logo.style.transform = 'translateX(-50%) translateY(0)';
+        }
+        
+        const sub = document.getElementById('subSections');
+        if (sub) {
+            sub.style.opacity = '0';
+            setTimeout(() => { sub.style.display = 'none'; }, 300);
+        }
+        
+        const resEl = document.getElementById('addrResults');
+        if (resEl) resEl.innerHTML = '';
+        const stEl = document.getElementById('addrStatus');
+        if (stEl) stEl.innerText = '';
+        updateAddrTitleState('default');
+    }
+};
+
+// 5. Input Event Handlers
+window.handleAddrInput = function() {
+    isAddressSet = false;
+    updateAddrTitleState('default');
+    clearTimeout(window.addrDebounceTimer);
+    window.addrDebounceTimer = setTimeout(() => {
+        window.handleAddrBlur();
+    }, 1200);
+};
+
+window.handleAddrBlur = function() {
+    if (typeof scrollAddrToEnd === 'function') scrollAddrToEnd();
+    clearTimeout(window.addrDebounceTimer);
+    const addrInput = document.getElementById('addrInput');
+    const q = addrInput ? addrInput.value.trim() : '';
+    
+    if (q) {
+        const check = window.checkAddressFormat(q);
+        if (!check.valid) {
+            updateAddrTitleState('error');
+            const stEl = document.getElementById('addrStatus');
+            if (stEl) stEl.innerText = check.title;
+            showModal(check.title, check.msg);
+            const resEl = document.getElementById('addrResults');
+            if (resEl) resEl.innerHTML = '';
+            if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
+            return;
+        }
+        searchAddress(false);
+    } else {
+        window.restoreHeroBanner();
+    }
+};
+
+// 6. Intercept searchAddress to guarantee front-end validation
+var _baseSearchAddress = window.searchAddress;
+window.searchAddress = async function(force = false) {
+    const addrInput = document.getElementById('addrInput');
+    let q = addrInput ? addrInput.value.trim() : '';
+    if (q) {
+        const check = window.checkAddressFormat(q);
+        if (!check.valid) {
+            updateAddrTitleState('error');
+            const stEl = document.getElementById('addrStatus');
+            if (stEl) stEl.innerText = check.title;
+            showModal(check.title, check.msg);
+            const resEl = document.getElementById('addrResults');
+            if (resEl) resEl.innerHTML = '';
+            if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
+            return;
+        }
+    }
+    if (_baseSearchAddress) return _baseSearchAddress.apply(this, arguments);
+};
+
+// 7. Intercept searchStores to guarantee validation before searching
+var _baseSearchStores = window.searchStores;
+window.searchStores = async function() {
+    const addrInput = document.getElementById('addrInput');
+    const addrVal = addrInput ? addrInput.value.trim() : '';
+    
+    if (!isAddressSet) {
+        if (!addrVal) {
+            updateAddrTitleState('error');
+            showModal('請輸入地址', '請先輸入完整外送地址');
+            return;
+        }
+        const check = window.checkAddressFormat(addrVal);
+        if (!check.valid) {
+            updateAddrTitleState('error');
+            showModal(check.title, check.msg);
+            return;
+        }
+    }
+    if (_baseSearchStores) return _baseSearchStores.apply(this, arguments);
+};
+
+// 8. Intercept handleHeroClick for category buttons
+var _baseHandleHeroClick = window.handleHeroClick;
+window.handleHeroClick = function(vertical) {
+    if (typeof switchVertical === 'function') switchVertical(vertical);
+    const addrInput = document.getElementById('addrInput');
+    const addrVal = addrInput ? addrInput.value.trim() : '';
+    
+    if (!isAddressSet) {
+        if (addrVal) {
+            const check = window.checkAddressFormat(addrVal);
+            if (!check.valid) {
+                updateAddrTitleState('error');
+                showModal(check.title, check.msg);
+                if (addrInput) addrInput.focus();
+                return;
+            }
+            searchAddress(true);
+        } else {
+            if (addrInput) addrInput.focus();
+        }
+    } else {
+        const qInput = document.getElementById('query');
+        if (qInput) qInput.focus();
+    }
+};
+
+// 9. Keep delivery method toggle working
+window.setDeliveryMethod = function(method) {
+    const isDoor = (method === 'door' || method === '放在門口');
+    const actualMethod = isDoor ? '放在門口' : '當面點交';
+    window.selectedDeliveryMethod = actualMethod;
+    
+    const sel = document.getElementById('deliveryMethod');
+    if (sel && sel.value !== actualMethod) {
+        sel.value = actualMethod;
+        sel.dispatchEvent(new Event('change'));
+    }
+    const otherIds = ['checkoutDeliveryMethod', 'groceryDeliveryMethod'];
+    otherIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value !== actualMethod) el.value = actualMethod;
+    });
+    localStorage.setItem('userDeliveryMethod', actualMethod);
+
+    const f = document.getElementById('btnMethodFace');
+    const d = document.getElementById('btnMethodDoor');
+    if (isDoor) {
+        if (f) f.className = 'inactive';
+        if (d) d.className = 'active';
+    } else {
+        if (f) f.className = 'active';
+        if (d) d.className = 'inactive';
+    }
+};
+</script>
+
 </body>
 </html>
