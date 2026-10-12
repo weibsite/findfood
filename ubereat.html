@@ -2418,6 +2418,12 @@ function generateStoreListHTML(stores, q, currentVertical) {
 }
 
 
+// [全聯判定] 排除「大全聯」等不同實體，僅辨識真正的全聯福利中心/門市
+function isPxmartName(name) {
+    if (!name || typeof name !== 'string') return false;
+    return name.includes('全聯') && !name.includes('大全聯');
+}
+
 // [全聯預約自動轉即時補全] 當生鮮雜貨以預約模式搜尋全聯卻無結果時，背景發起即時搜尋取得全聯店家
 async function fetchPxmartAsapStores(q) {
     try {
@@ -2454,7 +2460,7 @@ async function fetchPxmartAsapStores(q) {
         const seen = new Set();
         return asapStores.filter(s => {
             const sName = s.title && s.title.text ? s.title.text : (typeof s.title === 'string' ? s.title : '');
-            if (!sName.includes('全聯')) return false;
+            if (!isPxmartName(sName)) return false;
             if (seen.has(s.storeUuid)) return false;
             seen.add(s.storeUuid);
             if (s.imageOverlayCallToAction && s.imageOverlayCallToAction.text && s.imageOverlayCallToAction.text.includes('自取')) return false;
@@ -2828,12 +2834,12 @@ async function searchStores() {
       resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
       window.scrollTo(0, 0); // 確保每次搜尋完成後，畫面回到最上方優先顯示第一個結果
 
-      // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字，若預約模式無任何全聯結果，自動以即時補搜全聯
+      // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無任何全聯結果 (出現大全聯不算)，自動以即時補搜全聯
       const vertCheck = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
-      if (vertCheck === 'SHOP' && q.includes('全聯') && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+      if (vertCheck === 'SHOP' && q.includes('全聯') && !q.includes('大全聯') && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
           const hasPxmart = stores.some(s => {
               const name = (s.title && s.title.text) ? s.title.text : (typeof s.title === 'string' ? s.title : '');
-              return name.includes('全聯');
+              return isPxmartName(name);
           });
           if (!hasPxmart) {
               fetchPxmartAsapStores(q).then(pxStores => {
@@ -2972,14 +2978,17 @@ async function searchStoresPickup(q) {
             stores = [...exactMatches, ...others];
         }
 
+        const keyword = (q || '').trim();
+        const safeKw = typeof escapeHTML === 'function' ? escapeHTML(keyword) : keyword;
         if (stores.length === 0) {
-            statusEl.innerHTML = '找不到相關優惠餐廳。';
+            statusEl.innerHTML = keyword ? `找不到與${safeKw}有關的優惠餐廳。` : '找不到相關優惠餐廳。';
             return;
         }
 
         const safeQ = (q || '').replace(/'/g, "\\\'").replace(/"/g, '&quot;');
+        const titleText = keyword ? `為您推薦與${safeKw}有關的優惠餐廳：` : `為您推薦 ${stores.length} 家優惠餐廳：`;
         statusEl.innerHTML = `<div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                                <div>為您推薦 ${stores.length} 家優惠餐廳：</div>
+                                <div>${titleText}</div>
                                 <button onclick="searchStores()" style="background:#f43f5e; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">回到一般外送</button>
                               </div>`;
         statusEl.className = 'status success';
@@ -6057,10 +6066,10 @@ const note = document.getElementById('modalNote').value.trim();
 async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, diningMode = 'DELIVERY') {
     window.customizationRetries = {}; // Reset retries state on store entry
     
-    // [全聯特規] 當點選任何「全聯」店家時，若目前為預約模式，自動靜默切換為即時模式完成訂單
+    // [全聯特規] 當點選任何「全聯」店家時 (排除「大全聯」)，若目前為預約模式，自動靜默切換為即時模式完成訂單
     let checkStoreName = '';
     try { checkStoreName = decodeURIComponent(storeName || ''); } catch (e) { checkStoreName = storeName || ''; }
-    if (checkStoreName.includes('全聯') && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+    if (isPxmartName(checkStoreName) && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
         if (typeof confirmTimePicker === 'function') {
             confirmTimePicker('ASAP', true);
         } else {
@@ -8304,12 +8313,12 @@ async function fetchStoreSuggestions(q) {
             // Status update is now handled inside generateStoreListHTML
         }
 
-        // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字，若預約模式無全聯結果，即時補搜全聯
+        // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無全聯結果 (出現大全聯不算)，即時補搜全聯
         const vertCheck = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
-        if (vertCheck === 'SHOP' && q.includes('全聯') && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+        if (vertCheck === 'SHOP' && q.includes('全聯') && !q.includes('大全聯') && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
             const hasPxmart = stores.some(s => {
                 const name = (s.title && s.title.text) ? s.title.text : (typeof s.title === 'string' ? s.title : '');
-                return name.includes('全聯');
+                return isPxmartName(name);
             });
             if (!hasPxmart) {
                 fetchPxmartAsapStores(q).then(pxStores => {
