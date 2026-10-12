@@ -7941,7 +7941,7 @@ function hideSuggestionsBars() {
     }
 }
 
-function selectSuggestionTag(text, uuid) {
+function selectSuggestionTag(text) {
     const headerInput = document.getElementById('query');
     const mobileInput = document.getElementById('globalSearchInputMobile');
     if (headerInput) headerInput.value = text;
@@ -7953,9 +7953,7 @@ function selectSuggestionTag(text, uuid) {
         closeQueryOverlay();
     }
     
-    if (uuid && typeof openStore === 'function') {
-        openStore(uuid, text);
-    } else {
+    if (typeof searchStores === 'function') {
         searchStores();
     }
 }
@@ -7974,37 +7972,35 @@ function renderSuggestionsBar(items) {
     items.forEach(item => {
         const title = item.title || '';
         if (!title) return;
-        const isStore = item.type === 'store';
-        const icon = isStore ? '🏪' : '🔍';
-        const uuid = item.uuid || '';
+        const icon = '🔍';
         
         const safeTitleAttr = title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const safeTitleDisplay = typeof escapeHTML === 'function' ? escapeHTML(title) : title;
         
-        mobHtml += `<button type="button" data-title="${safeTitleAttr}" data-uuid="${uuid}" class="suggestion-tag-pill-mob" style="display:inline-flex; align-items:center; gap:5px; background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span>${isStore ? '<span style="font-size:10px; background:#e0e7ff; color:#4338ca; padding:1px 5px; border-radius:8px; margin-left:2px;">店家</span>' : ''}</button>`;
+        mobHtml += `<button type="button" data-title="${safeTitleAttr}" class="suggestion-tag-pill-mob" style="display:inline-flex; align-items:center; gap:5px; background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.05); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span></button>`;
         
-        homeHtml += `<button type="button" data-title="${safeTitleAttr}" data-uuid="${uuid}" class="suggestion-tag-pill-home" style="display:inline-flex; align-items:center; gap:5px; background:#292524; border:1px solid #44403c; color:#f5f5f4; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.2); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span>${isStore ? '<span style="font-size:10px; background:#44403c; color:#f43f5e; padding:1px 5px; border-radius:8px; margin-left:2px;">店家</span>' : ''}</button>`;
+        homeHtml += `<button type="button" data-title="${safeTitleAttr}" class="suggestion-tag-pill-home" style="display:inline-flex; align-items:center; gap:5px; background:#292524; border:1px solid #44403c; color:#f5f5f4; font-size:13px; font-weight:600; padding:6px 13px; border-radius:18px; white-space:nowrap; flex-shrink:0; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.2); user-select:none; -webkit-tap-highlight-color:transparent;"><span style="font-size:12px;">${icon}</span><span>${safeTitleDisplay}</span></button>`;
     });
     
     if (barMob) {
         barMob.innerHTML = mobHtml;
-        barMob.style.display = 'flex';
+        barMob.style.display = mobHtml ? 'flex' : 'none';
         barMob.querySelectorAll('.suggestion-tag-pill-mob').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                selectSuggestionTag(btn.getAttribute('data-title'), btn.getAttribute('data-uuid'));
+                selectSuggestionTag(btn.getAttribute('data-title'));
             });
         });
     }
     if (barHome) {
         barHome.innerHTML = homeHtml;
-        barHome.style.display = 'flex';
+        barHome.style.display = homeHtml ? 'flex' : 'none';
         barHome.querySelectorAll('.suggestion-tag-pill-home').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                selectSuggestionTag(btn.getAttribute('data-title'), btn.getAttribute('data-uuid'));
+                selectSuggestionTag(btn.getAttribute('data-title'));
             });
         });
     }
@@ -8026,9 +8022,10 @@ function fetchSuggestionsBar(query) {
         lastSuggestionsKey = key;
         
         try {
-            const apiBase = typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '';
+            const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
             const payload = {
                 query: q,
+                userQuery: q,
                 lat: typeof currentLat !== 'undefined' && currentLat ? currentLat : 24.9670998,
                 lng: typeof currentLng !== 'undefined' && currentLng ? currentLng : 121.2981634,
                 vertical: curVert
@@ -8040,17 +8037,45 @@ function fetchSuggestionsBar(query) {
                 body: JSON.stringify(payload)
             });
             
-            if (!res.ok) return;
+            if (!res.ok) {
+                console.warn('[Suggestions] API 回應失敗 HTTP', res.status);
+                return;
+            }
             const resJson = await res.json();
-            if (resJson.status === 'success' && Array.isArray(resJson.data) && resJson.data.length > 0) {
-                renderSuggestionsBar(resJson.data);
+            if (resJson.status === 'success' && Array.isArray(resJson.data)) {
+                // 1. 關鍵詞：過濾出 keyword，顯示在輸入框上方一排橫列
+                const keywordItems = resJson.data.filter(it => it.type === 'keyword');
+                if (keywordItems.length > 0) {
+                    renderSuggestionsBar(keywordItems);
+                } else {
+                    hideSuggestionsBars();
+                }
+                
+                // 2. 店家：過濾出 store，顯示在關聯餐廳/店家列表中 (先出現，等待 search_v3 覆蓋)
+                const storeItems = resJson.data.filter(it => it.type === 'store');
+                if (storeItems.length > 0) {
+                    // 若當前搜尋詞尚未被 search_v3 覆蓋完成，先由 Suggestion 店家搶先展示
+                    if (window.suggestionStoreSource !== 'search_v3' || window.suggestionStoreQuery !== q) {
+                        window.suggestionStores = storeItems.map(s => ({
+                            title: { text: s.title },
+                            storeUuid: s.uuid,
+                            heroImageUrl: s.heroImageUrl || '',
+                            actionUrl: s.actionUrl || '',
+                            category: s.category || '',
+                            isSuggestionStore: true
+                        }));
+                        window.suggestionStoreSource = 'quick_suggestions';
+                        window.suggestionStoreQuery = q;
+                        renderOverlayHTML();
+                    }
+                }
             } else {
                 hideSuggestionsBars();
             }
         } catch (e) {
             console.error('fetchSuggestionsBar error:', e);
         }
-    }, 220);
+    }, 180);
 }
 
 function updateQueryOverlay() {
@@ -8175,6 +8200,8 @@ async function fetchStoreSuggestions(q) {
 
             
             window.suggestionStores = stores;
+            window.suggestionStoreSource = 'search_v3';
+            window.suggestionStoreQuery = q;
         const resultsEl = document.getElementById('results');
         if (resultsEl) {
             resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
@@ -8279,6 +8306,10 @@ function renderOverlayHTML() {
 
     let html = '';
     if (!valLower) {
+        window.suggestionStores = [];
+        window.suggestionStoreQuery = '';
+        window.suggestionStoreSource = '';
+        hideSuggestionsBars();
         if (history.length > 0) {
             html += '<div style="font-size:14px; color:#999; margin-bottom:10px; font-weight:bold;">歷史搜尋</div>';
             history.forEach(h => {
@@ -8296,30 +8327,32 @@ function renderOverlayHTML() {
         }
         
         const currentVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
-        if (val !== (typeof lastSearchedQuery !== 'undefined' ? lastSearchedQuery : '') || currentVert !== (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') || (typeof isFetchingSuggestions !== 'undefined' && isFetchingSuggestions)) {
+        const hasStoresForQuery = window.suggestionStores && window.suggestionStores.length > 0 && window.suggestionStoreQuery === val;
+        
+        if (hasStoresForQuery) {
             if (!isCompressed) {
-                html += '<div style="font-size:14px; color:#999; margin:15px 0 10px 0; font-weight:bold;">關聯餐廳/店家</div>';
-            } else {
-                html += '<div style="height:10px;"></div>';
-            }
-            html += '<div style="text-align:center; padding:100px 0; display:flex; flex-direction:column; align-items:center; justify-content:center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color:#999; font-size:16px; font-weight:bold;">搜尋中...</div></div>';
-        } else if (window.suggestionStores && window.suggestionStores.length > 0) {
-            if (!isCompressed) {
-                html += '<div style="font-size:14px; color:#999; margin:15px 0 10px 0; font-weight:bold;">關聯餐廳/店家</div>';
+                html += '<div style="font-size:14px; color:#999; margin:15px 0 10px 0; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">';
+                html += '<span>關聯餐廳/店家</span>';
+                if (typeof isFetchingSuggestions !== 'undefined' && isFetchingSuggestions) {
+                    html += '<span style="font-size:11px; color:#aaa; font-weight:normal;">載入更多資訊中...</span>';
+                }
+                html += '</div>';
             } else {
                 html += '<div style="height:10px;"></div>';
             }
             
             window.suggestionStores.slice(0, 10).forEach(s => {
-                const name = s.title && s.title.text ? s.title.text : '';
+                const name = s.title && s.title.text ? s.title.text : (typeof s.title === 'string' ? s.title : '');
                 if (!name) return;
                 const encodedName = encodeURIComponent(name).replace(/'/g, "%27");
-                const uuid = s.storeUuid || '';
+                const uuid = s.storeUuid || s.uuid || '';
                 const actionUrl = s.actionUrl || '';
                 
                 let imageUrl = '';
                 if (s.image && s.image.items && s.image.items.length > 0) {
                     imageUrl = getUberWebpUrl(s.image.items[0].url);
+                } else if (s.heroImageUrl) {
+                    imageUrl = s.heroImageUrl;
                 }
                 
                 let ratingHtml = '';
@@ -8335,21 +8368,32 @@ function renderOverlayHTML() {
                     if (sp.deliveryFeeFormatted) deliveryFeeText = sp.deliveryFeeFormatted + ' 外送費';
                 }
                 let metaText = [timeText, deliveryFeeText].filter(x=>x).join(' • ');
-                if (metaText) metaText = `<div style="font-size:12px; color:#666; margin-top:2px;">${metaText}</div>`;
+                if (!metaText && s.category) {
+                    metaText = `<div style="font-size:12px; color:#888; margin-top:2px;">${escapeHTML(s.category)}</div>`;
+                } else if (metaText) {
+                    metaText = `<div style="font-size:12px; color:#666; margin-top:2px;">${metaText}</div>`;
+                }
 
                 html += `
                 <div onclick="localStorage.setItem('uberCartIsDiscount', 'false'); if(typeof closeQueryOverlay === 'function') closeQueryOverlay(); window.openStore('${uuid}', '${encodedName}', '${actionUrl}')" style="display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #f0f0f0; cursor:pointer;">
-                    ${imageUrl ? `<img src="${imageUrl}" style="width:50px; height:50px; border-radius:8px; object-fit:cover; background:#eee; flex-shrink:0;">` : `<div style="width:50px; height:50px; border-radius:8px; background:#eee; flex-shrink:0;"></div>`}
+                    ${imageUrl ? `<img src="${imageUrl}" style="width:50px; height:50px; border-radius:8px; object-fit:cover; background:#eee; flex-shrink:0;">` : `<div style="width:50px; height:50px; border-radius:8px; background:#eee; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:20px;">🏪</div>`}
                     <div style="flex:1; min-width:0;">
-                        <div style="font-size:15px; font-weight:bold; color:#111; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${name}</div>
+                        <div style="font-size:15px; font-weight:bold; color:#111; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(name)}</div>
                         ${metaText}
                         ${ratingHtml}
                     </div>
                 </div>`;
             });
+        } else if (val !== (typeof lastSearchedQuery !== 'undefined' ? lastSearchedQuery : '') || currentVert !== (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') || (typeof isFetchingSuggestions !== 'undefined' && isFetchingSuggestions)) {
+            if (!isCompressed) {
+                html += '<div style="font-size:14px; color:#999; margin:15px 0 10px 0; font-weight:bold;">關聯餐廳/店家</div>';
+            } else {
+                html += '<div style="height:10px;"></div>';
+            }
+            html += '<div style="text-align:center; padding:100px 0; display:flex; flex-direction:column; align-items:center; justify-content:center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; color:#999; font-size:16px; font-weight:bold;">搜尋中...</div></div>';
         } else {
             // Searched but no results
-            html += `<div style="text-align:center; padding:40px 0; color:#999; font-size:14px;">找不到與 "${val}" 相關的店家</div>`;
+            html += `<div style="text-align:center; padding:40px 0; color:#999; font-size:14px;">找不到與 "${escapeHTML(val)}" 相關的店家</div>`;
         }
     }
     resultsTop.innerHTML = html;
