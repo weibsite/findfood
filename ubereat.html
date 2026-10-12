@@ -420,9 +420,9 @@
         <button onclick="getCurrentLocation()" title="使用目前位置" style="width:44px; height:44px; border-radius:14px; border:0; background:#ffe4e9; color:#be123c; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer;">
           <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="22"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.800 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle></svg>
         </button>
-        <div style="flex:1; min-width:0; cursor:text;" onclick="const a=document.getElementById('addrInput'); if(a && event.target!==a) a.focus();">
+        <div style="flex:1; min-width:0; cursor:text;" onclick="const a=document.getElementById('addrInput'); if(a){ if(event.target!==a) a.focus(); if(typeof window.handleAddrFocus==='function') window.handleAddrFocus(); }">
           <label for="addrInput" style="display:block; font-size:12px; font-weight:700; color:#be123c; cursor:text;">外送地址</label>
-          <input type="text" id="addrInput" placeholder="輸入外送地址" autocomplete="off" onfocus="if(typeof window.handleAddrFocus==='function') window.handleAddrFocus()" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); clearTimeout(window.addrDebounceTimer); clearTimeout(window.addrSuggestDebounceTimer); window.searchAddress(true); }" oninput="handleAddrInput()" onblur="handleAddrBlur()" style="width:100%; border:0; outline:0; padding:2px 0; font-size:17px; font-weight:700; color:#1c1917; background:transparent;" />
+          <input type="text" id="addrInput" placeholder="輸入外送地址" autocomplete="off" onclick="if(typeof window.handleAddrFocus==='function') window.handleAddrFocus()" onfocus="if(typeof window.handleAddrFocus==='function') window.handleAddrFocus()" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); clearTimeout(window.addrDebounceTimer); clearTimeout(window.addrSuggestDebounceTimer); window.searchAddress(true); }" oninput="handleAddrInput()" onblur="handleAddrBlur()" style="width:100%; border:0; outline:0; padding:2px 0; font-size:17px; font-weight:700; color:#1c1917; background:transparent;" />
           <datalist id="addr-list"></datalist>
         </div>
         <!-- 漂浮備選地址視窗 (絕對定位於外送地址輸入列正下方，不影響打字、不推動下方版面) -->
@@ -9190,8 +9190,108 @@ window.selectUberAddrCandidate = async function(idx) {
     if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
 };
 
+window.latestHistoryCandidates = [];
+
+window.getDiffHistoryAddresses = function() {
+    const addrInput = document.getElementById('addrInput');
+    const currentVal = (addrInput ? addrInput.value : '').replace(/^📍\s*/, '').trim();
+    let history = [];
+    try {
+        history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
+    } catch (e) {
+        history = [];
+    }
+    const seen = new Set();
+    const diffList = [];
+    for (const item of history) {
+        if (!item || !item.title || !item.lat || !item.lng) continue;
+        const cleanTitle = item.title.replace(/^📍\s*/, '').trim();
+        if (!cleanTitle || cleanTitle === currentVal || seen.has(cleanTitle)) continue;
+        seen.add(cleanTitle);
+        diffList.push({ lat: item.lat, lng: item.lng, title: cleanTitle });
+    }
+    return diffList;
+};
+
+window.renderHistoryAddrCandidates = function(items) {
+    const resEl = document.getElementById('addrResults');
+    const stEl = document.getElementById('addrStatus');
+    if (!resEl) return;
+    if (!items || items.length === 0) {
+        resEl.innerHTML = '';
+        if (stEl) stEl.innerText = '';
+        window.syncAddrFloatingPopup(true);
+        return;
+    }
+    window.latestHistoryCandidates = items;
+    if (stEl) {
+        stEl.innerText = '🕒 歷史外送地址（點選快速切換，或直接打字搜尋新地址）：';
+    }
+    resEl.innerHTML = items.slice(0, 6).map((item, idx) => {
+        const safeTitle = typeof escapeHTML === 'function' ? escapeHTML(item.title) : item.title;
+        return `<div class="addr-item" onmousedown="event.preventDefault();" onclick="window.selectHistoryAddrCandidate(${idx})" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; border:1px solid #f0e4e2; border-radius:14px; background:#fffaf8; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+            <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+                <span style="font-size:17px; flex-shrink:0;">🕒</span>
+                <div style="min-width:0; flex:1;">
+                    <div style="font-size:15px; font-weight:800; color:#1c1917; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeTitle}</div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                <span style="font-size:11px; color:#be123c; background:#ffe4e9; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">歷史紀錄</span>
+                <span title="刪除此筆紀錄" onmousedown="event.preventDefault(); event.stopPropagation();" onclick="window.removeHistoryAddrCandidate(${idx}, event)" style="font-size:14px; color:#a8a29e; padding:2px 6px; border-radius:6px; cursor:pointer; font-weight:700;">✕</span>
+            </div>
+        </div>`;
+    }).join('');
+    window.syncAddrFloatingPopup();
+};
+
+window.selectHistoryAddrCandidate = async function(idx) {
+    const item = window.latestHistoryCandidates && window.latestHistoryCandidates[idx];
+    if (!item) return;
+    clearTimeout(window.addrDebounceTimer);
+    clearTimeout(window.addrSuggestDebounceTimer);
+    window.latestAddrSuggestReqId++;
+    if (window.addrSuggestAbortController) {
+        try { window.addrSuggestAbortController.abort(); } catch (e) {}
+    }
+    const resEl = document.getElementById('addrResults');
+    const stEl = document.getElementById('addrStatus');
+    if (resEl) resEl.innerHTML = '';
+    if (stEl) stEl.innerText = '';
+    window.syncAddrFloatingPopup(true);
+    window.lastSearchedAddr = item.title;
+    await setAddress(item.lat, item.lng, item.title);
+    window.syncAddrFloatingPopup(true);
+};
+
+window.removeHistoryAddrCandidate = function(idx, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    const item = window.latestHistoryCandidates && window.latestHistoryCandidates[idx];
+    if (!item) return;
+    try {
+        let history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
+        history = history.filter(h => h && h.title && h.title.replace(/^📍\s*/, '').trim() !== item.title);
+        localStorage.setItem('finddog_history_address', JSON.stringify(history));
+        if (typeof addressHistory !== 'undefined') addressHistory = history;
+    } catch (e) {}
+    const diffList = window.getDiffHistoryAddresses();
+    window.renderHistoryAddrCandidates(diffList);
+};
+
 window.handleAddrFocus = function() {
-    if (!isAddressSet) {
+    // 若使用者正在打字搜尋且已有搜尋備選結果，優先顯示搜尋備選
+    if (!isAddressSet && Array.isArray(window.latestAddrCandidates) && window.latestAddrCandidates.length > 0) {
+        window.renderAddrCandidates(window.latestAddrCandidates);
+        return;
+    }
+    // 當使用者點擊地址框時，若瀏覽器記錄中有「與目前地址不同」的歷史地址，顯示歷史地址選項供快速切換
+    const diffHistory = window.getDiffHistoryAddresses();
+    if (diffHistory.length > 0) {
+        window.renderHistoryAddrCandidates(diffHistory);
+    } else if (!isAddressSet) {
         window.syncAddrFloatingPopup();
     }
 };
@@ -9214,14 +9314,20 @@ window.handleAddrInput = function() {
         if (window.addrSuggestAbortController) {
             try { window.addrSuggestAbortController.abort(); } catch (e) {}
         }
-        if (resEl) resEl.innerHTML = '';
-        if (stEl) stEl.innerText = '';
-        window.syncAddrFloatingPopup(true);
         window.restoreHeroBanner();
+        // 當清空輸入框時，若有歷史地址也自動顯示供選取
+        const diffHistory = window.getDiffHistoryAddresses();
+        if (diffHistory.length > 0) {
+            window.renderHistoryAddrCandidates(diffHistory);
+        } else {
+            if (resEl) resEl.innerHTML = '';
+            if (stEl) stEl.innerText = '';
+            window.syncAddrFloatingPopup(true);
+        }
         return;
     }
 
-    // 即時呼叫 Uber mapsSearchV1 提供備選地址 (180ms 防抖)
+    // 使用者開始編輯地址文字：回歸 Uber mapsSearchV1 搜尋備選模式 (180ms 防抖)
     const { searchQuery } = window.splitAddressForUber(q);
     if (typeof isValidSearchQuery !== 'function' || isValidSearchQuery(searchQuery)) {
         window.addrSuggestDebounceTimer = setTimeout(() => {
