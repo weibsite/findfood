@@ -4452,7 +4452,7 @@ function openGroceryCheckoutSummary() {
 
   let svcCalcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `${window.groceryServiceFee}` : '30~60';
 
-  let totalPreOrderStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${449 - 180 + window.groceryServiceFee + 45 - 20}` : '$324 ~ $354';
+  let totalPreOrderStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${449 - 180 + window.groceryServiceFee + 45}` : '$344 ~ $374';
 
   let totalNormalStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${449 - 180 + window.groceryServiceFee + 60}` : '$359 ~ $389';
 
@@ -4523,7 +4523,7 @@ function openGroceryCheckoutSummary() {
         <div style="margin-bottom:15px; display:flex; align-items:center;"><strong>外送時間:</strong> <span style="margin-left:5px;">${escapeHTML(timeText)}</span> <button onclick="openTimePickerModal()" style="margin-left:10px; padding:2px 10px; font-size:12px; cursor:pointer; background:#fff; border:1px solid #000; border-radius:15px; font-weight:bold; color:#000;">修改</button></div>
       `}
 
-      ${isPreOrder ? `<div style="color:#f43f5e; margin-bottom:4px;">預約優惠(3小時以上): -$20</div>` : ''}
+      ${isPreOrder ? `<div style="color:#f43f5e; margin-bottom:4px;">✨ 預約滿3小時享代訂費優惠 $45</div>` : ''}
 
       </div>
 
@@ -4545,9 +4545,7 @@ function openGroceryCheckoutSummary() {
 
         ${isPreOrder ? `
 
-        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45</span></div>
-
-        <div style="display:flex; justify-content:space-between; color:#f43f5e;"><span>🕒 預約優惠(3小時以上)</span><span>-$35</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(滿3小時優惠)</span></span></div>
 
         ` : `
 
@@ -4569,7 +4567,7 @@ function openGroceryCheckoutSummary() {
 
           ${isPreOrder ? `
 
-          449 (商品) - 180 (優惠) + ${svcCalcStr} (平台費) + 45 (代訂費) - 20 (預約優惠)<br>
+          449 (商品) - 180 (優惠) + ${svcCalcStr} (平台費) + 45 (代訂費)<br>
 
           <strong style="color:#d32f2f; font-size:18px;">預估總計約: ${totalPreOrderStr}</strong>
 
@@ -4815,7 +4813,11 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       if (isPreOrder) {
 
-          msgText += `🕒 預約優惠(3小時以上): -$20\n`;
+          msgText += `💼 專人代訂費: $45 (滿3小時預約優惠)\n`;
+
+      } else {
+
+          msgText += `💼 專人代訂費: $60\n`;
 
       }
 
@@ -4968,7 +4970,7 @@ async function _sendOrderToLine(forceSubmit = false) {
     }
       let feePerBin = 50;
 
-      let preOrderDiscount = isPreOrder ? (window.isGroceryStore ? 35 : 10) : 0;
+      let preOrderDiscount = isPreOrder ? (window.isGroceryStore ? 15 : 10) : 0;
 
 
 
@@ -6532,7 +6534,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
                         if (window.isGroceryStore) {
 
-                            str += ' <span style="color:#f43f5e; font-weight:bold;">-$20優惠</span>';
+                            str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
 
                         } else {
 
@@ -7346,7 +7348,7 @@ if (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
 
       if (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000) {
 
-            preOrderDiscount = window.isGroceryStore ? 35 : 10;
+            preOrderDiscount = window.isGroceryStore ? 15 : 10;
 
       }
 
