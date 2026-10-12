@@ -2572,6 +2572,11 @@ async function searchStores() {
     }
 
     let q = document.getElementById('query').value.trim();
+    // 清除可能殘留的注音符號 (例如打字時未選字按出的 ㄨ、ㄅ 等)
+    q = q.replace(/[\u3105-\u312f\u31a0-\u31bf\u02ca\u02c7\u02cb\u02d9]/g, '').trim();
+    document.getElementById('query').value = q;
+    const mobileInputEl = document.getElementById('globalSearchInputMobile');
+    if (mobileInputEl) mobileInputEl.value = q;
 
     
 
@@ -8045,6 +8050,40 @@ function closeQueryOverlay() {
 let suggestionsBarDebounceTimer = null;
 let lastSuggestionsKey = '';
 
+// --- [輸入法組字與有效文字判定] ---
+let isImeComposing = false;
+document.addEventListener('compositionstart', () => {
+    isImeComposing = true;
+});
+document.addEventListener('compositionend', () => {
+    isImeComposing = false;
+    if (typeof updateQueryOverlay === 'function') {
+        updateQueryOverlay();
+    }
+});
+
+// 判斷是否為有效完整文字 (最少需包含一個中英文字或數字，且不包含未完成的注音符號)
+function isValidSearchQuery(text) {
+    if (!text || typeof text !== 'string') return false;
+    const str = text.trim();
+    if (!str) return false;
+    if (isImeComposing) return false;
+    
+    // 注音符號範圍 (含聲調 ˊˇˋ˙)：若含有任何注音符號，代表使用者尚在拼音選字，不送出請求
+    const bopomofoRegex = /[\u3105-\u312f\u31a0-\u31bf\u02ca\u02c7\u02cb\u02d9]/;
+    if (bopomofoRegex.test(str)) {
+        return false;
+    }
+    
+    // 最少包含一個有效實質文字 (中文漢字、英文字母、數字)
+    const validWordRegex = /[\u4e00-\u9fa5a-zA-Z0-9]/;
+    if (!validWordRegex.test(str)) {
+        return false;
+    }
+    
+    return true;
+}
+
 function hideSuggestionsBars() {
     lastSuggestionsKey = '';
     const barMob = document.getElementById('searchSuggestionsBarMobile');
@@ -8132,6 +8171,11 @@ function fetchSuggestionsBar(query) {
         return;
     }
     
+    // 檢查是否為完整有效文字，若包含注音符號或非完整文字則不發送請求
+    if (!isValidSearchQuery(q)) {
+        return;
+    }
+    
     const curVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
     const key = q + '_' + curVert;
     
@@ -8165,9 +8209,8 @@ function fetchSuggestionsBar(query) {
                 const keywordItems = resJson.data.filter(it => it.type === 'keyword');
                 if (keywordItems.length > 0) {
                     renderSuggestionsBar(keywordItems);
-                } else {
-                    hideSuggestionsBars();
                 }
+                // [注意] 若成功取得 0 筆建議 (完全空的建議)，完全不顯示套用在畫面上，也不取代或清空已出現的建議
                 
                 // 2. 店家：過濾出 store，顯示在關聯餐廳/店家列表中 (先出現，等待 search_v3 覆蓋)
                 const storeItems = resJson.data.filter(it => it.type === 'store');
@@ -8187,9 +8230,8 @@ function fetchSuggestionsBar(query) {
                         renderOverlayHTML();
                     }
                 }
-            } else {
-                hideSuggestionsBars();
             }
+            // 若 API 取得 0 筆或失敗，不呼叫 hideSuggestionsBars()，保留畫面上現有的建議
         } catch (e) {
             console.error('fetchSuggestionsBar error:', e);
         }
@@ -8213,15 +8255,24 @@ function updateQueryOverlay() {
     // Immediate feedback in UI (shows typed text)
     renderOverlayHTML();
     
-    // 即時取得 Suggestions API 建議詞 (顯示在輸入框上方一排橫列)
-    fetchSuggestionsBar(val);
+    if (!val) {
+        hideSuggestionsBars();
+        return;
+    }
+    
+    const hasValidQuery = isValidSearchQuery(val);
+    
+    // 即時取得 Suggestions API 建議詞 (僅在非注音且為有效文字時送出)
+    if (hasValidQuery) {
+        fetchSuggestionsBar(val);
+    }
     
     // Clear previous debounce timer
     clearTimeout(queryDebounceTimer);
     
-    // Only fetch if value is not empty and has changed (or vertical changed)
+    // Only fetch if value is a valid complete query and has changed (or vertical changed)
     const currentVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
-    if (val && (val !== lastSearchedQuery || currentVert !== (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : ''))) {
+    if (hasValidQuery && (val !== lastSearchedQuery || currentVert !== (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : ''))) {
         const diff = Math.abs(val.length - prevVal.length);
         const delay = diff > 2 ? 0 : 500;
         
@@ -8529,7 +8580,7 @@ function renderOverlayHTML() {
                     </div>
                 </div>`;
             });
-        } else if (val !== (typeof lastSearchedQuery !== 'undefined' ? lastSearchedQuery : '') || currentVert !== (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') || (typeof isFetchingSuggestions !== 'undefined' && isFetchingSuggestions)) {
+        } else if (isValidSearchQuery(val) && (val !== (typeof lastSearchedQuery !== 'undefined' ? lastSearchedQuery : '') || currentVert !== (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') || (typeof isFetchingSuggestions !== 'undefined' && isFetchingSuggestions))) {
             if (!isCompressed) {
                 html += '<div style="font-size:14px; color:#999; margin:15px 0 10px 0; font-weight:bold;">關聯餐廳/店家</div>';
             } else {
