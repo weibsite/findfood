@@ -9121,6 +9121,26 @@ window.selectUberAddrCandidate = async function(idx) {
 
     if (item.id) {
         try {
+            // 1. 先檢查使用者瀏覽器本地 localStorage 永久快取
+            let localPlaceCache = {};
+            try {
+                localPlaceCache = JSON.parse(localStorage.getItem('finddog_place_coord_cache') || '{}') || {};
+            } catch (e) {
+                localPlaceCache = {};
+            }
+            const localHit = localPlaceCache[item.id];
+            if (localHit && localHit.lat && localHit.lng) {
+                let resolvedTitle = (localHit.title || baseFullAddr).trim();
+                if (extraSuffix && !resolvedTitle.endsWith(extraSuffix)) {
+                    resolvedTitle = `${resolvedTitle}${extraSuffix}`;
+                }
+                window.lastSearchedAddr = resolvedTitle;
+                await setAddress(localHit.lat, localHit.lng, resolvedTitle);
+                window.syncAddrFloatingPopup(true);
+                return;
+            }
+
+            // 2. 若瀏覽器尚未紀錄，向後端 /api/getDeliveryLocationV2 請求並永久寫入瀏覽器 localStorage
             const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
             const reqInit = {
                 method: 'POST',
@@ -9139,7 +9159,18 @@ window.selectUberAddrCandidate = async function(idx) {
             if (res.ok) {
                 const data = await res.json();
                 if (data.status === 'success' && data.lat && data.lng) {
-                    let resolvedTitle = (data.title || baseFullAddr).trim();
+                    const baseResolvedTitle = (data.title || baseFullAddr).trim();
+                    try {
+                        localPlaceCache[item.id] = {
+                            lat: data.lat,
+                            lng: data.lng,
+                            title: baseResolvedTitle,
+                            name: data.name || ''
+                        };
+                        localStorage.setItem('finddog_place_coord_cache', JSON.stringify(localPlaceCache));
+                    } catch (storageErr) {}
+
+                    let resolvedTitle = baseResolvedTitle;
                     if (extraSuffix && !resolvedTitle.endsWith(extraSuffix)) {
                         resolvedTitle = `${resolvedTitle}${extraSuffix}`;
                     }
