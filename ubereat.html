@@ -8132,9 +8132,11 @@ let isImeComposing = false;
 document.addEventListener('compositionstart', () => {
     isImeComposing = true;
 });
-document.addEventListener('compositionend', () => {
+document.addEventListener('compositionend', (e) => {
     isImeComposing = false;
-    if (typeof updateQueryOverlay === 'function') {
+    if (e && e.target && e.target.id === 'addrInput') {
+        if (typeof window.handleAddrInput === 'function') window.handleAddrInput();
+    } else if (typeof updateQueryOverlay === 'function') {
         updateQueryOverlay();
     }
 });
@@ -8948,14 +8950,193 @@ window.restoreHeroBanner = function() {
     }
 };
 
-// 5. Input Event Handlers
+// 5. Input Event Handlers & Uber mapsSearchV1 Address Autocomplete
+window.addrSuggestDebounceTimer = null;
+window.addrSuggestAbortController = null;
+window.latestAddrSuggestReqId = 0;
+window.latestAddrCandidates = [];
+
+window.fetchAddrSuggestions = async function(q) {
+    const cleanQ = (q || '').trim();
+    if (!cleanQ || isAddressSet) return;
+    if (typeof isValidSearchQuery === 'function' && !isValidSearchQuery(cleanQ)) return;
+
+    if (window.addrSuggestAbortController) {
+        try { window.addrSuggestAbortController.abort(); } catch (e) {}
+    }
+    window.addrSuggestAbortController = new AbortController();
+    const reqId = ++window.latestAddrSuggestReqId;
+
+    try {
+        const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+        const payload = {
+            query: cleanQ,
+            lat: typeof currentLat !== 'undefined' && currentLat ? currentLat : 24.274120399999997,
+            lng: typeof currentLng !== 'undefined' && currentLng ? currentLng : 120.5702076
+        };
+        const res = await fetch(`${apiBase}/api/mapsSearchV1`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: window.addrSuggestAbortController.signal
+        });
+
+        const addrInput = document.getElementById('addrInput');
+        const currentInputVal = addrInput ? addrInput.value.trim() : '';
+        if (reqId !== window.latestAddrSuggestReqId || isAddressSet || currentInputVal !== cleanQ) return;
+        if (!res.ok) return;
+
+        const resJson = await res.json();
+        const afterInputVal = addrInput ? addrInput.value.trim() : '';
+        if (reqId !== window.latestAddrSuggestReqId || isAddressSet || afterInputVal !== cleanQ) return;
+
+        if (resJson.status === 'success' && Array.isArray(resJson.data) && resJson.data.length > 0) {
+            window.latestAddrCandidates = resJson.data;
+            window.renderAddrCandidates(resJson.data);
+        }
+    } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        console.warn('fetchAddrSuggestions error:', e);
+    }
+};
+
+window.renderAddrCandidates = function(items) {
+    const resEl = document.getElementById('addrResults');
+    const stEl = document.getElementById('addrStatus');
+    if (!resEl) return;
+    if (!items || items.length === 0) {
+        resEl.innerHTML = '';
+        return;
+    }
+    if (stEl && !stEl.innerText) {
+        stEl.innerText = '請點選下方備選地址或繼續輸入門牌號碼：';
+    }
+    resEl.innerHTML = items.slice(0, 6).map((item, idx) => {
+        const l1 = typeof escapeHTML === 'function' ? escapeHTML(item.addressLine1 || item.fullAddress || '') : (item.addressLine1 || '');
+        const l2 = typeof escapeHTML === 'function' ? escapeHTML(item.addressLine2 || '') : (item.addressLine2 || '');
+        const cats = Array.isArray(item.categories) ? item.categories : [];
+        const fullAddr = item.fullAddress || '';
+        const isRoadOnly = (cats.includes('route') || cats.includes('street')) && /[\u8def\u8857\u5df7\u5f04\u6bb5]$/.test(fullAddr) && !/\d/.test(item.addressLine1 || '');
+        const badgeHtml = isRoadOnly
+            ? `<span style="font-size:11px; color:#be123c; background:#ffe4e9; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">填入路名</span>`
+            : `<span style="font-size:11px; color:#15803d; background:#dcfce7; padding:3px 8px; border-radius:999px; font-weight:700; white-space:nowrap;">直接選取</span>`;
+        return `<div class="addr-item" onmousedown="event.preventDefault();" onclick="window.selectUberAddrCandidate(${idx})" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border:1px solid #f0e4e2; border-radius:14px; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+            <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+                <span style="font-size:18px; flex-shrink:0;">📍</span>
+                <div style="min-width:0; flex:1;">
+                    <div style="font-size:15px; font-weight:800; color:#1c1917; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${l1}</div>
+                    ${l2 ? `<div style="font-size:12px; color:#78716c; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${l2}</div>` : ''}
+                </div>
+            </div>
+            ${badgeHtml}
+        </div>`;
+    }).join('');
+};
+
+window.selectUberAddrCandidate = async function(idx) {
+    const item = window.latestAddrCandidates && window.latestAddrCandidates[idx];
+    if (!item) return;
+    clearTimeout(window.addrDebounceTimer);
+    clearTimeout(window.addrSuggestDebounceTimer);
+
+    const addrInput = document.getElementById('addrInput');
+    const stEl = document.getElementById('addrStatus');
+    const resEl = document.getElementById('addrResults');
+    const cats = Array.isArray(item.categories) ? item.categories : [];
+    const fullAddr = (item.fullAddress || item.addressLine1 || '').trim();
+    const isRoadOnly = (cats.includes('route') || cats.includes('street')) && /[\u8def\u8857\u5df7\u5f04\u6bb5]$/.test(fullAddr) && !/\d/.test(item.addressLine1 || '');
+
+    // 若僅為路名（尚未包含門牌號碼或具體地標），自動填入輸入框並讓使用者繼續補上門牌號碼
+    if (isRoadOnly) {
+        if (addrInput) {
+            addrInput.value = fullAddr;
+            addrInput.focus();
+            const len = fullAddr.length;
+            try { addrInput.setSelectionRange(len, len); } catch (e) {}
+        }
+        if (stEl) stEl.innerText = '已填入路名，請接著輸入門牌號碼（例如: 100號）';
+        window.fetchAddrSuggestions(fullAddr);
+        return;
+    }
+
+    if (addrInput) addrInput.value = fullAddr;
+    if (resEl) resEl.innerHTML = '';
+    if (stEl) stEl.innerText = '正在確認地址座標...';
+
+    if (item.id) {
+        try {
+            const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+            const reqInit = {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    placeId: item.id,
+                    provider: item.provider || 'google_places',
+                    lat: typeof currentLat !== 'undefined' && currentLat ? currentLat : 25.033964,
+                    lng: typeof currentLng !== 'undefined' && currentLng ? currentLng : 121.564468
+                })
+            };
+            let res = await fetch(`${apiBase}/api/getDeliveryLocationV2`, reqInit);
+            if (res.status === 404) {
+                res = await fetch(`${apiBase}/api/getDeliveryLocationV1`, reqInit);
+            }
+            if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'success' && data.lat && data.lng) {
+                    const resolvedTitle = data.title || fullAddr;
+                    window.lastSearchedAddr = resolvedTitle;
+                    await setAddress(data.lat, data.lng, resolvedTitle);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('getDeliveryLocationV2 fallback to searchAddress:', e);
+        }
+    }
+
+    if (_baseSearchAddress) {
+        return _baseSearchAddress(true);
+    }
+};
+
 window.handleAddrInput = function() {
     isAddressSet = false;
     updateAddrTitleState('default');
     clearTimeout(window.addrDebounceTimer);
-    window.addrDebounceTimer = setTimeout(() => {
-        window.handleAddrBlur();
-    }, 1200);
+    clearTimeout(window.addrSuggestDebounceTimer);
+
+    const addrInput = document.getElementById('addrInput');
+    const q = addrInput ? addrInput.value.trim() : '';
+    const resEl = document.getElementById('addrResults');
+    const stEl = document.getElementById('addrStatus');
+
+    if (!q) {
+        window.latestAddrSuggestReqId++;
+        if (window.addrSuggestAbortController) {
+            try { window.addrSuggestAbortController.abort(); } catch (e) {}
+        }
+        if (resEl) resEl.innerHTML = '';
+        if (stEl) stEl.innerText = '';
+        window.restoreHeroBanner();
+        return;
+    }
+
+    // 即時呼叫 Uber mapsSearchV1 提供備選地址 (220ms 防抖)
+    if (typeof isValidSearchQuery !== 'function' || isValidSearchQuery(q)) {
+        window.addrSuggestDebounceTimer = setTimeout(() => {
+            window.fetchAddrSuggestions(q);
+        }, 220);
+    }
+
+    // 若使用者已輸入符合完整格式的地址 (含縣市區與門牌號)，停頓 1.5 秒後自動為其定位
+    const check = window.checkAddressFormat(q);
+    if (check.valid) {
+        window.addrDebounceTimer = setTimeout(() => {
+            if (!isAddressSet) {
+                window.handleAddrBlur();
+            }
+        }, 1500);
+    }
 };
 
 window.handleAddrBlur = function() {
@@ -8965,13 +9146,17 @@ window.handleAddrBlur = function() {
     const q = addrInput ? addrInput.value.trim() : '';
     
     if (q) {
+        const resEl = document.getElementById('addrResults');
         const check = window.checkAddressFormat(q);
         if (!check.valid) {
+            // 若下方已經有備選地址供使用者點選，失焦時不彈出阻擋視窗，保留備選清單讓使用者點擊
+            if (resEl && resEl.innerHTML.trim() !== '') {
+                return;
+            }
             updateAddrTitleState('error');
             const stEl = document.getElementById('addrStatus');
             if (stEl) stEl.innerText = check.title;
             showModal(check.title, check.msg);
-            const resEl = document.getElementById('addrResults');
             if (resEl) resEl.innerHTML = '';
             if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
             return;
@@ -8988,6 +9173,17 @@ window.searchAddress = async function(force = false) {
     const addrInput = document.getElementById('addrInput');
     let q = addrInput ? addrInput.value.trim() : '';
     if (q) {
+        // 若使用者輸入的文字剛好對應 mapsSearchV1 的地標候選 (例如「台北101」、「廣德動物醫院」)，優先透過 getDeliveryLocationV1 解析完整地址與座標
+        const matchedCandidate = (window.latestAddrCandidates || []).find(
+            c => c.id && (c.fullAddress === q || c.addressLine1 === q)
+        );
+        if (matchedCandidate) {
+            const idx = window.latestAddrCandidates.indexOf(matchedCandidate);
+            if (idx !== -1) {
+                return window.selectUberAddrCandidate(idx);
+            }
+        }
+
         const check = window.checkAddressFormat(q);
         if (!check.valid) {
             updateAddrTitleState('error');
