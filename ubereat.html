@@ -4675,6 +4675,57 @@ function backToStoreFromGroceryCheckout() {
 
 
 
+function copyAndRetrySendOrder(btn, orderText) {
+    // 1. 複製訂單內容到剪貼簿
+    if (typeof copyToClipboardFallback === 'function') {
+        copyToClipboardFallback(orderText, btn);
+    } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(orderText);
+    }
+    btn.innerText = '✅ 已複製！請貼回 LINE 聊天室';
+    btn.style.background = '#10b981';
+    btn.style.color = '#fff';
+
+    // 清空購物車與標記訂單完成狀態
+    cart = [];
+    if (typeof updateCartBadge === 'function') updateCartBadge();
+    window._orderSent = true;
+
+    // 2. 順便背景自動嘗試再送一次 (靜默執行，但不跳出任何錯誤)
+    if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
+        try {
+            liff.sendMessages([{ type: "text", text: orderText }]).then(() => {
+                btn.innerText = '🎉 已自動傳送至聊天室！';
+            }).catch(e => {
+                // 靜默捕捉，不跳任何錯誤
+                console.log('Silent retry sendMessages error:', e);
+            });
+        } catch (e) {
+            console.log('Silent retry error:', e);
+        }
+    }
+}
+
+function showPermissionFailModal(msgText, originalErrorMsg = '') {
+    const safeOrderText = encodeURIComponent(msgText).replace(/'/g, "%27");
+    
+    const tipHtml = `
+      <div style="text-align:left; font-size:14px; color:#475569; line-height:1.6; margin-bottom:15px; background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
+        <div style="font-weight:bold; color:#e11d48; font-size:15px; margin-bottom:6px;">⚠️ LINE 尚未取得傳送訊息權限</div>
+        <div>因系統需要您同意<b>「傳送訊息至聊天室」</b>的權限，才能自動為您發送訂單。</div>
+        <div style="margin-top:10px; font-size:13px; color:#64748b; border-top:1px dashed #cbd5e1; padding-top:8px;">
+          💡 <b>如何重新授權：</b><br>
+          請至 LINE「主頁」右上角 ⚙️「設定」➔「個人檔案/帳號」➔「連動中的應用程式」解除連動，重新點擊連結即可重新授權。
+        </div>
+      </div>
+      <button onclick="copyAndRetrySendOrder(this, decodeURIComponent('${safeOrderText}'))" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 3px 10px rgba(244,63,94,0.3); margin-bottom:10px;">📋 一鍵複製訂單訊息 (貼回聊天室)</button>
+      <button onclick="if(typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) { liff.closeWindow(); } else { document.getElementById('errorModalOverlay').style.display='none'; }" style="width:100%; padding:11px; background:#f1f5f9; color:#475569; border:none; border-radius:10px; font-size:14px; font-weight:bold; cursor:pointer;">關閉視窗回到聊天室</button>
+    `;
+
+    showModal('授權不足 (無法自動傳送)', '', true, tipHtml, true);
+    if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
+}
+
 async function sendOrderToLine(forceSubmit = false) {
   if (window.isSubmittingOrder || window._orderSent) return;
   window.isSubmittingOrder = true;
@@ -5267,8 +5318,7 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
               await liff.permission.requestAll();
               const newPerm = await liff.permission.query("chat_message.write");
               if (newPerm.state !== 'granted') {
-                  showModal('授權失敗', '需要您同意「傳送訊息至聊天室」的權限，否則系統無法為您送出訂單！<br><br>如果您不小心按了拒絕，請至 LINE 設定 > 連動中的應用程式，解除連動後再次點擊連結。');
-                  if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
+                  showPermissionFailModal(msgText);
                   return;
               }
           }
@@ -5336,9 +5386,8 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
 
 
   } catch (err) {
-
-      showModal('發生錯誤', err.message, true);
-
+      console.error("sendMessages error:", err);
+      showPermissionFailModal(msgText, err ? err.message : '');
   }
 
 }
