@@ -338,6 +338,68 @@
                 console.log('無法讀取 config.json，嘗試使用相對路徑');
             }
             
+            let countdownTimer = null;
+            let countdownState = null; // { mode: 'waiting' | 'used', baseElapsedSec: 0, syncLocalMs: 0 }
+
+            function formatMMSS(sec) {
+                const m = Math.floor(sec / 60);
+                const s = sec % 60;
+                return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+            }
+
+            function extractHM(tsStr) {
+                if (!tsStr) return '';
+                const m = tsStr.match(/(\d{2}:\d{2})/);
+                return m ? m[1] : '';
+            }
+
+            function calcFallbackElapsedSec(tsStr) {
+                if (!tsStr) return 0;
+                const d = new Date(tsStr.replace(/-/g, '/'));
+                if (isNaN(d.getTime())) return 0;
+                return Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+            }
+
+            function renderCountdownBox() {
+                const box = document.getElementById('countdownBox');
+                if (!box || !countdownState) return;
+                const elapsed = countdownState.baseElapsedSec + Math.floor((Date.now() - countdownState.syncLocalMs) / 1000);
+                const remain = 600 - elapsed;
+
+                if (countdownState.mode === 'used') {
+                    if (remain > 0) {
+                        box.innerHTML = `
+                            <p style="color: #666; margin: 5px 0;">正在為您處理中，請稍候...</p>
+                            <p style="color: #007bff; font-weight: bold; font-size: 16px; margin: 4px 0;">⏳ 倒數 ${formatMMSS(remain)}</p>
+                        `;
+                    } else {
+                        box.innerHTML = `
+                            <p style="color: #d32f2f; margin: 8px 0; font-weight: bold; font-size: 15px;">目前已超過接單時間10分鐘 請向代訂確認網址</p>
+                        `;
+                    }
+                } else if (countdownState.mode === 'waiting') {
+                    if (remain > 0) {
+                        box.innerHTML = `
+                            <p style="color: #e65100; font-weight: bold; font-size: 16px; margin: 6px 0;">⏳ 倒數 ${formatMMSS(remain)}</p>
+                        `;
+                    } else {
+                        box.innerHTML = `
+                            <div style="color: #d32f2f; margin-top: 8px; font-weight: bold; line-height: 1.6; font-size: 15px;">
+                                <div>已超過10分鐘請催單</div>
+                                <div style="color: #e65100; font-size: 14px;">如是預約單有可能較慢處理</div>
+                                <div style="color: #e65100; font-size: 14px;">如預約單超過1小時可提醒代訂</div>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            function startCountdownLoop() {
+                if (countdownTimer) clearInterval(countdownTimer);
+                renderCountdownBox();
+                countdownTimer = setInterval(renderCountdownBox, 1000);
+            }
+
             // 查詢訂單進度
             async function checkStatus() {
                 try {
@@ -358,16 +420,21 @@
                             }
                             
                             if (data.tracking_urls && data.tracking_urls.length > 0) {
-                                statusHtml += `<h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 已取得追蹤網址</h3>`;
+                                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                                countdownState = null;
+                                statusHtml += `<h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點我追蹤訂單狀態</h3>`;
                                 data.tracking_urls.forEach((url, idx) => {
                                     statusHtml += `<a href="${url}" class="btn" style="margin-top: 10px;" target="_blank">📍 追蹤訂單 ${data.tracking_urls.length > 1 ? (idx + 1) : ''}</a>`;
                                 });
                                 if (data.tracking_urls.length === 1 && !parsedData.isSplit) {
                                     setTimeout(() => { window.location.href = data.tracking_urls[0]; }, 500);
                                 }
+                                statusArea.innerHTML = statusHtml;
                             } else if (data.tracking_url) {
+                                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                                countdownState = null;
                                 statusHtml += `
-                                    <h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 已取得追蹤網址</h3>
+                                    <h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點我追蹤訂單狀態</h3>
                                     <a href="${data.tracking_url}" class="btn">📍 如果沒有自動跳轉，請點此開啟</a>
                                 `;
                                 if (!parsedData.isSplit) {
@@ -375,20 +442,35 @@
                                         window.location.href = data.tracking_url;
                                     }, 500);
                                 }
+                                statusArea.innerHTML = statusHtml;
                             } else if (data.order_status === 'used') {
+                                const accTimeStr = data.accepted_time_hm || extractHM(data.accepted_at) || extractHM(data.timestamp);
+                                const accElapsed = (typeof data.accept_elapsed_sec === 'number') ? data.accept_elapsed_sec : calcFallbackElapsedSec(data.accepted_at || data.timestamp);
+                                countdownState = { mode: 'used', baseElapsedSec: accElapsed, syncLocalMs: Date.now() };
+
                                 statusHtml += `
                                     <h3 style="color: #007bff; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/LOADING.gif" style="width: 80px; vertical-align: middle; margin-right: 5px;"> 代訂已接收訂單</h3>
-                                    <p style="color: #666; margin-top: 5px;">正在為您處理中，請稍候...</p>
+                                    ${accTimeStr ? `<p style="color: #333; font-weight: bold; font-size: 15px; margin: 6px 0;">接單時間為${accTimeStr}</p>` : ''}
+                                    <div id="countdownBox"></div>
                                 `;
+                                statusArea.innerHTML = statusHtml;
+                                startCountdownLoop();
                                 setTimeout(checkStatus, 5000);
                             } else {
+                                const subTimeStr = data.submitted_time_hm || extractHM(data.submitted_at) || extractHM(data.timestamp);
+                                const waitElapsed = (typeof data.wait_elapsed_sec === 'number') ? data.wait_elapsed_sec : calcFallbackElapsedSec(data.submitted_at || data.timestamp);
+                                countdownState = { mode: 'waiting', baseElapsedSec: waitElapsed, syncLocalMs: Date.now() };
+
                                 statusHtml += `
                                     <h3 style="color: #ff9800; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/sit.gif" style="width: 55px; vertical-align: middle; margin-right: 5px;"> 等待代訂接單</h3>
-                                    <p style="color: #d32f2f; margin-top: 5px; font-weight: bold;">(如10分鐘沒改變狀態請催單)</p>
+                                    ${data.latest_activity_text ? `<p style="color: #007bff; font-weight: bold; font-size: 15px; margin: 6px 0;">${data.latest_activity_text}</p>` : ''}
+                                    ${subTimeStr ? `<p style="color: #555; font-weight: bold; font-size: 15px; margin: 6px 0;">送單時間：${subTimeStr}</p>` : ''}
+                                    <div id="countdownBox"></div>
                                 `;
+                                statusArea.innerHTML = statusHtml;
+                                startCountdownLoop();
                                 setTimeout(checkStatus, 5000);
                             }
-                            statusArea.innerHTML = statusHtml;
                         } else {
                             statusArea.innerHTML = `<h3 style="color:red;">找不到此訂單</h3><p style="color:#666;">可能是系統處理中或連結錯誤</p>`;
                         }
