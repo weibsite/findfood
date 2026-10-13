@@ -422,7 +422,7 @@
                             if (data.tracking_urls && data.tracking_urls.length > 0) {
                                 if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
                                 countdownState = null;
-                                statusHtml += `<h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點我追蹤訂單狀態</h3>`;
+                                statusHtml += `<h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點下方追蹤訂單狀態</h3>`;
                                 data.tracking_urls.forEach((url, idx) => {
                                     statusHtml += `<a href="${url}" class="btn" style="margin-top: 10px;" target="_blank">📍 追蹤訂單 ${data.tracking_urls.length > 1 ? (idx + 1) : ''}</a>`;
                                 });
