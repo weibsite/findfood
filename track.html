@@ -463,7 +463,7 @@
 
                                 statusHtml += `
                                     <h3 style="color: #ff9800; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/sit.gif" style="width: 55px; vertical-align: middle; margin-right: 5px;"> 等待代訂接單</h3>
-                                    ${data.latest_activity_text ? `<p style="color: #007bff; font-weight: bold; font-size: 15px; margin: 6px 0;">${data.latest_activity_text}</p>` : ''}
+                                    <p style="color: #007bff; font-weight: bold; font-size: 15px; margin: 6px 0;">${data.latest_activity_text || '等待代訂接單中目前代訂有空'}</p>
                                     ${subTimeStr ? `<p style="color: #555; font-weight: bold; font-size: 15px; margin: 6px 0;">送單時間：${subTimeStr}</p>` : ''}
                                     <div id="countdownBox"></div>
                                 `;
