@@ -4717,8 +4717,9 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
         <div style="font-weight:bold; color:#e11d48; font-size:15px; margin-bottom:6px;">⚠️ LINE 尚未取得傳送訊息權限</div>
         <div>因系統需要您同意<b>「傳送訊息至聊天室」</b>的權限，才能自動為您發送訂單。</div>
         <div style="margin-top:10px; font-size:13px; color:#64748b; border-top:1px dashed #cbd5e1; padding-top:8px;">
-          💡 <b>如何重新授權：</b><br>
-          請至 LINE「主頁」右上角 ⚙️「設定」➔「個人檔案/帳號」➔「連動中的應用程式」解除連動，重新點擊連結即可重新授權。
+          💡 <b>貼心提醒：</b><br>
+          本次請先點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
+          下次下單請保留權限（請勿手動關閉），即可享受全自動送單的便利！
         </div>
       </div>
       <button onclick="copyAndRetrySendOrder(this, decodeURIComponent('${safeOrderText}'))" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 3px 10px rgba(244,63,94,0.3); margin-bottom:10px;">📋 一鍵複製訂單訊息 (貼回聊天室)</button>
