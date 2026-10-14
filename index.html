@@ -5799,7 +5799,8 @@ function recalcCustomizations() {
                     const oTitle = filterTrailingEnglish(rawOTitle);
                     
                     extraPrice += (price * qty);
-                    const optText = (qty > 1) ? `${oTitle} x${qty}` : oTitle;
+                    const priceTag = price > 0 ? ` (+$${price})` : '';
+                    const optText = (qty > 1) ? `${oTitle}${priceTag} x${qty}` : `${oTitle}${priceTag}`;
                     
                     const thisPath = currentPrefix ? `${currentPrefix}:${optText}` : `${gTitle}:${optText}`;
                     
