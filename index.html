@@ -2170,7 +2170,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
       let openNone = [], closedNone = [];
 
       stores.forEach(s => {
-          const name = s.title && s.title.text ? s.title.text.toLowerCase() : '';
+          const name = (s.title && s.title.text) ? s.title.text.toLowerCase() : (typeof s.title === 'string' ? s.title.toLowerCase() : '');
           const state = s.storeAvailablityState || '';
           
           let isUIClosed = false;
@@ -2267,11 +2267,13 @@ function generateStoreListHTML(stores, q, currentVertical) {
 
             imgUrl = getUberWebpUrl(bestItem.url);
 
+        } else if (s.heroImageUrl) {
+            imgUrl = s.heroImageUrl;
         }
 
         const rating = s.rating ? s.rating.text : '無評價';
 
-                let name = s.title ? s.title.text : '未知餐廳';
+        let name = s.title ? (s.title.text || (typeof s.title === 'string' ? s.title : '')) : '未知餐廳';
         if (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') {
             name += ' (不需外送費、需要服務費)';
         }
@@ -2826,8 +2828,20 @@ async function searchStores() {
       
 
       
-      // [優化] 同步完整搜尋的結果到背景快取，這樣用戶馬上點擊搜尋列時，不用再等一次轉圈圈
-      window.suggestionStores = stores;
+      // [優化] 同步完整搜尋的結果到背景快取，若第一次有結果而第二次沒結果，不覆蓋掉第一次的結果
+      const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
+      if (stores.length > 0) {
+          window.suggestionStores = stores;
+          window.suggestionStoreSource = 'search_v3';
+          window.suggestionStoreQuery = q;
+      } else if (hasFirstResults) {
+          // 第一次有結果 第二次沒結果：保留第一次的結果，不覆蓋掉
+          stores = window.suggestionStores;
+      } else {
+          window.suggestionStores = [];
+          window.suggestionStoreSource = 'search_v3_empty';
+          window.suggestionStoreQuery = q;
+      }
       if (typeof lastSearchedQuery !== 'undefined') {
           lastSearchedQuery = q;
       } else {
@@ -8474,14 +8488,24 @@ async function fetchStoreSuggestions(q) {
             });
 
             
-            window.suggestionStores = stores;
-            window.suggestionStoreSource = 'search_v3';
-            window.suggestionStoreQuery = q;
-        const resultsEl = document.getElementById('results');
-        if (resultsEl) {
-            resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
-            // Status update is now handled inside generateStoreListHTML
-        }
+            const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
+            if (stores.length > 0) {
+                window.suggestionStores = stores;
+                window.suggestionStoreSource = 'search_v3';
+                window.suggestionStoreQuery = q;
+            } else if (hasFirstResults) {
+                // [保護機制] 第一次關鍵字搜尋有店家結果，但第二次 search_v3 沒結果時，保留第一次結果不覆蓋
+                stores = window.suggestionStores;
+            } else {
+                window.suggestionStores = [];
+                window.suggestionStoreSource = 'search_v3_empty';
+                window.suggestionStoreQuery = q;
+            }
+            const resultsEl = document.getElementById('results');
+            if (resultsEl) {
+                resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
+                // Status update is now handled inside generateStoreListHTML
+            }
 
         // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無全聯結果 (出現大全聯不算)，即時補搜全聯
         const vertCheck = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
