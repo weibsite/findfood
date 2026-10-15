@@ -8,7 +8,8 @@
     <style>
         * { touch-action: manipulation; box-sizing: border-box; }
         body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; text-align: center; color: #333; }
-        .card { background: white; padding: 25px 20px; border-radius: 12px; margin: 20px auto; max-width: 400px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .card { background: white; padding: 25px 20px; border-radius: 14px; margin: 20px auto; max-width: 440px; width: 95%; box-shadow: 0 4px 16px rgba(0,0,0,0.06); transition: max-width 0.3s ease; }
+        .card.delivered-mode { max-width: 500px; }
         h2 { margin-top: 0; color: #111; font-size: 22px; }
         .status-area { margin: 20px 0; }
         .order-text { white-space: pre-wrap; background: #f8f9fa; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 14px; text-align: left; margin-top: 20px; color: #555; border: 1px solid #eee; }
@@ -16,6 +17,67 @@
         .btn:active { opacity: 0.8; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #06c167; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 留置照片點擊放大 (Lightbox Zoom Modal) */
+        .zoom-modal {
+            display: none;
+            position: fixed;
+            z-index: 999999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        .zoom-modal.show { display: flex; }
+        .zoom-modal-content {
+            position: relative;
+            max-width: 95vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .zoom-modal-img {
+            max-width: 100%;
+            max-height: 82vh;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        .zoom-close-btn {
+            position: absolute;
+            top: -42px;
+            right: 0;
+            background: rgba(255, 255, 255, 0.25);
+            color: white;
+            border: none;
+            font-size: 26px;
+            font-weight: bold;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .zoom-close-btn:hover { background: rgba(255, 255, 255, 0.45); }
+        .zoom-hint {
+            color: #eee;
+            font-size: 13px;
+            margin-top: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 4px 14px;
+            border-radius: 20px;
+        }
     </style>
 </head>
 <body>
@@ -28,8 +90,196 @@
         <div id="trackOrderText" class="order-text" style="display: none;"></div>
     </div>
 
+    <!-- 留置照片點擊放大燈箱 (Lightbox Modal) -->
+    <div id="zoomModal" class="zoom-modal" onclick="closeZoom()">
+        <div class="zoom-modal-content" onclick="event.stopPropagation()">
+            <button type="button" class="zoom-close-btn" onclick="closeZoom()">&times;</button>
+            <img id="zoomModalImg" class="zoom-modal-img" src="" alt="外送現場留置照片全圖">
+            <div class="zoom-hint">點擊背景或右上角按鈕即可關閉</div>
+        </div>
+    </div>
 
     <script>
+        // 留置照片放大燈箱控制
+        function zoomPhoto(imgUrl) {
+            const modal = document.getElementById('zoomModal');
+            const modalImg = document.getElementById('zoomModalImg');
+            if (modal && modalImg && imgUrl) {
+                modalImg.src = imgUrl;
+                modal.classList.add('show');
+            }
+        }
+
+        function closeZoom() {
+            const modal = document.getElementById('zoomModal');
+            if (modal) {
+                modal.classList.remove('show');
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeZoom();
+        });
+
+        // 從網址或字串中解析 36 位 UUID
+        function extractOrderUuid(urlOrStr) {
+            if (!urlOrStr) return null;
+            const regex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+            let match = String(urlOrStr).match(regex);
+            if (!match) {
+                try {
+                    const decoded = decodeURIComponent(decodeURIComponent(urlOrStr));
+                    match = decoded.match(regex);
+                } catch(e) {}
+            }
+            return match ? match[0].toLowerCase() : null;
+        }
+
+        // 向後端查詢已完成送達訂單資料
+        async function fetchTerminatedOrder(uuid, rawUrl, trackApiBase) {
+            const endpoints = [];
+            if (trackApiBase) endpoints.push(`${trackApiBase}/api/getTerminatedOrder`);
+            endpoints.push('/api/getTerminatedOrder');
+            endpoints.push('http://127.0.0.1:5000/api/getTerminatedOrder');
+            endpoints.push('http://localhost:5000/api/getTerminatedOrder');
+            
+            const uniqueEndpoints = [...new Set(endpoints)];
+            
+            for (const ep of uniqueEndpoints) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderUuid: uuid,
+                            url: rawUrl
+                        })
+                    });
+                    if (res.ok) {
+                        const json = await res.json();
+                        return json;
+                    } else {
+                        try {
+                            const errJson = await res.json();
+                            return errJson;
+                        } catch(e) {
+                            return { status: 'error', message: `HTTP ${res.status}` };
+                        }
+                    }
+                } catch(err) {
+                    console.warn(`查詢送達狀態端點失敗 (${ep}):`, err);
+                }
+            }
+            return { status: 'error', message: '連線伺服器失敗' };
+        }
+
+        // 渲染已送達目的地階段 UI
+        function renderDeliveredStage(termRes, parsedData, data, primaryUrl) {
+            // 放大卡片寬度以獲得最佳閱讀體驗
+            const cardEl = document.querySelector('.card');
+            if (cardEl) cardEl.classList.add('delivered-mode');
+
+            // 更新卡片頂部標題
+            const mainHeader = document.querySelector('.card h2');
+            if (mainHeader) {
+                mainHeader.innerHTML = '🎉 已送達目的地';
+                mainHeader.style.color = '#2e7d32';
+            }
+
+            const storeName = termRes.storeName || parsedData.store || '外送合作店家';
+            const address = parsedData.address || '已送達至指定地點';
+            const driverName = termRes.driverName || '合作外送夥伴';
+            const driverNote = termRes.driverNote || '';
+            const driverAvatar = termRes.driverAvatar || '';
+            const imgUrl = termRes.imgUrl || '';
+            const mapImgUrl = termRes.mapImgUrl || '';
+            const lat = termRes.latitude;
+            const lng = termRes.longitude;
+            const coordsStr = (lat && lng) ? `${lat}, ${lng}` : '無座標資訊';
+            const googleMapUrl = (lat && lng) ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : '';
+
+            let deliveredHtml = `
+                <div style="text-align: left; margin-bottom: 20px;">
+                    <!-- 頂部送達橫幅 -->
+                    <div style="background: #e8f5e9; border: 1.5px solid #81c784; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="background: #2e7d32; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">✓ 外送已送達</span>
+                            <span style="color: #2e7d32; font-size: 12px; font-weight: bold;">已完成 (Concluded)</span>
+                        </div>
+                        <div style="font-size: 18px; font-weight: 800; color: #1b5e20; margin-bottom: 6px;">🎉 好好享用您訂購的商品</div>
+                        <div style="font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 4px;">
+                            📍 <strong>目的地地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
+                        </div>
+                        <div style="font-size: 14px; color: #444; line-height: 1.4;">
+                            🏪 <strong>店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
+                        </div>
+                        ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${data.ext_order_id}</strong></div>` : ''}
+                    </div>
+
+                    <!-- 外送員拍照留置證明 (如有) -->
+                    ${imgUrl ? `
+                    <div style="background: #fff; border: 1.5px solid #e0e0e0; border-radius: 12px; overflow: hidden; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
+                        <div style="position: relative; background: #000; text-align: center; cursor: pointer; min-height: 220px; max-height: 380px; display: flex; align-items: center; justify-content: center; overflow: hidden;" onclick="zoomPhoto('${imgUrl}')">
+                            <img src="${imgUrl}" alt="門口留置照片" style="width: 100%; max-height: 380px; object-fit: cover; display: block;">
+                            <div style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.75); color: #fff; font-size: 12px; font-weight: bold; padding: 4px 9px; border-radius: 6px; display: flex; align-items: center; gap: 4px;">
+                                <span>📷</span>
+                                <span>門口現場留置拍照證明</span>
+                            </div>
+                            <div style="position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.75); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 20px; font-weight: bold;">
+                                🔍 點擊看大圖
+                            </div>
+                        </div>
+                        <div style="padding: 10px 14px; background: #fafafa; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                            <span style="color: #666;">外送員拍攝之現場留置照片</span>
+                            <a href="${imgUrl}" target="_blank" style="color: #06c167; font-weight: bold; text-decoration: none;">另開原圖 ↗</a>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <!-- 外送員與送達 GPS 座標卡片區塊 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;">
+                        <!-- 外送員資訊 -->
+                        <div style="background: #fafafa; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                            ${driverAvatar ? `<img src="${driverAvatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1px solid #ddd; flex-shrink: 0;">` : `<div style="width: 40px; height: 40px; border-radius: 50%; background: #e3f2fd; color: #1976d2; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">🛵</div>`}
+                            <div style="overflow: hidden; flex: 1;">
+                                <div style="font-size: 11px; color: #888;">合作外送夥伴</div>
+                                <div style="font-size: 13px; font-weight: bold; color: #111; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${driverName}</div>
+                                ${driverNote ? `<div style="font-size: 11px; color: #2e7d32; font-weight: bold; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">備註: ${driverNote}</div>` : ''}
+                            </div>
+                        </div>
+
+                        <!-- GPS 座標 -->
+                        <div style="background: #fafafa; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px 12px; display: flex; align-items: center; gap: 10px;">
+                            ${mapImgUrl ? `<img src="${mapImgUrl}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; border: 1px solid #ddd; flex-shrink: 0;">` : `<div style="width: 40px; height: 40px; border-radius: 8px; background: #e8f5e9; color: #2e7d32; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">📍</div>`}
+                            <div style="overflow: hidden; flex: 1;">
+                                <div style="font-size: 11px; color: #888;">送達 GPS 座標</div>
+                                <div style="font-size: 12px; font-family: monospace; font-weight: bold; color: #111; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${coordsStr}</div>
+                                ${googleMapUrl ? `<a href="${googleMapUrl}" target="_blank" style="font-size: 11px; color: #06c167; font-weight: bold; text-decoration: none; display: inline-block; margin-top: 2px;">開啟 Google 地圖 ↗</a>` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 原始 Uber Eats 連結 -->
+                    ${primaryUrl ? `
+                    <div style="text-align: center; margin-top: 10px;">
+                        <a href="${primaryUrl}" target="_blank" style="display: inline-block; color: #06c167; font-size: 13px; font-weight: bold; text-decoration: none; padding: 6px 14px; border: 1px solid #c8e6c9; border-radius: 20px; background: #f1f8e9;">
+                            🔗 開啟 Uber Eats 訂單完整資訊 ↗
+                        </a>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+
+            const statusArea = document.getElementById('trackStatusArea');
+            if (statusArea) statusArea.innerHTML = deliveredHtml;
+            
+            // 完整顯示餐點明細與金額
+            const orderTextArea = document.getElementById('trackOrderText');
+            if (orderTextArea) {
+                orderTextArea.style.display = 'block';
+            }
+        }
+
         
                         function parseOrderText(rawText) {
             const lines = rawText.split('\n').map(l => l.trim()).filter(l => l);
@@ -317,11 +567,6 @@
             const statusArea = document.getElementById('trackStatusArea');
             const orderTextArea = document.getElementById('trackOrderText');
             
-            if (!orderId) {
-                statusArea.innerHTML = `<h3 style="color:red;">無效的追蹤連結</h3><p style="color:#666;">找不到訂單編號</p>`;
-                return;
-            }
-
             // 動態取得 API 連線位置 (與 ubereat.html 共用 config.json)
             let trackApiBase = '';
             try {
@@ -337,7 +582,33 @@
             } catch(e) {
                 console.log('無法讀取 config.json，嘗試使用相對路徑');
             }
-            
+
+            // 支援直接網址帶入 uuid 進行送達訂單查詢與展示 (方便測試與直接存取)
+            const directUuid = urlParams.get('uuid') || urlParams.get('orderUuid') || extractOrderUuid(urlParams.get('url'));
+            if (!orderId && directUuid) {
+                statusArea.innerHTML = `
+                    <div class="loader"></div>
+                    <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在查詢送達訂單明細...</h3>
+                `;
+                const termRes = await fetchTerminatedOrder(directUuid, urlParams.get('url'), trackApiBase);
+                if (termRes && termRes.status === 'success') {
+                    renderDeliveredStage(termRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${directUuid}`);
+                    return;
+                } else {
+                    statusArea.innerHTML = `
+                        <h3 style="color: #ff9800; font-size: 18px;">⚠️ 訂單尚未送達或查無已完成資料</h3>
+                        <p style="color: #666; font-size: 13px;">${termRes.message || 'Uber Eats 回傳狀態異常: failure'}</p>
+                        <a href="https://www.ubereats.com/tw/orders/${directUuid}" class="btn" target="_blank">📍 前往 Uber Eats 查看</a>
+                    `;
+                    return;
+                }
+            }
+
+            if (!orderId) {
+                statusArea.innerHTML = `<h3 style="color:red;">無效的追蹤連結</h3><p style="color:#666;">找不到訂單編號</p>`;
+                return;
+            }
+
             let countdownTimer = null;
             let countdownState = null; // { mode: 'waiting' | 'used', baseElapsedSec: 0, syncLocalMs: 0 }
 
@@ -419,30 +690,61 @@
                                 statusHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
                             }
                             
-                            if (data.tracking_urls && data.tracking_urls.length > 0) {
+                            const hasTracking = (data.tracking_urls && data.tracking_urls.length > 0) || Boolean(data.tracking_url);
+                            
+                            if (hasTracking) {
                                 if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
                                 countdownState = null;
-                                statusHtml += `<h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點下方追蹤訂單狀態</h3>`;
-                                data.tracking_urls.forEach((url, idx) => {
-                                    statusHtml += `<a href="${url}" class="btn" style="margin-top: 10px;" target="_blank">📍 追蹤訂單 ${data.tracking_urls.length > 1 ? (idx + 1) : ''}</a>`;
-                                });
-                                if (data.tracking_urls.length === 1 && !parsedData.isSplit) {
-                                    setTimeout(() => { window.location.href = data.tracking_urls[0]; }, 500);
+
+                                const primaryTrackUrl = (data.tracking_urls && data.tracking_urls.length > 0) ? data.tracking_urls[0] : data.tracking_url;
+                                const orderUuid = extractOrderUuid(primaryTrackUrl);
+
+                                if (orderUuid) {
+                                    // 轉址前先發送查詢，確認訂單是否已抵達
+                                    statusArea.innerHTML = `
+                                        <div class="loader"></div>
+                                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在確認餐點最新送達狀態...</h3>
+                                        <p style="color: #666; font-size: 13px; margin-top: 5px;">若已送達將在此為您直接展示留置照片與送達座標</p>
+                                    `;
+
+                                    const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
+
+                                    // 如果成功取得送達結果 (status === 'success')，停止轉址進入最後送達階段
+                                    if (termRes && termRes.status === 'success') {
+                                        console.log('✅ 訂單已送達！停止轉址進入送達展示階段');
+                                        renderDeliveredStage(termRes, parsedData, data, primaryTrackUrl);
+                                        return;
+                                    }
+
+                                    // 如果得到結果是狀態異常 (例如 Uber Eats 回傳狀態異常: failure)，代表訂單還沒抵達，繼續轉址
+                                    console.log('⏳ 訂單尚未送達 (或回傳異常): 繼續轉址');
                                 }
-                                statusArea.innerHTML = statusHtml;
-                            } else if (data.tracking_url) {
-                                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-                                countdownState = null;
-                                statusHtml += `
-                                    <h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點我追蹤訂單狀態</h3>
-                                    <a href="${data.tracking_url}" class="btn">📍 如果沒有自動跳轉，請點此開啟</a>
-                                `;
-                                if (!parsedData.isSplit) {
-                                    setTimeout(() => {
-                                        window.location.href = data.tracking_url;
-                                    }, 500);
+
+                                let trackHtml = '';
+                                if (data.ext_order_id) {
+                                    trackHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
                                 }
-                                statusArea.innerHTML = statusHtml;
+
+                                if (data.tracking_urls && data.tracking_urls.length > 0) {
+                                    trackHtml += `<h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點下方追蹤訂單狀態</h3>`;
+                                    data.tracking_urls.forEach((url, idx) => {
+                                        trackHtml += `<a href="${url}" class="btn" style="margin-top: 10px;" target="_blank">📍 追蹤訂單 ${data.tracking_urls.length > 1 ? (idx + 1) : ''}</a>`;
+                                    });
+                                    if (data.tracking_urls.length === 1 && !parsedData.isSplit) {
+                                        setTimeout(() => { window.location.href = data.tracking_urls[0]; }, 500);
+                                    }
+                                } else if (data.tracking_url) {
+                                    trackHtml += `
+                                        <h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點我追蹤訂單狀態</h3>
+                                        <a href="${data.tracking_url}" class="btn">📍 如果沒有自動跳轉，請點此開啟</a>
+                                    `;
+                                    if (!parsedData.isSplit) {
+                                        setTimeout(() => {
+                                            window.location.href = data.tracking_url;
+                                        }, 500);
+                                    }
+                                }
+                                statusArea.innerHTML = trackHtml;
                             } else if (data.order_status === 'used') {
                                 const accTimeStr = data.accepted_time_hm || extractHM(data.accepted_at) || extractHM(data.timestamp);
                                 const accElapsed = (typeof data.accept_elapsed_sec === 'number') ? data.accept_elapsed_sec : calcFallbackElapsedSec(data.accepted_at || data.timestamp);
