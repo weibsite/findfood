@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 15.0</title>
+<title>點餐系統 15.1</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -2589,6 +2589,8 @@ async function searchStores() {
 
     if (!q) {
 
+        window._isRandomOrEmptySearch = true;
+
         const foodKeywords = ['飯', '麵', '火鍋', '便當', '炸', '烤', '滷', '焗', '飲料', '牛肉麵', '水餃', '咖哩', '小吃', '早午餐', '漢堡', '披薩', '健康', '沙拉', '甜點', '宵夜'];
 
         const shopKeywords = ['全聯', '家樂福', '美廉社', '大潤發', '統一超商', '全家', '超市', '屈臣氏', '康是美', '生鮮', '零食'];
@@ -2599,6 +2601,10 @@ async function searchStores() {
 
         document.getElementById('query').value = q;
 
+    } else {
+
+        window._isRandomOrEmptySearch = false;
+
     }
 
 
@@ -2607,7 +2613,7 @@ async function searchStores() {
 
     
 
-    if (q) {
+    if (q && !window._isRandomOrEmptySearch) {
 
       saveSimpleHistory('query');
 
@@ -4315,7 +4321,7 @@ if (costRes && costRes.shouldSplit) {
         let bsg = {}; bin.items.forEach(i => { if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[]; bsg[i.storeName||''].push(i); });
         let binEx = 0; Object.keys(bsg).forEach(s => binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0)));
         splitExcess += binEx;
-        let pr = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? (window.isGroceryStore ? 35 : 10) : 0;
+        let pr = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? (window.isGroceryStore ? 15 : 10) : 0;
         splitPreorder += pr;
     });
 
@@ -5140,7 +5146,11 @@ costRes.bins.forEach((bin, bIdx) => {
 
           msgText += `  🛵 代訂費: $${feePerBin}\n`;
 
-          msgText += `   🛵 外送加成: $${binExcess}\n`;
+          msgText += `  🛵 外送加成: $${binExcess}\n`;
+
+          if (isPickup) msgText += `  🌟 優惠專區折扣: -$10\n`;
+
+          if (preOrderDiscount > 0) msgText += `  🕒 預訂折扣(3小時以上): -$${preOrderDiscount}\n`;
 
           msgText += `  ➡️ 結算: $${binTotal}\n\n`;
 
@@ -5149,8 +5159,8 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-        if (preOrderDiscount > 0) msgText += `🕒 預訂折扣(3小時以上): -$${preOrderDiscount * costRes.bins.length}\n`;
-        if (isPickup) msgText += `🌟 優惠專區折扣: -$${10 * costRes.bins.length}\n`;
+        if (preOrderDiscount > 0) msgText += `🕒 預訂總折扣: -$${preOrderDiscount * costRes.bins.length} (每單已折${preOrderDiscount}元)\n`;
+        if (isPickup) msgText += `🌟 優惠專區總折扣: -$${10 * costRes.bins.length} (每單已折10元)\n`;
 
         msgText += `💰 總結算金額: $${grandTotal}`;
 
@@ -6085,6 +6095,15 @@ const note = document.getElementById('modalNote').value.trim();
     document.getElementById('storeView').style.display = 'none';
 
     document.getElementById('homeView').style.display = 'block';
+
+    if (window._isRandomOrEmptySearch) {
+      const qInput = document.getElementById('query');
+      if (qInput) qInput.value = '';
+      const mobileInput = document.getElementById('globalSearchInputMobile');
+      if (mobileInput) mobileInput.value = '';
+      if (typeof renderOverlayHTML === 'function') renderOverlayHTML();
+      window._isRandomOrEmptySearch = false;
+    }
 
   }
 
@@ -7603,7 +7622,7 @@ if (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
         
 
         
-        cost += binFoodCost + feePerBin + binExcess - (localStorage.getItem('uberCartIsDiscount') === 'true' ? 10 : 0);
+        cost += binFoodCost + feePerBin + binExcess - (localStorage.getItem('uberCartIsDiscount') === 'true' ? 10 : 0) - preOrderDiscount;
 
 
       }
@@ -8563,6 +8582,7 @@ function openStoreFromOverlay(uuid, encodedName, actionUrl) {
     const name = decodeURIComponent(encodedName);
     document.getElementById('query').value = name;
     closeQueryOverlay();
+    localStorage.setItem('uberCartIsDiscount', 'false');
     if (typeof openStore === 'function') {
         openStore(uuid, name, actionUrl);
     }
