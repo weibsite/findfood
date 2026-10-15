@@ -2119,14 +2119,20 @@ window.addrDebounceTimer = null;
 
 
   function randomSearch() {
-  if (typeof autoFixEmptyTime === "function") autoFixEmptyTime();
+    if (typeof autoFixEmptyTime === "function") autoFixEmptyTime();
 
-      // 清空輸入框，讓 searchStores 的空字串判斷來代勞隨機抽籤
+    const foodKeywords = ['飯', '麵', '火鍋', '便當', '炸', '烤', '滷', '焗', '飲料', '牛肉麵', '水餃', '咖哩', '小吃', '早午餐', '漢堡', '披薩', '健康', '沙拉', '甜點', '宵夜'];
+    const shopKeywords = ['全聯', '家樂福', '美廉社', '大潤發', '統一超商', '全家', '超市', '屈臣氏', '康是美', '生鮮', '零食'];
+    const pool = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? shopKeywords : foodKeywords;
+    const randomWord = pool[Math.floor(Math.random() * pool.length)];
 
-      document.getElementById('query').value = '';
+    document.getElementById('query').value = randomWord;
+    const mobileInputEl = document.getElementById('globalSearchInputMobile');
+    if (mobileInputEl) mobileInputEl.value = randomWord;
 
-      searchStores();
+    window._isRandomOrEmptySearch = true;
 
+    searchStores();
   }
 
 
@@ -2585,29 +2591,12 @@ async function searchStores() {
 
     
 
-    // 如果沒打字，自動塞入隨機關鍵字，避免出現大混雜
-
+    // 尋找食物留空時不自動填入任何文字，保持空白直接送出搜尋
     if (!q) {
-
-        window._isRandomOrEmptySearch = true;
-
-        const foodKeywords = ['飯', '麵', '火鍋', '便當', '炸', '烤', '滷', '焗', '飲料', '牛肉麵', '水餃', '咖哩', '小吃', '早午餐', '漢堡', '披薩', '健康', '沙拉', '甜點', '宵夜'];
-
-        const shopKeywords = ['全聯', '家樂福', '美廉社', '大潤發', '統一超商', '全家', '超市', '屈臣氏', '康是美', '生鮮', '零食'];
-
-        const pool = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? shopKeywords : foodKeywords;
-
-        q = pool[Math.floor(Math.random() * pool.length)];
-
-        document.getElementById('query').value = q;
-
-    } else {
-
         window._isRandomOrEmptySearch = false;
-
+    } else if (!window._isRandomOrEmptySearch) {
+        window._isRandomOrEmptySearch = false;
     }
-
-
 
     window.lastListSearchKeyword = q;
 
