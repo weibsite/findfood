@@ -9,7 +9,7 @@
         * { touch-action: manipulation; box-sizing: border-box; }
         body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; text-align: center; color: #333; }
         .card { background: white; padding: 25px 20px; border-radius: 14px; margin: 20px auto; max-width: 440px; width: 95%; box-shadow: 0 4px 16px rgba(0,0,0,0.06); transition: max-width 0.3s ease; }
-        .card.delivered-mode { max-width: 500px; }
+        .card.delivered-mode { max-width: 520px; }
         h2 { margin-top: 0; color: #111; font-size: 22px; }
         .status-area { margin: 20px 0; }
         .order-text { white-space: pre-wrap; background: #f8f9fa; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 14px; text-align: left; margin-top: 20px; color: #555; border: 1px solid #eee; }
@@ -17,6 +17,57 @@
         .btn:active { opacity: 0.8; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #06c167; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 多單外送進度橫向滑動與分頁 (Multi-order Sliders & Tabs) */
+        .split-slider {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            gap: 14px;
+            padding-bottom: 12px;
+            margin-bottom: 14px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        .split-slider::-webkit-scrollbar {
+            height: 5px;
+        }
+        .split-slider::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        .split-slide-card {
+            min-width: 88%;
+            max-width: 88%;
+            flex-shrink: 0;
+            scroll-snap-align: center;
+            box-sizing: border-box;
+        }
+        .split-tab-btn {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+            color: #555;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            outline: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .split-tab-btn:hover {
+            background: #eef2f6;
+        }
+        .split-tab-btn.active {
+            background: #2e7d32 !important;
+            color: #fff !important;
+            border-color: #2e7d32 !important;
+            box-shadow: 0 2px 6px rgba(46,125,50,0.3);
+        }
 
         /* 留置照片點擊放大 (Lightbox Zoom Modal) */
         .zoom-modal {
@@ -280,6 +331,274 @@
             }
         }
 
+        // 渲染多筆子訂單送達/運送進度 (左右滑動與分頁連動)
+        function renderMultiDeliveredStage(termResults, parsedData, data, trackingUrls) {
+            const cardEl = document.querySelector('.card');
+            if (cardEl) cardEl.classList.add('delivered-mode');
+
+            const totalOrders = trackingUrls.length;
+            const deliveredOrders = termResults.filter(r => r && r.status === 'success');
+            const deliveredCount = deliveredOrders.length;
+            const inTransitCount = totalOrders - deliveredCount;
+
+            // 1. 更新卡片主標題
+            const mainHeader = document.querySelector('.card h2');
+            if (mainHeader) {
+                if (deliveredCount === totalOrders) {
+                    mainHeader.innerHTML = '🎉 全部訂單皆已送達目的地';
+                    mainHeader.style.color = '#2e7d32';
+                } else if (deliveredCount > 0) {
+                    mainHeader.innerHTML = `🛵 訂單配送進度（${deliveredCount}/${totalOrders} 已送達）`;
+                    mainHeader.style.color = '#1565c0';
+                } else {
+                    mainHeader.innerHTML = '📦 多單外送配送中';
+                    mainHeader.style.color = '#e65100';
+                }
+            }
+
+            const address = parsedData.address || '已送達至指定地點';
+
+            let html = `
+                <div style="text-align: left; margin-bottom: 15px;">
+                    <!-- 頂部總覽橫幅 -->
+                    <div style="background: #e8f5e9; border: 1.5px solid #81c784; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="background: ${deliveredCount === totalOrders ? '#2e7d32' : (deliveredCount > 0 ? '#1565c0' : '#e65100')}; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px;">
+                                ${deliveredCount === totalOrders ? '✓ 全部送達' : (deliveredCount > 0 ? `部分已送達 (${deliveredCount}/${totalOrders})` : '外送運送中')}
+                            </span>
+                            <span style="color: #444; font-size: 12px; font-weight: bold;">共 ${totalOrders} 筆子訂單</span>
+                        </div>
+                        <div style="font-size: 17px; font-weight: 800; color: #1b5e20; margin-bottom: 4px;">
+                            ${deliveredCount === totalOrders ? '🎉 所有餐點已送達指定地址' : '🛵 各單外送進度實時追蹤'}
+                        </div>
+                        <div style="font-size: 14px; color: #333; line-height: 1.5;">
+                            📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
+                        </div>
+                        ${parsedData.globalTotal ? `<div style="font-size: 14px; color: #333; margin-top: 4px;">💰 <strong>全部訂單總額:</strong> <span style="color: #d32f2f; font-weight: bold;">${parsedData.globalTotal}</span></div>` : ''}
+                        ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">訂單總編號: <strong>${data.ext_order_id}</strong></div>` : ''}
+                    </div>
+
+                    <!-- 分頁切換鈕 (點擊同步切換各單) -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 6px; font-weight: bold; display: flex; justify-content: space-between;">
+                            <span>👉 點擊或左右滑動切換各單進度：</span>
+                            <span style="color: #06c167;">與下方明細同步連動</span>
+                        </div>
+                        <div id="splitTabsContainer" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch;">
+            `;
+
+            trackingUrls.forEach((url, idx) => {
+                const term = termResults[idx];
+                const split = (parsedData.splits && parsedData.splits[idx]) || {};
+                const isDeliv = term && term.status === 'success';
+                const store = term?.storeName || split.store || `店家 ${idx + 1}`;
+                const shortStore = store.length > 8 ? store.substring(0, 8) + '...' : store;
+                const activeClass = idx === 0 ? 'active' : '';
+
+                html += `
+                    <button type="button" class="split-tab-btn ${activeClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}">
+                        <span>${idx + 1}. ${shortStore}</span>
+                        <span style="font-size: 11px;">${isDeliv ? '✓' : '🛵'}</span>
+                    </button>
+                `;
+            });
+
+            html += `
+                        </div>
+                    </div>
+
+                    <!-- 多單外送進度橫向滑動區塊 (Delivery Status Slider) -->
+                    <div id="deliveryStatusSlider" class="split-slider">
+            `;
+
+            trackingUrls.forEach((url, idx) => {
+                const term = termResults[idx];
+                const split = (parsedData.splits && parsedData.splits[idx]) || {};
+                const isDeliv = term && term.status === 'success';
+                const title = split.title || `【多單 ${idx + 1}】`;
+                const store = term?.storeName || split.store || '外送合作店家';
+                const driverName = term?.driverName || '合作外送夥伴';
+                const driverNote = term?.driverNote || '';
+                const driverAvatar = term?.driverAvatar || '';
+                const imgUrl = term?.imgUrl || '';
+                const mapImgUrl = term?.mapImgUrl || '';
+                const lat = term?.latitude;
+                const lng = term?.longitude;
+                const coordsStr = (lat && lng) ? `${lat}, ${lng}` : '無座標資訊';
+                const googleMapUrl = (lat && lng) ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : '';
+
+                html += `
+                    <div class="split-slide-card" style="background: #fff; border: 1.5px solid ${isDeliv ? '#81c784' : '#ffb74d'}; border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
+                        <!-- 卡片頂部 -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 10px;">
+                            <div>
+                                <span style="font-weight: 800; font-size: 15px; color: #1565c0;">${title}</span>
+                                <div style="font-weight: bold; color: #111; font-size: 14px; margin-top: 2px;">🏪 ${store}</div>
+                            </div>
+                            <div>
+                                <span style="background: ${isDeliv ? '#2e7d32' : '#e65100'}; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 6px;">
+                                    ${isDeliv ? '✓ 已送達' : '🛵 運送中'}
+                                </span>
+                            </div>
+                        </div>
+                `;
+
+                if (isDeliv) {
+                    // 已送達：顯示留置照片、外送員、GPS
+                    if (imgUrl) {
+                        html += `
+                            <div style="position: relative; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; cursor: pointer; height: 180px; display: flex; align-items: center; justify-content: center;" onclick="zoomPhoto('${imgUrl}')">
+                                <img src="${imgUrl}" alt="門口留置照片" style="width: 100%; height: 100%; object-fit: cover;">
+                                <div style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px;">
+                                    📷 門口留置拍照證明
+                                </div>
+                                <div style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 11px; padding: 3px 9px; border-radius: 15px; font-weight: bold;">
+                                    🔍 點擊放大
+                                </div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 8px;">
+                                <span style="color: #666;">現場留置照片</span>
+                                <a href="${imgUrl}" target="_blank" style="color: #06c167; font-weight: bold; text-decoration: none;">另開原圖 ↗</a>
+                            </div>
+                        `;
+                    }
+
+                    // 外送員與 GPS
+                    html += `
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                            <div style="background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; display: flex; align-items: center; gap: 8px;">
+                                ${driverAvatar ? `<img src="${driverAvatar}" style="width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">` : `<div style="width: 34px; height: 34px; border-radius: 50%; background: #e3f2fd; color: #1976d2; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">🛵</div>`}
+                                <div style="overflow: hidden; flex: 1;">
+                                    <div style="font-size: 10px; color: #888;">外送夥伴</div>
+                                    <div style="font-size: 12px; font-weight: bold; color: #111; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${driverName}</div>
+                                    ${driverNote ? `<div style="font-size: 10px; color: #2e7d32; font-weight: bold; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${driverNote}</div>` : ''}
+                                </div>
+                            </div>
+
+                            <div style="background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; display: flex; align-items: center; gap: 8px;">
+                                ${mapImgUrl ? `<img src="${mapImgUrl}" style="width: 34px; height: 34px; border-radius: 6px; object-fit: cover; flex-shrink: 0;">` : `<div style="width: 34px; height: 34px; border-radius: 6px; background: #e8f5e9; color: #2e7d32; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">📍</div>`}
+                                <div style="overflow: hidden; flex: 1;">
+                                    <div style="font-size: 10px; color: #888;">送達座標</div>
+                                    <div style="font-size: 11px; font-family: monospace; font-weight: bold; color: #111; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${coordsStr}</div>
+                                    ${googleMapUrl ? `<a href="${googleMapUrl}" target="_blank" style="font-size: 10px; color: #06c167; font-weight: bold; text-decoration: none;">開啟地圖 ↗</a>` : ''}
+                                </div>
+                            </div>
+                        </div>
+
+                        <a href="${url}" target="_blank" style="display: block; text-align: center; color: #06c167; font-size: 12px; font-weight: bold; text-decoration: none; padding: 6px; border: 1px solid #c8e6c9; border-radius: 16px; background: #f1f8e9;">
+                            🔗 開啟此單 Uber Eats 原始頁面 ↗
+                        </a>
+                    `;
+                } else {
+                    // 運送中：顯示進度卡片與地圖按鈕
+                    html += `
+                        <div style="background: #fff8e1; border: 1px dashed #ffe082; border-radius: 8px; padding: 15px; margin: 10px 0; text-align: center;">
+                            <div style="font-size: 28px; margin-bottom: 6px;">🛵💨</div>
+                            <div style="font-weight: bold; color: #e65100; font-size: 14px; margin-bottom: 4px;">餐點正在外送途中</div>
+                            <div style="font-size: 12px; color: #795548; line-height: 1.4;">外送員正在前往您的目的地，待送達並拍照後將即時在此更新留置照片與定位。</div>
+                        </div>
+                        <a href="${url}" target="_blank" class="btn" style="margin-top: 8px; padding: 10px; font-size: 14px;">📍 開啟 Uber Eats 即時外送地圖 ↗</a>
+                    `;
+                }
+
+                html += `</div>`; // end slide card
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            const statusArea = document.getElementById('trackStatusArea');
+            if (statusArea) statusArea.innerHTML = html;
+
+            // 渲染下方拆單餐點明細 (帶有各自送達狀態標籤)
+            const orderTextArea = document.getElementById('trackOrderText');
+            if (orderTextArea) {
+                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, trackingUrls, termResults);
+                orderTextArea.style.display = 'block';
+            }
+
+            // 啟動雙向左右滑動同步
+            setTimeout(setupSliderSync, 100);
+        }
+
+        // 雙向左右滑動連動同步器 (Sync deliveryStatusSlider & splitsDetailSlider)
+        function setupSliderSync() {
+            const topSlider = document.getElementById('deliveryStatusSlider');
+            const bottomSlider = document.getElementById('splitsDetailSlider');
+            const tabsContainer = document.getElementById('splitTabsContainer');
+            if (!topSlider || !bottomSlider) return;
+
+            let activeIdx = 0;
+            let isSyncing = false;
+
+            function updateTabs(idx) {
+                activeIdx = idx;
+                if (!tabsContainer) return;
+                const tabs = tabsContainer.querySelectorAll('.split-tab-btn');
+                tabs.forEach((tab, i) => {
+                    if (i === idx) {
+                        tab.classList.add('active');
+                    } else {
+                        tab.classList.remove('active');
+                    }
+                });
+                const activeTab = tabs[idx];
+                if (activeTab) {
+                    tabsContainer.scrollTo({ left: activeTab.offsetLeft - tabsContainer.offsetLeft - 20, behavior: 'smooth' });
+                }
+            }
+
+            window.scrollToSplitIndex = function(idx) {
+                updateTabs(idx);
+                isSyncing = true;
+                const topChild = topSlider.children[idx];
+                if (topChild) {
+                    topSlider.scrollTo({ left: topChild.offsetLeft - topSlider.offsetLeft, behavior: 'smooth' });
+                }
+                const bottomChild = bottomSlider.children[idx];
+                if (bottomChild) {
+                    bottomSlider.scrollTo({ left: bottomChild.offsetLeft - bottomSlider.offsetLeft, behavior: 'smooth' });
+                }
+                setTimeout(() => { isSyncing = false; }, 400);
+            };
+
+            topSlider.addEventListener('scroll', () => {
+                if (isSyncing) return;
+                const scrollLeft = topSlider.scrollLeft;
+                const cardWidth = topSlider.children[0]?.offsetWidth || 1;
+                const idx = Math.round(scrollLeft / cardWidth);
+                if (idx !== activeIdx && idx >= 0 && idx < topSlider.children.length) {
+                    activeIdx = idx;
+                    updateTabs(idx);
+                    isSyncing = true;
+                    const bottomChild = bottomSlider.children[idx];
+                    if (bottomChild) {
+                        bottomSlider.scrollTo({ left: bottomChild.offsetLeft - bottomSlider.offsetLeft, behavior: 'smooth' });
+                    }
+                    setTimeout(() => { isSyncing = false; }, 400);
+                }
+            }, { passive: true });
+
+            bottomSlider.addEventListener('scroll', () => {
+                if (isSyncing) return;
+                const scrollLeft = bottomSlider.scrollLeft;
+                const cardWidth = bottomSlider.children[0]?.offsetWidth || 1;
+                const idx = Math.round(scrollLeft / cardWidth);
+                if (idx !== activeIdx && idx >= 0 && idx < bottomSlider.children.length) {
+                    activeIdx = idx;
+                    updateTabs(idx);
+                    isSyncing = true;
+                    const topChild = topSlider.children[idx];
+                    if (topChild) {
+                        topSlider.scrollTo({ left: topChild.offsetLeft - topSlider.offsetLeft, behavior: 'smooth' });
+                    }
+                    setTimeout(() => { isSyncing = false; }, 400);
+                }
+            }, { passive: true });
+        }
+
         
                         function parseOrderText(rawText) {
             const lines = rawText.split('\n').map(l => l.trim()).filter(l => l);
@@ -399,8 +718,9 @@
             return parsed;
         }
 
-        function renderOrderDetails(parsed, rawText, tracking_urls = []) {
+        function renderOrderDetails(parsed, rawText, tracking_urls = [], termResults = []) {
             tracking_urls = tracking_urls || [];
+            termResults = termResults || [];
             if (!parsed.isSplit && !parsed.store && parsed.items.length === 0) {
                 return `<pre style="white-space: pre-wrap; margin:0; font-family: monospace;">${rawText}</pre>`;
             }
@@ -420,17 +740,42 @@
             html += `</div>`;
 
             if (parsed.isSplit) {
-                // 多單橫向滑動區塊
-                html += `<h4 style="margin: 0 0 8px 0; color: #444; border-bottom: 2px solid #eee; padding-bottom: 4px;">📦 拆單內容明細 (左右滑動查看)</h4>`;
-                html += `<div style="display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 15px; padding-bottom: 10px; margin-bottom: 10px; -webkit-overflow-scrolling: touch;">`;
+                // 多單橫向滑動區塊 (加 id="splitsDetailSlider" 與 class="split-slider")
+                html += `<h4 style="margin: 0 0 8px 0; color: #444; border-bottom: 2px solid #eee; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>📦 拆單內容明細 (左右滑動查看)</span>
+                    <span style="font-size: 11px; color: #06c167; font-weight: bold;">與上方外送進度同步</span>
+                </h4>`;
+                html += `<div id="splitsDetailSlider" class="split-slider">`;
                 
                 parsed.splits.forEach((split, idx) => {
-                    html += `<div style="min-width: 85%; max-width: 85%; flex-shrink: 0; scroll-snap-align: center; background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 12px; box-sizing: border-box;">`;
-                    html += `<div style="font-weight: bold; font-size: 15px; color: #1565c0; margin-bottom: 8px;">${split.title}</div>`;
-                    if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 4px;">🏪 ${split.store}</div>`;
+                    const term = termResults && termResults[idx];
+                    const isDeliv = term && term.status === 'success';
+
+                    html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${isDeliv ? '#c8e6c9' : '#ddd'}; border-radius: 12px; padding: 14px; box-sizing: border-box;">`;
+                    
+                    // 標題與此單送達狀態 Pill
+                    html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
+                    html += `<span style="font-weight: 800; font-size: 15px; color: #1565c0;">${split.title}</span>`;
+                    if (isDeliv) {
+                        html += `<span style="background: #2e7d32; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">✓ 此單已送達</span>`;
+                    } else if (tracking_urls.length > idx) {
+                        html += `<span style="background: #e65100; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">🛵 運送中</span>`;
+                    }
+                    html += `</div>`;
+
+                    if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 6px; font-size: 14px;">🏪 ${split.store}</div>`;
+
                     let currentTrackUrl = (tracking_urls.length > idx) ? tracking_urls[idx] : null;
-                    if (currentTrackUrl) {
-                        html += `<a href="${currentTrackUrl}" target="_blank" style="color: #fff; background: #06c167; text-decoration: none; font-size: 13px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">🛵 追蹤訂單進度 ${idx + 1}</a>`;
+                    if (isDeliv && term.imgUrl) {
+                        html += `
+                            <div style="display: flex; align-items: center; gap: 8px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;">
+                                <span style="font-size: 16px;">📸</span>
+                                <span style="font-size: 12px; color: #2e7d32; font-weight: bold; flex: 1;">已拍照送達現場</span>
+                                <button type="button" onclick="zoomPhoto('${term.imgUrl}')" style="background: #2e7d32; color: #fff; border: none; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: bold; cursor: pointer;">看照片</button>
+                            </div>
+                        `;
+                    } else if (currentTrackUrl) {
+                        html += `<a href="${currentTrackUrl}" target="_blank" style="color: #fff; background: #06c167; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">🛵 追蹤此單進度 ${idx + 1}</a>`;
                     } else if (split.url) {
                         html += `<a href="${split.url}" target="_blank" style="color: #06c167; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px;">🔗 前往餐廳菜單</a>`;
                     }
@@ -583,24 +928,46 @@
                 console.log('無法讀取 config.json，嘗試使用相對路徑');
             }
 
-            // 支援直接網址帶入 uuid 進行送達訂單查詢與展示 (方便測試與直接存取)
-            const directUuid = urlParams.get('uuid') || urlParams.get('orderUuid') || extractOrderUuid(urlParams.get('url'));
-            if (!orderId && directUuid) {
-                statusArea.innerHTML = `
-                    <div class="loader"></div>
-                    <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在查詢送達訂單明細...</h3>
-                `;
-                const termRes = await fetchTerminatedOrder(directUuid, urlParams.get('url'), trackApiBase);
-                if (termRes && termRes.status === 'success') {
-                    renderDeliveredStage(termRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${directUuid}`);
+            // 支援直接網址帶入 uuid 進行送達訂單查詢與展示 (支援多筆 uuid 逗號分隔，方便測試多單左右滑動)
+            const rawUuidParam = urlParams.get('uuid') || urlParams.get('orderUuid') || extractOrderUuid(urlParams.get('url'));
+            if (!orderId && rawUuidParam) {
+                const uuidList = rawUuidParam.split(',').map(s => s.trim()).filter(Boolean);
+                if (uuidList.length > 1) {
+                    statusArea.innerHTML = `
+                        <div class="loader"></div>
+                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在查詢多筆子訂單送達明細...</h3>
+                        <p style="color: #666; font-size: 13px;">共 ${uuidList.length} 筆訂單，正分別查詢送達資訊...</p>
+                    `;
+                    const multiTerm = await Promise.all(uuidList.map(async (u, idx) => {
+                        const res = await fetchTerminatedOrder(u, '', trackApiBase);
+                        return { ...res, url: `https://www.ubereats.com/tw/orders/${u}`, idx, orderUuid: u };
+                    }));
+                    const dummySplits = uuidList.map((u, i) => ({
+                        title: `【多單 ${i + 1}】`,
+                        store: multiTerm[i]?.storeName || `店家 ${i + 1}`,
+                        items: [],
+                        total: ''
+                    }));
+                    renderMultiDeliveredStage(multiTerm, { isSplit: true, splits: dummySplits, address: '測試多單地址' }, {}, uuidList.map(u => `https://www.ubereats.com/tw/orders/${u}`));
                     return;
                 } else {
+                    const singleUuid = uuidList[0];
                     statusArea.innerHTML = `
-                        <h3 style="color: #ff9800; font-size: 18px;">⚠️ 訂單尚未送達或查無已完成資料</h3>
-                        <p style="color: #666; font-size: 13px;">${termRes.message || 'Uber Eats 回傳狀態異常: failure'}</p>
-                        <a href="https://www.ubereats.com/tw/orders/${directUuid}" class="btn" target="_blank">📍 前往 Uber Eats 查看</a>
+                        <div class="loader"></div>
+                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在查詢送達訂單明細...</h3>
                     `;
-                    return;
+                    const termRes = await fetchTerminatedOrder(singleUuid, urlParams.get('url'), trackApiBase);
+                    if (termRes && termRes.status === 'success') {
+                        renderDeliveredStage(termRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
+                        return;
+                    } else {
+                        statusArea.innerHTML = `
+                            <h3 style="color: #ff9800; font-size: 18px;">⚠️ 訂單尚未送達或查無已完成資料</h3>
+                            <p style="color: #666; font-size: 13px;">${termRes.message || 'Uber Eats 回傳狀態異常: failure'}</p>
+                            <a href="https://www.ubereats.com/tw/orders/${singleUuid}" class="btn" target="_blank">📍 前往 Uber Eats 查看</a>
+                        `;
+                        return;
+                    }
                 }
             }
 
@@ -696,55 +1063,68 @@
                                 if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
                                 countdownState = null;
 
-                                const primaryTrackUrl = (data.tracking_urls && data.tracking_urls.length > 0) ? data.tracking_urls[0] : data.tracking_url;
-                                const orderUuid = extractOrderUuid(primaryTrackUrl);
+                                const trackingUrls = (data.tracking_urls && data.tracking_urls.length > 0)
+                                    ? data.tracking_urls
+                                    : (data.tracking_url ? [data.tracking_url] : []);
+                                
+                                const isMulti = trackingUrls.length > 1 || parsedData.isSplit;
 
-                                if (orderUuid) {
-                                    // 轉址前先發送查詢，確認訂單是否已抵達
+                                if (isMulti) {
+                                    // 多單情況：分別向 API 取得每筆子訂單的送達資訊
                                     statusArea.innerHTML = `
                                         <div class="loader"></div>
-                                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在確認餐點最新送達狀態...</h3>
-                                        <p style="color: #666; font-size: 13px; margin-top: 5px;">若已送達將在此為您直接展示留置照片與送達座標</p>
+                                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在確認各筆子訂單送達狀態...</h3>
+                                        <p style="color: #666; font-size: 13px; margin-top: 5px;">共 ${trackingUrls.length} 筆子訂單，正在分別查詢留置照片與定位...</p>
                                     `;
 
-                                    const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
+                                    const termResults = await Promise.all(trackingUrls.map(async (url, idx) => {
+                                        const u = extractOrderUuid(url);
+                                        if (!u) return { status: 'error', message: '無有效 UUID', url, idx };
+                                        const res = await fetchTerminatedOrder(u, url, trackApiBase);
+                                        return { ...res, url, idx, orderUuid: u };
+                                    }));
 
-                                    // 如果成功取得送達結果 (status === 'success')，停止轉址進入最後送達階段
-                                    if (termRes && termRes.status === 'success') {
-                                        console.log('✅ 訂單已送達！停止轉址進入送達展示階段');
-                                        renderDeliveredStage(termRes, parsedData, data, primaryTrackUrl);
-                                        return;
+                                    console.log('✅ 多單送達狀態查詢完成:', termResults);
+                                    renderMultiDeliveredStage(termResults, parsedData, data, trackingUrls);
+                                    return;
+                                } else {
+                                    // 單一訂單情況
+                                    const primaryTrackUrl = trackingUrls[0];
+                                    const orderUuid = extractOrderUuid(primaryTrackUrl);
+
+                                    if (orderUuid) {
+                                        statusArea.innerHTML = `
+                                            <div class="loader"></div>
+                                            <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在確認餐點最新送達狀態...</h3>
+                                            <p style="color: #666; font-size: 13px; margin-top: 5px;">若已送達將在此為您直接展示留置照片與送達座標</p>
+                                        `;
+
+                                        const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
+
+                                        // 如果成功取得送達結果 (status === 'success')，停止轉址進入送達展示階段
+                                        if (termRes && termRes.status === 'success') {
+                                            console.log('✅ 訂單已送達！停止轉址進入送達展示階段');
+                                            renderDeliveredStage(termRes, parsedData, data, primaryTrackUrl);
+                                            return;
+                                        }
+
+                                        // 如果得到結果是狀態異常 (例如 Uber Eats 回傳狀態異常: failure)，代表訂單還沒抵達，繼續轉址
+                                        console.log('⏳ 訂單尚未送達 (或回傳異常): 繼續轉址');
                                     }
 
-                                    // 如果得到結果是狀態異常 (例如 Uber Eats 回傳狀態異常: failure)，代表訂單還沒抵達，繼續轉址
-                                    console.log('⏳ 訂單尚未送達 (或回傳異常): 繼續轉址');
-                                }
-
-                                let trackHtml = '';
-                                if (data.ext_order_id) {
-                                    trackHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
-                                }
-
-                                if (data.tracking_urls && data.tracking_urls.length > 0) {
-                                    trackHtml += `<h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點下方追蹤訂單狀態</h3>`;
-                                    data.tracking_urls.forEach((url, idx) => {
-                                        trackHtml += `<a href="${url}" class="btn" style="margin-top: 10px;" target="_blank">📍 追蹤訂單 ${data.tracking_urls.length > 1 ? (idx + 1) : ''}</a>`;
-                                    });
-                                    if (data.tracking_urls.length === 1 && !parsedData.isSplit) {
-                                        setTimeout(() => { window.location.href = data.tracking_urls[0]; }, 500);
+                                    let trackHtml = '';
+                                    if (data.ext_order_id) {
+                                        trackHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
                                     }
-                                } else if (data.tracking_url) {
                                     trackHtml += `
                                         <h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點我追蹤訂單狀態</h3>
-                                        <a href="${data.tracking_url}" class="btn">📍 如果沒有自動跳轉，請點此開啟</a>
+                                        <a href="${primaryTrackUrl}" class="btn">📍 如果沒有自動跳轉，請點此開啟</a>
                                     `;
-                                    if (!parsedData.isSplit) {
-                                        setTimeout(() => {
-                                            window.location.href = data.tracking_url;
-                                        }, 500);
-                                    }
+                                    setTimeout(() => {
+                                        window.location.href = primaryTrackUrl;
+                                    }, 500);
+                                    statusArea.innerHTML = trackHtml;
                                 }
-                                statusArea.innerHTML = trackHtml;
                             } else if (data.order_status === 'used') {
                                 const accTimeStr = data.accepted_time_hm || extractHM(data.accepted_at) || extractHM(data.timestamp);
                                 const accElapsed = (typeof data.accept_elapsed_sec === 'number') ? data.accept_elapsed_sec : calcFallbackElapsedSec(data.accepted_at || data.timestamp);
