@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 14.5</title>
+<title>點餐系統 15.0</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -2170,7 +2170,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
       let openNone = [], closedNone = [];
 
       stores.forEach(s => {
-          const name = s.title && s.title.text ? s.title.text.toLowerCase() : '';
+          const name = (s.title && s.title.text) ? s.title.text.toLowerCase() : (typeof s.title === 'string' ? s.title.toLowerCase() : '');
           const state = s.storeAvailablityState || '';
           
           let isUIClosed = false;
@@ -2267,11 +2267,13 @@ function generateStoreListHTML(stores, q, currentVertical) {
 
             imgUrl = getUberWebpUrl(bestItem.url);
 
+        } else if (s.heroImageUrl) {
+            imgUrl = s.heroImageUrl;
         }
 
         const rating = s.rating ? s.rating.text : '無評價';
 
-                let name = s.title ? s.title.text : '未知餐廳';
+        let name = s.title ? (s.title.text || (typeof s.title === 'string' ? s.title : '')) : '未知餐廳';
         if (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') {
             name += ' (不需外送費、需要服務費)';
         }
@@ -2826,8 +2828,20 @@ async function searchStores() {
       
 
       
-      // [優化] 同步完整搜尋的結果到背景快取，這樣用戶馬上點擊搜尋列時，不用再等一次轉圈圈
-      window.suggestionStores = stores;
+      // [優化] 同步完整搜尋的結果到背景快取，若第一次有結果而第二次沒結果，不覆蓋掉第一次的結果
+      const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
+      if (stores.length > 0) {
+          window.suggestionStores = stores;
+          window.suggestionStoreSource = 'search_v3';
+          window.suggestionStoreQuery = q;
+      } else if (hasFirstResults) {
+          // 第一次有結果 第二次沒結果：保留第一次的結果，不覆蓋掉
+          stores = window.suggestionStores;
+      } else {
+          window.suggestionStores = [];
+          window.suggestionStoreSource = 'search_v3_empty';
+          window.suggestionStoreQuery = q;
+      }
       if (typeof lastSearchedQuery !== 'undefined') {
           lastSearchedQuery = q;
       } else {
@@ -5780,65 +5794,51 @@ function recalcCustomizations() {
 
 
 
-    const getVisibleSelections = (container) => {
+    const collectSelections = (container, currentPrefix = '') => {
+        container.querySelectorAll(':scope > .cust-group').forEach(groupDiv => {
+            const rawGTitle = groupDiv.getAttribute('data-title') || '';
+            const gTitle = filterTrailingEnglish(rawGTitle);
 
-        container.querySelectorAll(':scope > .cust-group > .cust-option-row').forEach(row => {
-
-            const radio = row.querySelector(':scope > label .cust-radio');
-
-            const qtySpan = row.querySelector(':scope > label .cust-stepper .cust-qty');
-
-            
-
-            let qty = 0;
-
-            if (radio && radio.checked) qty = 1;
-
-            if (qtySpan) qty = parseInt(qtySpan.getAttribute('data-qty') || '0', 10);
-
-            
-
-            if (qty > 0) {
-
-                const price = parseFloat(radio ? radio.getAttribute('data-price') : qtySpan.getAttribute('data-price')) || 0;
-
-                const title = radio ? radio.getAttribute('data-title') : qtySpan.getAttribute('data-title');
-
+            groupDiv.querySelectorAll(':scope > .cust-option-row').forEach(row => {
+                const radio = row.querySelector(':scope > label .cust-radio');
+                const qtySpan = row.querySelector(':scope > label .cust-stepper .cust-qty');
                 
-
-                extraPrice += (price * qty);
-
-if (qty > 1) {
-
-currentItem.selectedOptions.push(`${title} x${qty}`);
-
-} else {
-
-currentItem.selectedOptions.push(title);
-
-}
-
+                let qty = 0;
+                if (radio && radio.checked) qty = 1;
+                if (qtySpan) qty = parseInt(qtySpan.getAttribute('data-qty') || '0', 10);
                 
-
-                const childrenDiv = row.querySelector(':scope > div[id^="children_"]');
-
-                if (childrenDiv && childrenDiv.style.display !== 'none') {
-
-                    getVisibleSelections(childrenDiv);
-
+                if (qty > 0) {
+                    const price = parseFloat(radio ? radio.getAttribute('data-price') : qtySpan.getAttribute('data-price')) || 0;
+                    const rawOTitle = radio ? radio.getAttribute('data-title') : qtySpan.getAttribute('data-title');
+                    const oTitle = filterTrailingEnglish(rawOTitle);
+                    
+                    extraPrice += (price * qty);
+                    const priceTag = price > 0 ? ` (+$${price})` : '';
+                    const optText = (qty > 1) ? `${oTitle}${priceTag} x${qty}` : `${oTitle}${priceTag}`;
+                    
+                    const thisPath = currentPrefix ? `${currentPrefix}:${optText}` : `${gTitle}:${optText}`;
+                    
+                    const childrenDiv = row.querySelector(':scope > div[id^="children_"]');
+                    let hasChildSelection = false;
+                    
+                    if (childrenDiv && childrenDiv.style.display !== 'none') {
+                        const childSelectedRows = childrenDiv.querySelectorAll('.cust-radio:checked, .cust-qty[data-qty]:not([data-qty="0"])');
+                        if (childSelectedRows.length > 0) {
+                            hasChildSelection = true;
+                            collectSelections(childrenDiv, thisPath);
+                        }
+                    }
+                    
+                    if (!hasChildSelection) {
+                        currentItem.selectedOptions.push(thisPath);
+                    }
                 }
-
-            }
-
+            });
         });
-
     };
 
-    
-
     const rootArea = document.getElementById('customizationsArea');
-
-    if (rootArea) getVisibleSelections(rootArea);
+    if (rootArea) collectSelections(rootArea);
 
     
 
@@ -6016,6 +6016,10 @@ const note = document.getElementById('modalNote').value.trim();
 
       fullNote = fullNote ? optStr + " | 備註：" + fullNote : optStr;
 
+    } else if (fullNote) {
+
+      fullNote = "備註：" + fullNote;
+
     }
 
     
@@ -6105,18 +6109,27 @@ const note = document.getElementById('modalNote').value.trim();
   // 解析文字
 
     function filterTrailingEnglish(str) {
-
-    if (!str) return str;
-
-    if (/[\u4e00-\u9fa5]/.test(str)) {
-
-        return str.replace(/\s*[a-zA-Z\s\-.,&()]+$/, '');
-
+        if (!str) return str;
+        let s = str.trim();
+        // 1. 若含有分隔線「|」，且包含中文，優先取前面的中文部分（例如 "配餐選擇 | Side Order" -> "配餐選擇"）
+        if (s.includes('|')) {
+            const parts = s.split('|');
+            if (/[\u4e00-\u9fa5]/.test(parts[0])) {
+                s = parts[0].trim();
+            } else {
+                for (const p of parts) {
+                    if (/[\u4e00-\u9fa5]/.test(p)) { s = p.trim(); break; }
+                }
+            }
+        }
+        // 2. 濾除純英文括號（如 (M)、(L)、(Hot)），但保留中文括號（如 (大)、(中)、(冰)、(1塊) 等）
+        s = s.replace(/\s*\([a-zA-Z\s]+\)$/, '').trim();
+        // 3. 濾除結尾的純英文字詞（例如 "加點 Add On" -> "加點"）
+        if (/[\u4e00-\u9fa5]/.test(s)) {
+            s = s.replace(/\s+[a-zA-Z\s\-.,&]+$/, '').trim();
+        }
+        return s;
     }
-
-    return str;
-
-  }
 
   function parseText(obj) {
 
@@ -8479,14 +8492,24 @@ async function fetchStoreSuggestions(q) {
             });
 
             
-            window.suggestionStores = stores;
-            window.suggestionStoreSource = 'search_v3';
-            window.suggestionStoreQuery = q;
-        const resultsEl = document.getElementById('results');
-        if (resultsEl) {
-            resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
-            // Status update is now handled inside generateStoreListHTML
-        }
+            const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
+            if (stores.length > 0) {
+                window.suggestionStores = stores;
+                window.suggestionStoreSource = 'search_v3';
+                window.suggestionStoreQuery = q;
+            } else if (hasFirstResults) {
+                // [保護機制] 第一次關鍵字搜尋有店家結果，但第二次 search_v3 沒結果時，保留第一次結果不覆蓋
+                stores = window.suggestionStores;
+            } else {
+                window.suggestionStores = [];
+                window.suggestionStoreSource = 'search_v3_empty';
+                window.suggestionStoreQuery = q;
+            }
+            const resultsEl = document.getElementById('results');
+            if (resultsEl) {
+                resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
+                // Status update is now handled inside generateStoreListHTML
+            }
 
         // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無全聯結果 (出現大全聯不算)，即時補搜全聯
         const vertCheck = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
