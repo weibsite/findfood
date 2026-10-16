@@ -2310,58 +2310,25 @@ function generateStoreListHTML(stores, q, currentVertical) {
 
         
 
-        let overlayHtml = '';
-
-        if (isClosed && !isBad) {
-
-            overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; letter-spacing:1px; z-index:2;">休息中可預約</div>`;
-
-        } else if (isBad) {
-
-            overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; letter-spacing:1px; z-index:2;">無法接單</div>`;
-
-        }
-
-        
-
-        // 解析 meta 標籤中的預約資訊
-
+        // 解析 meta 標籤中的預約資訊與營業倒數
         let metaText = '';
-
         if (s.meta && s.meta.length > 0) {
-
             const closedEta = s.meta.find(m => m.badgeType === 'CLOSED_ETA');
-
             const openEta = s.meta.find(m => m.badgeType === 'ETD');
-
             
-
             if (closedEta && closedEta.text) {
-
                 let txt = closedEta.text;
-
                 if (txt === 'Schedule ahead') {
-
                     metaText = '可預約';
-
                 } else if (txt.startsWith('Available in ') && txt.endsWith(' min')) {
-
                     const mins = txt.replace('Available in ', '').replace(' min', '');
-
                     metaText = `${mins}分鐘後營業 (可預約)`;
-
                 } else if (txt.startsWith('Available at ')) {
-
                     const time = txt.replace('Available at ', '');
-
                     metaText = `${time}營業 (可預約)`;
-
                 } else {
-
                     metaText = txt + ' (可預約)';
-
                 }
-
             } else if (openEta) {
                 if (openEta.accessibilityText && (openEta.accessibilityText.includes('Delivered in') || openEta.accessibilityText.includes('分鐘內送達'))) {
                     const match = openEta.accessibilityText.match(/(\d+)\s*(?:to|到)\s*(\d+)/);
@@ -2374,14 +2341,19 @@ function generateStoreListHTML(stores, q, currentVertical) {
                     metaText = openEta.text.replace('min', '分鐘');
                 }
             }
-
         }
 
-        
+        let overlayHtml = '';
+        if (isClosed && !isBad) {
+            const closedNotice = (metaText && metaText.includes('營業')) ? metaText : '休息中可預約';
+            overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:bold; letter-spacing:1px; z-index:2; text-align:center; padding:10px;">${escapeHTML(closedNotice)}</div>`;
+        } else if (isBad) {
+            overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; letter-spacing:1px; z-index:2;">無法接單</div>`;
+        }
 
         let etaBadgeHtml = '';
         if (metaText && !isClosed && !isBad) {
-            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.7); color:#fff; padding:4px 8px; border-radius:20px; font-size:12px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
+            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
         }
 
         let metaDisplay = `⭐ ${escapeHTML(rating)}`;
@@ -2744,7 +2716,7 @@ async function searchStores() {
       
       console.log('📡 [搜尋餐廳] 直送 Uber Payload:', JSON.stringify(uberSearchPayload, null, 2));
 
-      const res = await fetch(`${API_BASE_URL}/api/search_v3`, {
+      const res = await fetch(`${API_BASE_URL}/api/search_v4`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(searchPayload)
@@ -3036,7 +3008,7 @@ async function searchStoresPickup(q) {
             if (!etdText) {
                 etdText = '-$10優惠';
             }
-            distBadge = `<div style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.7); color:#fff; padding:4px 8px; border-radius:12px; font-size:12px; font-weight:bold; z-index:1;">${etdText}</div>`;
+            distBadge = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${etdText}</div>`;
 
             return `
             <div class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${storeUuid}', '${name.replace(/'/g, "\\'")}', '${actionUrl}')" style="position:relative;">
