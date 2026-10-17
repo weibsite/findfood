@@ -6518,7 +6518,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           
 
           const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : (!isSchedulable ? `此${tType}不支援預約點餐系統，無法為您代購。請選擇其他${tType}。` : `此${tType}無法使用折扣券，無法為您代購。請選擇其他${tType}。`);
+          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : (!isSchedulable ? `此${tType}不能使用折價券，無法為您代購。請選擇其他${tType}。` : `此${tType}無法使用折扣券，無法為您代購。請選擇其他${tType}。`);
 
           showModal('無法接單', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
 
