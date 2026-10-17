@@ -6119,6 +6119,39 @@ const note = document.getElementById('modalNote').value.trim();
 
 
 
+function isOpeningWithin30Minutes(badgeTime) {
+    if (!badgeTime) return false;
+    if (badgeTime.includes('分鐘') || badgeTime.includes('min')) return false;
+
+    const timeMatch = badgeTime.match(/(上午|下午)?\s*(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!timeMatch) return false;
+
+    const prefix = timeMatch[1] || '';
+    let hours = parseInt(timeMatch[2], 10);
+    const minutes = parseInt(timeMatch[3], 10);
+    const suffix = (timeMatch[4] || '').toUpperCase();
+
+    const isPM = prefix === '下午' || suffix === 'PM';
+    const isAM = prefix === '上午' || suffix === 'AM';
+
+    if (isPM && hours < 12) {
+        hours += 12;
+    } else if (isAM && hours === 12) {
+        hours = 0;
+    }
+
+    const now = new Date();
+    let target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+
+    // 若目標時間比當前早超過 15 分鐘，代表不是稍早的快取，而是明天的開店時間
+    if (target.getTime() < now.getTime() - 15 * 60 * 1000) {
+        target.setDate(target.getDate() + 1);
+    }
+
+    const diffMinutes = (target.getTime() - now.getTime()) / (60 * 1000);
+    return diffMinutes >= -15 && diffMinutes <= 30;
+}
+
 async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, diningMode = 'DELIVERY', badgeTime = '') {
     window.customizationRetries = {}; // Reset retries state on store entry
     
@@ -6143,8 +6176,10 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     const timeMatch = (badgeTime || '').match(/\b\d{1,2}:\d{2}\s*(?:AM|PM)?\b/i);
     const isClockTime = !!timeMatch && !badgeTime.includes('分鐘') && !badgeTime.includes('min');
     const displayTime = timeMatch ? timeMatch[0] : '';
+    const isWithin30Min = isOpeningWithin30Minutes(badgeTime);
 
-    if (!skipFetch && scheduleMode === 'ASAP' && isClockTime) {
+    // 若為當前 30 分鐘內即將營業的店家，不做攔截，直接自然進入店家
+    if (!skipFetch && scheduleMode === 'ASAP' && isClockTime && !isWithin30Min) {
         showModal(
             '店家目前尚未營業',
             `這家店家目前尚未營業，需要等到 ${displayTime} 才能送出訂單。`,
@@ -6377,9 +6412,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
       
-      // 針對「即時單」且為「生鮮雜貨」，放寬 isSchedulable 限制，使其行為如同舊版
+      // 針對「即時單」且為「生鮮雜貨」或「30分鐘內開店」，放寬 isSchedulable 限制，使其行為如同舊版
       let strictScheduleCheck = !isSchedulable;
-      if (isGrocery && typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
+      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && (isGrocery || isWithin30Min || d.isOpen)) {
           strictScheduleCheck = false;
       }
 
@@ -6458,10 +6493,15 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       
 
-      // 直接使用 Uber Eats 的官方狀態：isOpen 與 isOrderable
-      if (isClockTime) {
+      const isNextWindowWithin30 = availableWindows.length > 0 && ((availableWindows[0].startTimeSeconds - nowSec) <= 30 * 60);
+      const isWithin30 = isWithin30Min || isNextWindowWithin30;
+
+      // 判斷是否為「當下正在營業中」或「30分鐘內即將營業」
+      if (isClockTime && !isWithin30) {
           isCurrentlyOpen = false;
       } else if (d.isOpen === true && d.isOrderable === true) {
+          isCurrentlyOpen = true;
+      } else if (isWithin30) {
           isCurrentlyOpen = true;
       } else if (availableWindows.length > 0) {
           // 備用防呆：若最近的一個接單時間在未來 120 分鐘以內，也認定為現在有營業可以接即時單
@@ -6474,8 +6514,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       let schedNoticeHtml = '';
 
       if (scheduleMode === 'ASAP') {
-          // 如果客人選即時，但店還沒開 (包含右上標籤為開門時間 如 8:10AM，或是未營業)
-          if (!isCurrentlyOpen || isClockTime) {
+          // 如果客人選即時，但店還沒開且非30分鐘內即將營業 (包含右上標籤為開門時間 如 8:10AM，或是未營業)
+          if ((!isCurrentlyOpen || isClockTime) && !isWithin30) {
               const tType2 = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
               const targetTimeNotice = displayTime ? `預計 <b>${displayTime}</b> 開始營業` : `目前尚未營業`;
 
