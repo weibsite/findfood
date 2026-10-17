@@ -561,15 +561,15 @@
 
 
 
-  <div id="cartView" style="display:none; padding-bottom:100px; min-height:100vh; background:#fff; margin:0 -15px;">
+  <div id="cartView" style="display:none; padding-bottom:120px; min-height:100vh; background:#f7f8fa; margin:0 -15px; box-sizing:border-box;">
 
-    <div id="cartContent" style="padding: 15px 10px;"></div>
+    <div id="cartContent" style="padding: 12px 16px; box-sizing:border-box;"></div>
 
     
 
-    <div style="position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; padding: 15px; border-top: 1px solid #eee; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); box-sizing: border-box; z-index:100;">
+    <div style="position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; padding: 12px 16px; border-top: 1px solid #eee; box-shadow: 0 -2px 10px rgba(0,0,0,0.06); box-sizing: border-box; z-index:100;">
 
-      <button onclick="openCheckoutSummary()" style="background:#111; color:#fff; border:none; padding:15px; border-radius:8px; font-weight:bold; font-size:18px; width:100%;">確認訂單</button>
+      <button onclick="openCheckoutSummary()" style="background:#111; color:#fff; border:none; padding:15px; border-radius:12px; font-weight:bold; font-size:17px; width:100%; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.12);">確認訂單</button>
 
     </div>
 
@@ -3785,6 +3785,102 @@ let currentOriginalDeliveryFee = 0;
 
 
 
+  function formatCartNoteHTML(rawNote) {
+    if (!rawNote) return '';
+    let optionsText = '';
+    let remarkText = '';
+
+    if (rawNote.includes(' | 備註：')) {
+        const parts = rawNote.split(' | 備註：');
+        optionsText = parts[0];
+        remarkText = parts[1];
+    } else if (rawNote.startsWith('備註：')) {
+        remarkText = rawNote.substring(3);
+    } else {
+        optionsText = rawNote;
+    }
+
+    if (optionsText.startsWith('選項：')) {
+        optionsText = optionsText.substring(3);
+    }
+
+    const rawItems = optionsText ? optionsText.split(/,\s*/) : [];
+    const grouped = {};
+
+    rawItems.forEach(itemStr => {
+        let trimmed = itemStr.trim();
+        if (!trimmed) return;
+
+        const colonIdx = trimmed.indexOf(':');
+        if (colonIdx > 0) {
+            let cat = trimmed.substring(0, colonIdx).trim();
+            let val = trimmed.substring(colonIdx + 1).trim();
+
+            // 濾除無效或預設未選取的加購文字
+            if (/^(無需加價購|無需加購|不需加購|不加購|不要加購|無需|不需要|無)$/i.test(val)) {
+                return;
+            }
+
+            // 精簡分類標籤
+            cat = cat.replace(/^(請選擇|選擇|是否再|是否|請選)/, '').replace(/產品$/, '');
+
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(val);
+        } else {
+            if (/^(無需加價購|無需加購|不需加購|不加購|不要加購|無需|不需要|無)$/i.test(trimmed)) {
+                return;
+            }
+            if (!grouped['其他']) grouped['其他'] = [];
+            grouped['其他'].push(trimmed);
+        }
+    });
+
+    const rows = [];
+    Object.keys(grouped).forEach(cat => {
+        const vals = grouped[cat];
+        const formattedVals = vals.map(v => {
+            let s = escapeHTML(v);
+            if (s.includes(':')) {
+                const subParts = s.split(':').map(sp => sp.trim());
+                s = subParts[0] + ' <span style="color:#aaa; margin:0 3px;">·</span> <span style="color:#666;">' + subParts.slice(1).join(' · ') + '</span>';
+            }
+            // 標註加價金額 (+$XX)
+            s = s.replace(/\(\+\$(\d+)\)/g, (match, p1) => `<span style="color:#f43f5e; font-weight:700; font-size:12px; margin-left:3px;">+$${p1}</span>`);
+            // 軟化長備註/部位不更換等免責說明
+            s = s.replace(/(\([^)]*(恕不指定|更換|部位)[^)]*\))/g, `<span style="color:#999; font-size:11px; display:inline-block; margin-left:2px;">$1</span>`);
+            return s;
+        });
+
+        const label = cat === '其他' ? '' : `<span style="color:#888; font-size:12px; font-weight:600; min-width:38px; margin-right:8px; flex-shrink:0;">${escapeHTML(cat)}</span>`;
+        rows.push(`
+            <div style="display:flex; align-items:baseline; margin-bottom:5px; font-size:13px; line-height:1.45;">
+                ${label}
+                <div style="flex:1; color:#333; word-break:break-word;">
+                    ${formattedVals.join('、')}
+                </div>
+            </div>
+        `);
+    });
+
+    let remarkHtml = '';
+    if (remarkText) {
+        remarkHtml = `
+            <div style="margin-top:6px; padding-top:6px; border-top:1px dashed #eee; font-size:12px; color:#555; display:flex; align-items:center; gap:4px;">
+                <span>📝</span><span style="font-weight:600; color:#333;">備註：</span>${escapeHTML(remarkText)}
+            </div>
+        `;
+    }
+
+    if (rows.length === 0 && !remarkHtml) return '';
+
+    return `
+        <div style="background:#f8f9fa; border-radius:10px; padding:10px 12px; margin:8px 0; border:1px solid #f0f0f0;">
+            ${rows.join('')}
+            ${remarkHtml}
+        </div>
+    `;
+  }
+
   function viewCart() {
   if (typeof closeQueryOverlay === 'function') {
       closeQueryOverlay();
@@ -3794,129 +3890,96 @@ let currentOriginalDeliveryFee = 0;
   }
 
   if (cart.length === 0) {
-
     alert('購物車是空的');
-
     return;
-
   }
 
-  
-
   let html = '';
-
   let total = 0;
-
-  
+  let totalItemsCount = 0;
 
   const storeGroups = {};
-
   cart.forEach(item => {
-
     const sName = item.storeName || '未命名餐廳';
-
     if (!storeGroups[sName]) storeGroups[sName] = [];
-
     storeGroups[sName].push(item);
-
   });
-
-
 
   Object.keys(storeGroups).forEach(sName => {
-
-    html += `<div style="font-size:18px; font-weight:bold; margin-top:15px; margin-bottom:10px;">${escapeHTML(sName)}</div>`;
-
-    
+    html += `
+      <div style="display:flex; align-items:center; gap:8px; margin: 15px 0 12px 0;">
+        <span style="font-size:20px;">🏪</span>
+        <div style="font-size:18px; font-weight:800; color:#111; letter-spacing:-0.2px;">${escapeHTML(sName)}</div>
+      </div>
+    `;
 
     storeGroups[sName].forEach((item) => {
-
       const idx = cart.indexOf(item);
-
       const lineTotal = item.price * item.qty;
-
       total += lineTotal;
+      totalItemsCount += item.qty;
 
-      
+      const formattedNoteHtml = formatCartNoteHTML(item.note);
 
       html += `
-
-      <div style="border-bottom: 1px solid #eee; padding: 15px 0;">
-
-        <div style="display:flex; justify-content:space-between; margin-bottom: 10px;">
-
-          <div style="font-weight:bold; font-size:16px;">${escapeHTML(item.title)}</div>
-
-          <div style="font-weight:bold; font-size:16px;">$${lineTotal}</div>
-
-        </div>
-
-        ${item.note ? `<div style="font-size:13px; color:#666; margin-bottom:10px;">${escapeHTML(item.note)}</div>` : ''}
-
-        
-
-        <div style="text-align: right;">
-
-          <div style="background: #f5f5f5; border-radius: 30px; display:inline-flex; align-items:center; height:40px;">
-
-            <div onclick="updateCartItemQty(${idx}, -1)" style="width: 40px; height: 100%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size: 16px; font-weight:bold; color: #111;">${item.qty === 1 ? '🗑️' : '－'}</div>
-
-            <div style="width: 40px; text-align:center; font-size: 16px; font-weight:bold; color: #111;">${item.qty}</div>
-
-            <div onclick="updateCartItemQty(${idx}, 1)" style="width: 40px; height: 100%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size: 18px; font-weight:bold; color: #111;">＋</div>
-
+      <div style="background:#fff; border-radius:14px; padding:15px; margin-bottom:12px; border:1px solid #ebebeb; box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+          <div style="flex:1; padding-right:12px;">
+            <div style="font-weight:700; font-size:16px; color:#111; line-height:1.35;">${escapeHTML(item.title)}</div>
+            ${item.qty > 1 ? `<div style="font-size:12px; color:#888; margin-top:2px;">單價 $${item.price}</div>` : ''}
           </div>
-
+          <div style="text-align:right;">
+            <div style="font-weight:800; font-size:17px; color:#111;">$${lineTotal.toLocaleString()}</div>
+          </div>
         </div>
 
+        ${formattedNoteHtml}
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px dashed #f0f0f0;">
+          <div style="font-size:13px; color:#888; font-weight:500;">
+            ${item.qty} 份餐點
+          </div>
+          <div style="background:#f4f5f7; border-radius:24px; display:inline-flex; align-items:center; height:34px; padding:2px 4px; box-shadow:inset 0 1px 2px rgba(0,0,0,0.04);">
+            <div onclick="updateCartItemQty(${idx}, -1)" style="width:32px; height:30px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:bold; color:#333; box-shadow:0 1px 3px rgba(0,0,0,0.1); user-select:none;">${item.qty === 1 ? '🗑️' : '－'}</div>
+            <div style="min-width:32px; text-align:center; font-size:15px; font-weight:700; color:#111;">${item.qty}</div>
+            <div onclick="updateCartItemQty(${idx}, 1)" style="width:32px; height:30px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px; font-weight:bold; color:#333; box-shadow:0 1px 3px rgba(0,0,0,0.1); user-select:none;">＋</div>
+          </div>
+        </div>
       </div>
-
       `;
-
     });
-
   });
 
-  
-
-  html += `<div style="margin-top: 20px; text-align:right; font-size:20px; font-weight:bold;">小計: $${total}</div>`;
-
-  
+  html += `
+    <div style="background:#fff; border-radius:14px; padding:16px; border:1px solid #ebebeb; margin-top:16px; box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+      <div style="display:flex; justify-content:space-between; color:#666; font-size:14px; margin-bottom:8px;">
+        <span>品項數量</span>
+        <span style="font-weight:600; color:#333;">${totalItemsCount} 份</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed #eee; padding-top:12px;">
+        <span style="font-size:15px; font-weight:700; color:#333;">小計</span>
+        <span style="font-size:22px; font-weight:900; color:#f43f5e; letter-spacing:-0.5px;">$${total.toLocaleString()}</span>
+      </div>
+    </div>
+  `;
 
   document.getElementById('cartContent').innerHTML = html;
 
-  
-
   document.getElementById('homeView').style.display = 'none';
-
   document.getElementById('storeView').style.display = 'none';
-
   document.getElementById('listView').style.display = 'none';
-
   document.getElementById('checkoutView').style.display = 'none';
-
   document.getElementById('cartView').style.display = 'block';
 
-  
-
   if (!originalAppHeaderHtml) originalAppHeaderHtml = document.querySelector('.app-header').innerHTML;
-
   document.querySelector('.app-header').innerHTML = `
-
-    <button onclick="goBackToStore()" style="background:transparent; border:none; font-size:24px; font-weight:bold; cursor:pointer; padding:0; display:flex; align-items:center; gap:10px; color:#111;">← <span style="font-size:20px;">購物車</span></button>
-
-    <button onclick="goBackToStore()" style="background:#f5f5f5; color:#111; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:14px;">新增商品</button>
-
+    <button onclick="goBackToStore()" style="background:transparent; border:none; font-size:20px; font-weight:bold; cursor:pointer; padding:0; display:flex; align-items:center; gap:8px; color:#111;">← <span style="font-size:18px;">購物車</span></button>
+    <button onclick="goBackToStore()" style="background:#f5f5f5; color:#111; border:none; padding:7px 14px; border-radius:20px; font-weight:600; font-size:13px; cursor:pointer;">新增商品</button>
   `;
-
   document.querySelector('.app-header').style.display = 'flex';
 
-
-
   if (document.getElementById('floatingCartBtn')) document.getElementById('floatingCartBtn').style.display = 'none';
-
   window.scrollTo(0, 0);
-
 }
 
 
@@ -4184,10 +4247,8 @@ function openCheckoutSummary() {
 
         </div>
 
-        <div id="summary-detail-${idx}" style="display:none; margin-top:4px; padding-left: 25px; font-size:13px; color:#666;">
-
-          ${item.note ? escapeHTML(item.note).replace(/\n/g, '<br>') : '無'}
-
+        <div id="summary-detail-${idx}" style="display:none; margin-top:6px; font-size:13px; color:#666;">
+          ${item.note ? formatCartNoteHTML(item.note) : '<div style="color:#999; padding-left:10px;">無額外選項</div>'}
         </div>
 
       </div>
@@ -4202,7 +4263,7 @@ function openCheckoutSummary() {
 
       <div style="margin-top:15px; padding-top:10px; border-top:1px solid #eee;">
 
-        <strong>餐點訂單備註:</strong>
+        <strong>餐點訂單備註:</strong><span style="font-size:12px; color:#666; font-weight:normal; margin-left:4px;">(會加在每個餐點備註上)</span>
 
         <input type="text" id="checkoutFoodNotes" value="${escapeHTML(oldFoodNotes)}" placeholder="例如: 全部不要加蔥..." style="width:100%; padding:8px; margin-top:4px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
 
@@ -5279,6 +5340,30 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
   finalNote = `[${selectedMethodVal}]` + (finalNote ? ' ' + finalNote : '');
 
   msgText += `\n\n📝 外送備註: ${finalNote}`;
+
+  let cleanPhone = phoneVal.replace(/[\s\-]/g, '');
+  if (cleanPhone.startsWith('+886')) cleanPhone = '0' + cleanPhone.slice(4);
+
+  let isSuspiciousPhone = false;
+  if (!cleanPhone || /[^\d]/.test(cleanPhone)) {
+      isSuspiciousPhone = true;
+  } else if (cleanPhone.startsWith('094') || cleanPhone.startsWith('099')) {
+      isSuspiciousPhone = true;
+  } else if (cleanPhone.startsWith('09') && cleanPhone.length < 10) {
+      isSuspiciousPhone = true;
+  } else if (cleanPhone.startsWith('0')) {
+      if (cleanPhone.length <= 8 || cleanPhone.length >= 11) {
+          isSuspiciousPhone = true;
+      }
+  } else {
+      if (cleanPhone.length <= 5 || cleanPhone.length >= 9) {
+          isSuspiciousPhone = true;
+      }
+  }
+
+  if (isSuspiciousPhone) {
+      msgText = `⚠️ 警告疑似資料亂填\n` + msgText;
+  }
 
 
 
@@ -7882,13 +7967,47 @@ window.renderSplitTab = function(plan) {
     let itemStrs = [];
     for (let key in counts) itemStrs.push(counts[key] > 1 ? `${key} x${counts[key]}` : key);
     
+    let binFood = bin.sum;
+    let binPromo = (bin.sum >= 300 ? 150 : Math.floor(bin.sum / 2));
+    let binFee = 50;
+    
+    let bsg = {};
+    bin.items.forEach(i => {
+        let sn = i.storeName || '';
+        if (!bsg[sn]) bsg[sn] = [];
+        bsg[sn].push(i);
+    });
+    let binExcess = 0;
+    Object.keys(bsg).forEach(s => {
+        binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee || 0));
+    });
+
+    const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
+    const binPickupDisc = isDiscount ? 10 : 0;
+    
+    let binPreorder = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? (window.isGroceryStore ? 15 : 10) : 0;
+    
+    let binTotal = binFood - binPromo + binFee + binExcess - binPickupDisc - binPreorder;
+    
     let titleText = '結帳明細 ($300內5折)';
     let html = `
         <div style="font-weight:bold; color:${color}; margin-bottom:2px;">${titleText}</div>
-        <div style="font-size:12px; color:#d32f2f; font-weight:bold; margin-bottom:10px;">✨ 拆單省 $${savings}</div>
-        <div style="font-weight:bold; color:#333; margin-bottom:4px; font-size:13px;">第 ${currentIndex + 1} 單 / 共 ${bins.length} 單</div>
-        <div style="color:#d32f2f; font-weight:bold; font-size:13px; margin-bottom:4px;">小計: $${bin.sum}</div>
-        <div style="font-size:12px; color:#666; word-break:break-all; text-align:center; display:inline-block; max-height:80px; overflow-y:auto;">- ${itemStrs.join('<br>- ')}</div>
+        <div style="margin-bottom:6px; color:#666; font-size:12px; font-weight:bold;">第 ${currentIndex + 1} 單 / 共 ${bins.length} 單</div>
+        <table style="margin: 0 auto; color: #666; font-size: 13px; border-collapse: collapse; text-align: left;">
+            <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">小計:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${binFood}</td></tr>
+            <tr><td style="text-align:right; padding:1px 4px 1px 0; color:${color}; white-space:nowrap;">優惠折抵:</td><td style="padding:1px 0 1px 4px; color:${color}; white-space:nowrap;">-$${binPromo}</td></tr>
+            <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">代訂費:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${binFee}</td></tr>
+            <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">外送加成:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${binExcess}</td></tr>
+            <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">服務費:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$0</td></tr>
+            ${binPickupDisc > 0 ? `<tr><td style="text-align:right; padding:1px 4px 1px 0; color:${color}; white-space:nowrap;">優惠專區:</td><td style="padding:1px 0 1px 4px; color:${color}; white-space:nowrap;">-$${binPickupDisc}</td></tr>` : ''}
+            ${binPreorder > 0 ? `<tr><td style="text-align:right; padding:1px 4px 1px 0; color:${color}; white-space:nowrap;">預定折扣:</td><td style="padding:1px 0 1px 4px; color:${color}; white-space:nowrap;">-$${binPreorder}</td></tr>` : ''}
+        </table>
+        <div style="font-weight:bold; font-size:15px; margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">
+            本單總計: <span style="color:#d32f2f; font-size:18px;">$${binTotal}</span>
+        </div>
+        <div style="font-size:12px; color:#777; margin-top:4px; margin-bottom:6px; word-break:break-all; text-align:center; max-height:36px; overflow-y:auto; line-height:1.4;">
+            包含餐點: ${itemStrs.join(', ')}
+        </div>
     `;
     container.innerHTML = html;
 };
