@@ -3631,8 +3631,8 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             menuItemUuid: menuItemUuid,
 
-            storeDeliveryFee: typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0,
-      originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
+            storeDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
+      originalStoreDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0))
 
           });
 
@@ -4296,7 +4296,10 @@ origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">代訂費
 let aTotalExcess = (function(){
     let te = 0; const sg = {};
     cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-    Object.keys(sg).forEach(s => te += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0)));
+    Object.keys(sg).forEach(s => {
+        if (s && s.includes('麥當勞')) return;
+        te += Math.max(0, ...sg[s].map(it => (it.storeName && it.storeName.includes('麥當勞')) ? 0 : (it.storeDeliveryFee||0)));
+    });
     return te;
 })();
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">外送加成:</td><td style="padding:2px 0 2px 4px;">$${aTotalExcess}</td></tr>`;
@@ -4315,9 +4318,15 @@ origTable += (function(){
     let totalExcess = 0;
     const sg = {};
     cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-    Object.keys(sg).forEach(s => totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0)));
+    Object.keys(sg).forEach(s => {
+        if (s && s.includes('麥當勞')) return;
+        totalExcess += Math.max(0, ...sg[s].map(it => (it.storeName && it.storeName.includes('麥當勞')) ? 0 : (it.storeDeliveryFee||0)));
+    });
     let totalOrigExcess = 0;
-    Object.keys(sg).forEach(s => totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0)))));
+    Object.keys(sg).forEach(s => {
+        if (s && s.includes('麥當勞')) return;
+        totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0))));
+    });
 
     const pd = total >= 300 ? 150 : Math.floor(total/2);
     const pr = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? 10 : 0;
@@ -4333,13 +4342,17 @@ if (costRes && costRes.shouldSplit) {
         splitFood += bin.sum;
         splitPromo += (bin.sum >= 300 ? 150 : Math.floor(bin.sum / 2));
         let bsg = {}; bin.items.forEach(i => { if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[]; bsg[i.storeName||''].push(i); });
-        let binEx = 0; Object.keys(bsg).forEach(s => binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0)));
+        let binEx = 0;
+        Object.keys(bsg).forEach(s => {
+            if (s && s.includes('麥當勞')) return;
+            binEx += Math.max(0, ...bsg[s].map(it => (it.storeName && it.storeName.includes('麥當勞')) ? 0 : (it.storeDeliveryFee||0)));
+        });
         splitExcess += binEx;
         let pr = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? (window.isGroceryStore ? 15 : 10) : 0;
         splitPreorder += pr;
     });
 
-    let originalBaseStr = total + visualSvcFee + (function(){ let te = 0; const ssg = {}; cart.forEach(it => { if(!ssg[it.storeName||'']) ssg[it.storeName||'']=[]; ssg[it.storeName||''].push(it); }); Object.keys(ssg).forEach(s => te += Math.max(0, ...ssg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0))))); return te; })();
+    let originalBaseStr = total + visualSvcFee + (function(){ let te = 0; const ssg = {}; cart.forEach(it => { if(!ssg[it.storeName||'']) ssg[it.storeName||'']=[]; ssg[it.storeName||''].push(it); }); Object.keys(ssg).forEach(s => { if (s && s.includes('麥當勞')) return; te += Math.max(0, ...ssg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0)))); }); return te; })();
 
     let sumTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($300內5折)</div>`;
     sumTable += `<div style="margin-bottom:8px; color:#666; font-size:12px; font-weight:bold;">(共拆成 ${costRes.bins.length} 單)</div>`;
@@ -5141,9 +5154,8 @@ costRes.bins.forEach((bin, bIdx) => {
           let binExcess = 0;
 
           Object.keys(binStores).forEach(sName => {
-
-            binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => item.storeDeliveryFee || 0));
-
+            if (sName && sName.includes('麥當勞')) return;
+            binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => (item.storeName && item.storeName.includes('麥當勞')) ? 0 : (item.storeDeliveryFee || 0)));
           });
 
 
@@ -5232,15 +5244,13 @@ costRes.bins.forEach((bin, bIdx) => {
 
           let maxDeliveryFeeForStore = 0;
 
-          items.forEach(it => {
-
-              if (it.storeDeliveryFee && it.storeDeliveryFee > maxDeliveryFeeForStore) {
-
-                  maxDeliveryFeeForStore = it.storeDeliveryFee;
-
-              }
-
-          });
+          if (!sName || !sName.includes('麥當勞')) {
+              items.forEach(it => {
+                  if (it.storeDeliveryFee && it.storeDeliveryFee > maxDeliveryFeeForStore) {
+                      maxDeliveryFeeForStore = it.storeDeliveryFee;
+                  }
+              });
+          }
 
           totalExcessDeliveryFee += maxDeliveryFeeForStore;
 
@@ -6088,8 +6098,8 @@ const note = document.getElementById('modalNote').value.trim();
 
       note: fullNote,
 
-      storeDeliveryFee: typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0,
-      originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
+      storeDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
+      originalStoreDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0))
 
     });
 
@@ -6926,7 +6936,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       let fareHtml = '<div id="storeFareArea" style="text-align: center; color: #999; font-size: 13px; margin-bottom: 10px;">運費查詢中...</div>';
 
-      if (d.fareBadge && d.fareBadge.text) {
+      const isMcdonalds = (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ||
+                          (d && d.title && d.title.includes('麥當勞')) ||
+                          (typeof storeName !== 'undefined' && storeName && storeName.includes('麥當勞'));
+
+      if (isMcdonalds) {
+          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費</div>`;
+      } else if (d.fareBadge && d.fareBadge.text) {
 
           const fareText = d.fareBadge.text;
 
@@ -7300,6 +7317,40 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
       // === Background fetch v1 for delivery fee ===
       (async () => {
           try {
+              // 麥當勞特別處理：外送加成費一律為 0，運費直接顯示免運費，略過向伺服器查詢運費
+              const isMcdonalds = (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ||
+                                  (d && d.title && d.title.includes('麥當勞')) ||
+                                  (typeof storeName !== 'undefined' && storeName && storeName.includes('麥當勞'));
+              if (isMcdonalds) {
+                  currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+                  const fareArea = document.getElementById('storeFareArea');
+                  if (fareArea) {
+                      fareArea.innerHTML = '免運費 🎉';
+                      fareArea.style.color = '#d32f2f';
+                      fareArea.style.fontWeight = 'bold';
+                      fareArea.style.fontSize = '14px';
+                  }
+                  /*
+                  // ==========================================
+                  // 備註保留：麥當勞背景運費查詢程式（留給以後需要再打開）
+                  const feePayload = { storeUuid: uuid, lat: currentLat, lng: currentLng };
+                  if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+                      const timeSelect = document.getElementById('scheduleTime');
+                      if (timeSelect && timeSelect.value) {
+                          try {
+                              const sData = JSON.parse(timeSelect.value);
+                              feePayload.diningMode = 'DELIVERY';
+                              feePayload.time = { scheduled: true, date: sData.date, startTime: sData.startTime, startTimeMs: getSelectedScheduleTimestamp(), endTime: sData.endTime, deliveryType: 'ASAP' };
+                          } catch(e) {}
+                      }
+                  }
+                  const feeRes = await fetch(`${API_BASE_URL}/api/store`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(feePayload) });
+                  const feeJson = await feeRes.json();
+                  // ==========================================
+                  */
+                  return;
+              }
+
               const feePayload = {
                   storeUuid: uuid,
                   lat: currentLat,
@@ -7611,9 +7662,10 @@ if (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
 
   const sg = {};
 
-  items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-
-  Object.keys(sg).forEach(s => totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0)));
+  Object.keys(sg).forEach(s => {
+      if (s && s.includes('麥當勞')) return;
+      totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => (it.storeName && it.storeName.includes('麥當勞')) ? 0 : (it.storeDeliveryFee||0)));
+  });
 
   
   let pickupDisc = localStorage.getItem('uberCartIsDiscount') === 'true' ? 10 : 0;
@@ -7776,7 +7828,10 @@ if (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
 
         });
 
-        Object.keys(bsg).forEach(s => binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0)));
+        Object.keys(bsg).forEach(s => {
+            if (s && s.includes('麥當勞')) return;
+            binExcess += Math.max(0, ...bsg[s].map(it => (it.storeName && it.storeName.includes('麥當勞')) ? 0 : (it.storeDeliveryFee||0)));
+        });
 
         
 
@@ -7979,7 +8034,8 @@ window.renderSplitTab = function(plan) {
     });
     let binExcess = 0;
     Object.keys(bsg).forEach(s => {
-        binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee || 0));
+        if (s && s.includes('麥當勞')) return;
+        binExcess += Math.max(0, ...bsg[s].map(it => (it.storeName && it.storeName.includes('麥當勞')) ? 0 : (it.storeDeliveryFee || 0)));
     });
 
     const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
