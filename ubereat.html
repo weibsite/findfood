@@ -2368,9 +2368,10 @@ function generateStoreListHTML(stores, q, currentVertical) {
 
         
 
-        return `
+          const safeMetaText = (metaText || '').replace(/'/g, "\\'");
+          return `
 
-          <div id="card_${s.storeUuid}" class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'false'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}')">
+          <div id="card_${s.storeUuid}" class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'false'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'DELIVERY', '${safeMetaText}')">
 
             <div class="card-img" style="position:relative; overflow:hidden; ${style}">
 
@@ -2586,9 +2587,11 @@ async function searchStores() {
 
     currentView = 'list';
 
-    document.getElementById('mainBackBtn').style.visibility = 'visible';
+    const mbBtn = document.getElementById('mainBackBtn') || document.getElementById('heroBackBtn');
+    if (mbBtn) mbBtn.style.visibility = 'visible';
 
-    document.getElementById('storeSearchBtn').style.display = 'block';
+    const ssBtn = document.getElementById('storeSearchBtn');
+    if (ssBtn) ssBtn.style.display = 'block';
 
     document.getElementById('homeView').style.display = 'none';
 
@@ -3010,8 +3013,9 @@ async function searchStoresPickup(q) {
             }
             distBadge = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${etdText}</div>`;
 
+            const safeEtdText = (etdText || '').replace(/'/g, "\\'");
             return `
-            <div class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${storeUuid}', '${name.replace(/'/g, "\\'")}', '${actionUrl}')" style="position:relative;">
+            <div class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${storeUuid}', '${name.replace(/'/g, "\\'")}', '${actionUrl}', false, 'PICKUP', '${safeEtdText}')" style="position:relative;">
                 ${distBadge}
                 <div class="card-img" style="background-image: url('${imgUrl}');"></div>
                 <div class="card-body">
@@ -3094,43 +3098,31 @@ function toggleStoreSearch() {
 
     
 
-    mainBackBtn.setAttribute('onclick', 'toggleStoreSearch()');
-
-    mainBackBtn.style.visibility = 'visible';
-
-    
+    if (mainBackBtn) {
+      mainBackBtn.setAttribute('onclick', 'toggleStoreSearch()');
+      mainBackBtn.style.visibility = 'visible';
+    }
 
     searchBtn.setAttribute('onclick', 'executeHeaderSearch()');
 
-    
-
     input.value = '';
-
     results.innerHTML = '';
 
-    
-
     if (currentView === 'list') {
-
         handleStoreSearch();
         input.focus();
     }
-
   } else {
-
     title.style.display = 'block';
-
     box.style.display = 'none';
-
     overlay.style.display = 'none';
     const mobileInput2 = document.getElementById('storeSearchInputMobile');
     if (mobileInput2) mobileInput2.value = '';
 
-    
-
-    mainBackBtn.setAttribute('onclick', 'handleMainBack()');
-
-    if (currentView === 'home') mainBackBtn.style.visibility = 'hidden';
+    if (mainBackBtn) {
+      mainBackBtn.setAttribute('onclick', 'handleMainBack()');
+      if (currentView === 'home') mainBackBtn.style.visibility = 'hidden';
+    }
 
     
 
@@ -6047,7 +6039,8 @@ const note = document.getElementById('modalNote').value.trim();
 
     currentView = 'home';
 
-    document.getElementById('mainBackBtn').style.visibility = 'hidden';
+    const mbBtn1 = document.getElementById('mainBackBtn') || document.getElementById('heroBackBtn');
+    if (mbBtn1) mbBtn1.style.visibility = 'hidden';
 
     document.getElementById('storeSearchBtn').style.display = 'none';
 
@@ -6074,7 +6067,8 @@ const note = document.getElementById('modalNote').value.trim();
 
     currentView = 'list';
 
-    document.getElementById('mainBackBtn').style.visibility = 'visible';
+    const mbBtn2 = document.getElementById('mainBackBtn') || document.getElementById('heroBackBtn');
+    if (mbBtn2) mbBtn2.style.visibility = 'visible';
 
     document.getElementById('storeView').style.display = 'none';
 
@@ -6125,7 +6119,7 @@ const note = document.getElementById('modalNote').value.trim();
 
 
 
-async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, diningMode = 'DELIVERY') {
+async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, diningMode = 'DELIVERY', badgeTime = '') {
     window.customizationRetries = {}; // Reset retries state on store entry
     
     // [全聯特規] 當點選任何「全聯」店家時 (排除「大全聯」)，若目前為預約模式，自動靜默切換為即時模式完成訂單
@@ -6137,6 +6131,30 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         } else {
             scheduleMode = 'ASAP';
         }
+    }
+
+    if (!badgeTime && uuid) {
+        const cardEl = document.getElementById(`card_${uuid}`);
+        if (cardEl) {
+            const bEl = cardEl.querySelector('.card-img div[style*="position:absolute"]') || cardEl.querySelector('div[style*="position:absolute"]');
+            if (bEl) badgeTime = bEl.innerText.trim();
+        }
+    }
+    const timeMatch = (badgeTime || '').match(/\b\d{1,2}:\d{2}\s*(?:AM|PM)?\b/i);
+    const isClockTime = !!timeMatch && !badgeTime.includes('分鐘') && !badgeTime.includes('min');
+    const displayTime = timeMatch ? timeMatch[0] : '';
+
+    if (!skipFetch && scheduleMode === 'ASAP' && isClockTime) {
+        showModal(
+            '店家目前尚未營業',
+            `這家店家目前尚未營業，需要等到 ${displayTime} 才能送出訂單。`,
+            true,
+            `<div style="text-align:center; padding:15px 0 5px 0;">
+                <div class="spinner" style="width:45px !important; height:45px !important; margin:0 auto 10px auto;"></div>
+                <div style="font-size:14px; color:#666; font-weight:bold;">正在查詢菜單與可預約時段...</div>
+             </div>`,
+            true
+        );
     }
 
     if (cart.length > 0 && storeName && cart[0].storeName && cart[0].storeName !== storeName) {
@@ -6186,7 +6204,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     document.getElementById('storeView').style.display = 'none';
     document.getElementById('listView').style.display = 'block';
     currentView = 'list';
-    document.getElementById('mainBackBtn').style.visibility = 'visible';
+    const mbBtn = document.getElementById('mainBackBtn') || document.getElementById('heroBackBtn');
+    if (mbBtn) mbBtn.style.visibility = 'visible';
 
     
 
@@ -6440,40 +6459,90 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       
 
       // 直接使用 Uber Eats 的官方狀態：isOpen 與 isOrderable
-
-      if (d.isOpen === true && d.isOrderable === true) {
-
+      if (isClockTime) {
+          isCurrentlyOpen = false;
+      } else if (d.isOpen === true && d.isOrderable === true) {
           isCurrentlyOpen = true;
-
       } else if (availableWindows.length > 0) {
-
           // 備用防呆：若最近的一個接單時間在未來 120 分鐘以內，也認定為現在有營業可以接即時單
-
           if (availableWindows[0].startTimeSeconds - nowSec <= 120 * 60) {
-
               isCurrentlyOpen = true;
-
           }
-
       }
 
-
+      let showSchedModalAfterRender = false;
+      let schedNoticeHtml = '';
 
       if (scheduleMode === 'ASAP') {
-
-          // 如果客人選即時，但店根本沒開
-
-          if (!isCurrentlyOpen) {
-
+          // 如果客人選即時，但店還沒開 (包含右上標籤為開門時間 如 8:10AM，或是未營業)
+          if (!isCurrentlyOpen || isClockTime) {
               const tType2 = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-              showModal('無法接單', `此${tType2}目前休息中，無法接收即時單。請選擇預約時段，或其他營業中的${tType2}。`, true, '', true);
+              const targetTimeNotice = displayTime ? `預計 <b>${displayTime}</b> 開始營業` : `目前尚未營業`;
 
-              resultsDiv.innerHTML = oldHtml;
+              // 看這家店是不是能預約
+              if (availableWindows.length > 0) {
+                  // 關閉等待彈窗，準備進行轉場進入餐廳
+                  document.getElementById('errorModalOverlay').style.display = 'none';
+                  showSchedModalAfterRender = true;
 
-              return;
+                  // 組合預約時段選單
+                  const safeName = storeName ? storeName.replace(/'/g, "%27") : '';
+                  const safeAction = actionUrl ? actionUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
+                  let btnsHtml = '';
+                  const top5 = availableWindows.slice(0, 5);
+                  top5.forEach(tw => {
+                      const sd = new Date(tw.startTimeSeconds * 1000);
+                      const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
+                      const formatT = (dt) => {
+                          const h = dt.getHours();
+                          const m = String(dt.getMinutes()).padStart(2, '0');
+                          const ampm = h >= 12 ? '下午' : '上午';
+                          const h12 = h % 12 || 12;
+                          return `${getTimeEmoji(h)} ${ampm} ${h12}:${m}`;
+                      };
 
+                      const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
+                      const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
+                      const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
+                      let str;
+                      if (sAmpm === eAmpm) {
+                        const sH12 = sd.getHours() % 12 || 12;
+                        const eH12 = ed.getHours() % 12 || 12;
+                        const sMM = String(sd.getMinutes()).padStart(2, '0');
+                        const eMM = String(ed.getMinutes()).padStart(2, '0');
+                        str = `${dayStr} ${getTimeEmoji(sd.getHours())} ${sAmpm} ${sH12}:${sMM}-${eH12}:${eMM}`;
+                      } else {
+                        str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
+                      }
+                      if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
+                          if (window.isGroceryStore) {
+                              str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
+                          } else {
+                              str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
+                          }
+                      }
+                      btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:10px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
+                  });
+
+                  schedNoticeHtml = `
+                      <div style="text-align:center; font-size:15px; margin-bottom:12px; line-height:1.6; color:#333;">
+                          此${tType2}${targetTimeNotice}，目前無法接收即時訂單。<br>
+                          <span style="color:#f43f5e; font-weight:bold;">但您可以預約未來的時段訂餐：</span>
+                      </div>
+                      <div style="max-height:220px; overflow-y:auto; padding:2px;">
+                          ${btnsHtml}
+                      </div>
+                      <button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">先瀏覽菜單</button>
+                  `;
+                  // 繼續向下執行，讓 openStore 自然完成畫面轉場切換與菜單渲染
+              } else {
+                  // 無法預約
+                  const waitNotice = displayTime ? `需要等到 <b>${displayTime}</b> 才能送出訂單` : `無法接收即時訂單`;
+                  showModal('無法接單', `此${tType2}目前尚未營業，且未提供預約時段，${waitNotice}。`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
+                  resultsDiv.innerHTML = oldHtml;
+                  return;
+              }
           }
-
       } else if (scheduleMode === 'SCHEDULE') {
 
         const selectedSchedule = document.getElementById('scheduleTime');
@@ -6641,7 +6710,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       currentView = 'store';
 
-      document.getElementById('mainBackBtn').style.visibility = 'visible';
+      const mbBtnStore = document.getElementById('mainBackBtn') || document.getElementById('heroBackBtn');
+      if (mbBtnStore) mbBtnStore.style.visibility = 'visible';
 
       document.getElementById('listView').style.display = 'none';
 
@@ -7198,7 +7268,10 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
 
 updateCartBadge();
 window.scrollTo(0, 0);
-if (window.isGroceryStore) {
+
+if (showSchedModalAfterRender && schedNoticeHtml) {
+    showModal('店家目前尚未營業', '', true, schedNoticeHtml, true);
+} else if (window.isGroceryStore) {
     setTimeout(() => {
         openGroceryCheckoutSummary();
     }, 2000);
