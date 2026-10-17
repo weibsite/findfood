@@ -6497,9 +6497,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
       
-      // 針對「即時單」且為「生鮮雜貨」或「30分鐘內開店」，放寬 isSchedulable 限制，使其行為如同舊版
+      // 店家必須支援預約排程 (能預約未來時段)；僅對全聯等生鮮雜貨 (isGrocery) 的即時單放寬限制
       let strictScheduleCheck = !isSchedulable;
-      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && (isGrocery || isWithin30Min || d.isOpen)) {
+      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && isGrocery) {
           strictScheduleCheck = false;
       }
 
