@@ -5637,7 +5637,7 @@ function renderGroups(groups, pathPrefix) {
 
     groups.forEach((group, gIdx) => {
 
-        const gTitle = filterTrailingEnglish(parseText(group.title));
+        const gTitle = cleanGroupTitle(parseText(group.title));
 
         const isRadio = group.maxPermitted === 1;
 
@@ -5872,7 +5872,7 @@ function recalcCustomizations() {
     const collectSelections = (container, currentPrefix = '') => {
         container.querySelectorAll(':scope > .cust-group').forEach(groupDiv => {
             const rawGTitle = groupDiv.getAttribute('data-title') || '';
-            const gTitle = filterTrailingEnglish(rawGTitle);
+            const gTitle = cleanGroupTitle(rawGTitle);
 
             // 判斷頂層群組是否純屬冗餘（例如與餐點同名的「推薦組合:...」或單純「推薦組合」）
             const isRedundantRootGroup = !currentPrefix && (
@@ -6248,6 +6248,18 @@ const note = document.getElementById('modalNote').value.trim();
         if (/[\u4e00-\u9fa5]/.test(s)) {
             s = s.replace(/\s+[a-zA-Z\s\-.,&]+$/, '').trim();
         }
+        return s;
+    }
+
+    function cleanGroupTitle(str) {
+        if (!str) return '';
+        let s = filterTrailingEnglish(str);
+        // 移除說明性免責聲明括號 (如 (若未點購薯條配餐，恕不提供薯條醬包，請勿點選下列醬包選項))
+        s = s.replace(/\s*[\(（][^\)）]*(?:若未|恕不|請勿|注意|說明|提供|點選|不可|敬請|限)[^\)）]*[\)）]/g, '').trim();
+        // 移除星號開頭之附註說明 (如 *搖搖薯條配餐恕不提供蕃茄醬包 或 *產品資訊)
+        s = s.replace(/\s*\*.*$/, '').trim();
+        // 移除可能殘留的半形或全形逗號，避免破壞外部以逗號為主的選項字串解析
+        s = s.replace(/[,，]/g, ' ').trim();
         return s;
     }
 
