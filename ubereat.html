@@ -5857,6 +5857,13 @@ function recalcCustomizations() {
             const rawGTitle = groupDiv.getAttribute('data-title') || '';
             const gTitle = filterTrailingEnglish(rawGTitle);
 
+            // 判斷頂層群組是否純屬冗餘（例如與餐點同名的「推薦組合:...」或單純「推薦組合」）
+            const isRedundantRootGroup = !currentPrefix && (
+                gTitle.startsWith('推薦組合') || 
+                gTitle.startsWith('套餐組合') || 
+                (currentItem && currentItem.title && (gTitle.includes(currentItem.title) || currentItem.title.includes(gTitle)))
+            );
+
             groupDiv.querySelectorAll(':scope > .cust-option-row').forEach(row => {
                 const radio = row.querySelector(':scope > label .cust-radio');
                 const qtySpan = row.querySelector(':scope > label .cust-stepper .cust-qty');
@@ -5868,13 +5875,13 @@ function recalcCustomizations() {
                 if (qty > 0) {
                     const price = parseFloat(radio ? radio.getAttribute('data-price') : qtySpan.getAttribute('data-price')) || 0;
                     const rawOTitle = radio ? radio.getAttribute('data-title') : qtySpan.getAttribute('data-title');
-                    const oTitle = filterTrailingEnglish(rawOTitle);
+                    let oTitle = filterTrailingEnglish(rawOTitle);
+                    // 清理 (+) 開頭符號，如 (+)紅萱烏龍 -> 紅萱烏龍
+                    oTitle = oTitle.replace(/^\(\+\)\s*/, '').trim();
                     
                     extraPrice += (price * qty);
                     const priceTag = price > 0 ? ` (+$${price})` : '';
                     const optText = (qty > 1) ? `${oTitle}${priceTag} x${qty}` : `${oTitle}${priceTag}`;
-                    
-                    const thisPath = currentPrefix ? `${currentPrefix}:${optText}` : `${gTitle}:${optText}`;
                     
                     const childrenDiv = row.querySelector(':scope > div[id^="children_"]');
                     let hasChildSelection = false;
@@ -5883,11 +5890,23 @@ function recalcCustomizations() {
                         const childSelectedRows = childrenDiv.querySelectorAll('.cust-radio:checked, .cust-qty[data-qty]:not([data-qty="0"])');
                         if (childSelectedRows.length > 0) {
                             hasChildSelection = true;
-                            collectSelections(childrenDiv, thisPath);
+                            // 若此選項有子選項，傳遞給下一層的 prefix：
+                            // 頂層若為冗餘組合名稱，直接以該品項 (如 紅萱烏龍) 為 prefix；非冗餘則保留 gTitle
+                            let nextPrefix;
+                            if (currentPrefix) {
+                                nextPrefix = `${currentPrefix}:${optText}`;
+                            } else if (isRedundantRootGroup) {
+                                nextPrefix = optText;
+                            } else {
+                                nextPrefix = `${gTitle}:${optText}`;
+                            }
+                            collectSelections(childrenDiv, nextPrefix);
                         }
                     }
                     
                     if (!hasChildSelection) {
+                        // 葉子節點：若有母層 prefix，必須保留該子選項所屬的 gTitle (如 份量、糖量、冰量)
+                        const thisPath = currentPrefix ? `${currentPrefix}:${gTitle}:${optText}` : `${gTitle}:${optText}`;
                         currentItem.selectedOptions.push(thisPath);
                     }
                 }
