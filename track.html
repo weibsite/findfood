@@ -79,6 +79,17 @@
             border-color: #d32f2f !important;
             box-shadow: 0 2px 6px rgba(211,47,47,0.3);
         }
+        .split-tab-btn.scheduled-tab {
+            border-color: #b39ddb;
+            color: #4527a0;
+            background: #ede7f6;
+        }
+        .split-tab-btn.scheduled-tab.active {
+            background: #5c6bc0 !important;
+            color: #fff !important;
+            border-color: #5c6bc0 !important;
+            box-shadow: 0 2px 6px rgba(92,107,192,0.3);
+        }
 
         /* 留置照片點擊放大 (Lightbox Zoom Modal) */
         .zoom-modal {
@@ -312,6 +323,37 @@
             return { cancelTitle, cancelReason, cancelImage };
         }
 
+        // 判斷是否為真正的外送門口留置照片 (過濾漢堡插圖等佔位圖)
+        function isDropoffPhoto(url) {
+            if (!url) return false;
+            const u = String(url).toLowerCase();
+            if (u.includes('uber_delivery_hamburger') || u.includes('/order/uber_') || u.includes('placeholder')) {
+                return false;
+            }
+            return true;
+        }
+
+        // 判斷訂單或子單是否為預約單 (預約排程)
+        function isScheduledOrder(timeStr, splitObj, rawText) {
+            const t = (timeStr || '').toLowerCase();
+            const st = splitObj ? ((splitObj.time || '') + ' ' + (splitObj.fees ? splitObj.fees.map(f=>f.name).join(' ') : '')) : '';
+            const full = (t + ' ' + st + ' ' + (rawText || '')).toLowerCase();
+
+            if (full.includes('預定折扣') || full.includes('預訂折扣') || full.includes('預約') || full.includes('預定') || full.includes('預訂')) {
+                return true;
+            }
+            if (full.includes('明天') || full.includes('後天') || full.includes('下週') || full.includes('下周')) {
+                return true;
+            }
+            const combinedTime = (splitObj?.time || timeStr || '').trim();
+            if (combinedTime && !combinedTime.includes('盡快') && !combinedTime.includes('盡速') && !combinedTime.includes('歷史訂單合併查詢')) {
+                if (combinedTime.includes('下午') || combinedTime.includes('上午') || combinedTime.includes('晚上') || combinedTime.includes('-') || combinedTime.includes('🌙') || combinedTime.includes('☀️')) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // 渲染單筆訂單已取消階段 UI
         function renderCanceledStage(termRes, parsedData, data, primaryUrl) {
             const cardEl = document.querySelector('.card');
@@ -394,6 +436,68 @@
             }
         }
 
+        // 渲染單筆訂單預約排程階段 UI
+        function renderScheduledStage(parsedData, data, primaryUrl) {
+            const cardEl = document.querySelector('.card');
+            if (cardEl) cardEl.classList.add('delivered-mode');
+
+            const mainHeader = document.querySelector('.card h2');
+            if (mainHeader) {
+                mainHeader.innerHTML = '📅 預約單已排定配送';
+                mainHeader.style.color = '#5c6bc0';
+            }
+
+            const storeName = parsedData.store || '外送合作店家';
+            const address = parsedData.address || '指定外送地址';
+            const schedTime = parsedData.time || '預定時間';
+
+            let scheduledHtml = `
+                <div style="text-align: left; margin-bottom: 20px;">
+                    <!-- 頂部預約橫幅 -->
+                    <div style="background: #ede7f6; border: 1.5px solid #b39ddb; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="background: #5c6bc0; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">📅 預約排程中</span>
+                            <span style="color: #4527a0; font-size: 12px; font-weight: bold;">尚未到配送時間</span>
+                        </div>
+                        <div style="font-size: 18px; font-weight: 800; color: #311b92; margin-bottom: 6px;">📅 店家已接單排定預約配送</div>
+                        <div style="font-size: 15px; color: #1a237e; font-weight: 700; margin-bottom: 6px;">
+                            🕒 <strong>預計送達時間:</strong> <span>${schedTime}</span>
+                        </div>
+                        <div style="font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 4px;">
+                            📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
+                        </div>
+                        <div style="font-size: 14px; color: #444; line-height: 1.4;">
+                            🏪 <strong>預訂店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
+                        </div>
+                        ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${data.ext_order_id}</strong></div>` : ''}
+                    </div>
+
+                    <!-- 預約排程說明卡片 -->
+                    <div style="background: #fff; border: 1.5px solid #d1c4e9; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: center;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">⏰🛵</div>
+                        <div style="font-weight: 800; color: #311b92; font-size: 16px; margin-bottom: 6px;">預約訂單已成立</div>
+                        <div style="font-size: 13.5px; color: #444; line-height: 1.6; max-width: 420px; margin: 0 auto 12px;">
+                            店家已收到您的預約訂單，將於預定時間（${schedTime}）開始備餐並安排外送夥伴前往配送。送達並拍照後將即時在此更新現場留置照片與定位。
+                        </div>
+                        ${primaryUrl ? `
+                        <a href="${primaryUrl}" target="_blank" class="btn" style="display: inline-block; padding: 10px 20px; font-size: 14px; background: #5c6bc0; border-color: #3949ab; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                            🔗 開啟 Uber Eats 查看預約訂單 ↗
+                        </a>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            const statusArea = document.getElementById('trackStatusArea');
+            if (statusArea) statusArea.innerHTML = scheduledHtml;
+
+            const orderTextArea = document.getElementById('trackOrderText');
+            if (orderTextArea) {
+                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, [primaryUrl], [{ status: 'scheduled' }]);
+                orderTextArea.style.display = 'block';
+            }
+        }
+
         // 渲染已送達目的地階段 UI
         function renderDeliveredStage(termRes, parsedData, data, primaryUrl) {
             // 若為取消訂單，導流至取消渲染邏輯
@@ -442,8 +546,8 @@
                         ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${data.ext_order_id}</strong></div>` : ''}
                     </div>
 
-                    <!-- 外送員拍照留置證明 (如有) -->
-                    ${imgUrl ? `
+                    <!-- 外送員拍照留置證明 (如有且為真實門口留置照片) -->
+                    ${(imgUrl && isDropoffPhoto(imgUrl)) ? `
                     <div style="background: #fff; border: 1.5px solid #e0e0e0; border-radius: 12px; overflow: hidden; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
                         <div style="position: relative; background: #000; text-align: center; cursor: pointer; min-height: 220px; max-height: 380px; display: flex; align-items: center; justify-content: center; overflow: hidden;" onclick="zoomPhoto('${imgUrl}')">
                             <img src="${imgUrl}" alt="門口留置照片" style="width: 100%; max-height: 380px; object-fit: cover; display: block;">
@@ -460,7 +564,15 @@
                             <a href="${imgUrl}" target="_blank" style="color: #06c167; font-weight: bold; text-decoration: none;">另開原圖 ↗</a>
                         </div>
                     </div>
-                    ` : ''}
+                    ` : `
+                    <div style="background: #f1f8e9; border: 1.5px solid #c8e6c9; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                        <div style="font-size: 26px;">🤝</div>
+                        <div>
+                            <div style="font-weight: 800; color: #2e7d32; font-size: 13.5px;">[當面點交 / 無門口拍照]</div>
+                            <div style="font-size: 12px; color: #555; line-height: 1.4;">外送夥伴已將餐點親自交付或現場無留置拍照記錄。</div>
+                        </div>
+                    </div>
+                    `}
 
                     <!-- 外送員與送達 GPS 座標卡片區塊 -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;">
@@ -516,7 +628,22 @@
             const canceledCount = canceledOrders.length;
             const deliveredOrders = termResults.filter(r => !isOrderCanceled(r) && r && r.status === 'success');
             const deliveredCount = deliveredOrders.length;
-            const inTransitCount = totalOrders - deliveredCount - canceledCount;
+
+            // 判斷未結束的訂單中，哪些是預約單，哪些是即時配送中
+            let scheduledCount = 0;
+            let inTransitCount = 0;
+
+            trackingUrls.forEach((url, idx) => {
+                const term = termResults[idx];
+                if (!isOrderCanceled(term) && (!term || term.status !== 'success')) {
+                    const split = (parsedData.splits && parsedData.splits[idx]) || {};
+                    if (isScheduledOrder(split.time || parsedData.time, split, data.text)) {
+                        scheduledCount++;
+                    } else {
+                        inTransitCount++;
+                    }
+                }
+            });
 
             // 1. 更新卡片主標題
             const mainHeader = document.querySelector('.card h2');
@@ -527,7 +654,16 @@
                 } else if (deliveredCount === totalOrders) {
                     mainHeader.innerHTML = '🎉 全部訂單皆已送達目的地';
                     mainHeader.style.color = '#2e7d32';
-                } else if (deliveredCount > 0 && canceledCount === 0) {
+                } else if (scheduledCount === totalOrders || (scheduledCount > 0 && deliveredCount === 0 && inTransitCount === 0 && canceledCount === 0)) {
+                    mainHeader.innerHTML = '📅 預約單已排定配送';
+                    mainHeader.style.color = '#5c6bc0';
+                } else if (scheduledCount > 0 && canceledCount > 0 && deliveredCount === 0 && inTransitCount === 0) {
+                    mainHeader.innerHTML = `📦 訂單狀態（${scheduledCount} 預約排程 / ${canceledCount} 取消）`;
+                    mainHeader.style.color = '#5c6bc0';
+                } else if (deliveredCount > 0 && scheduledCount > 0 && inTransitCount === 0) {
+                    mainHeader.innerHTML = `📦 訂單狀態（${deliveredCount} 送達 / ${scheduledCount} 預約排程）`;
+                    mainHeader.style.color = '#1565c0';
+                } else if (deliveredCount > 0 && canceledCount === 0 && inTransitCount > 0) {
                     mainHeader.innerHTML = `🛵 訂單配送進度（${deliveredCount}/${totalOrders} 已送達）`;
                     mainHeader.style.color = '#1565c0';
                 } else if (deliveredCount > 0 && canceledCount > 0) {
@@ -537,7 +673,7 @@
                     mainHeader.innerHTML = `🛵 訂單配送進度（${inTransitCount} 運送中 / ${canceledCount} 已取消）`;
                     mainHeader.style.color = '#e65100';
                 } else {
-                    mainHeader.innerHTML = '📦 多單外送配送中';
+                    mainHeader.innerHTML = inTransitCount > 0 ? '🛵 多單外送配送中' : '📦 多單外送進度';
                     mainHeader.style.color = '#e65100';
                 }
             }
@@ -556,6 +692,25 @@
                 bannerBadgeBg = '#d32f2f';
                 bannerBadgeText = '❌ 全部已取消';
                 bannerTitle = '⚠️ 所有店家目前均無法處理訂單 (已取消)';
+            } else if (deliveredCount === totalOrders) {
+                bannerBg = '#e8f5e9';
+                bannerBorder = '#81c784';
+                bannerBadgeBg = '#2e7d32';
+                bannerBadgeText = '✓ 全部送達';
+                bannerTitle = '🎉 所有餐點已送達指定地址';
+            } else if (scheduledCount === totalOrders || (scheduledCount > 0 && deliveredCount === 0 && inTransitCount === 0 && canceledCount === 0)) {
+                bannerBg = '#ede7f6';
+                bannerBorder = '#b39ddb';
+                bannerBadgeBg = '#5c6bc0';
+                bannerBadgeText = '📅 預約排程中';
+                const schedTime = parsedData.time || '預定時間';
+                bannerTitle = `📅 預約單已排定（預計送達：${schedTime}）`;
+            } else if (scheduledCount > 0 && canceledCount > 0 && deliveredCount === 0 && inTransitCount === 0) {
+                bannerBg = '#ede7f6';
+                bannerBorder = '#b39ddb';
+                bannerBadgeBg = '#5c6bc0';
+                bannerBadgeText = `${scheduledCount} 預約排程 · ${canceledCount} 取消`;
+                bannerTitle = `📅 預約單排程中（${canceledCount} 筆店家已取消）`;
             } else if (canceledCount > 0) {
                 bannerBg = '#fff8e1';
                 bannerBorder = '#ffe082';
@@ -573,11 +728,11 @@
                 bannerBadgeBg = '#1565c0';
                 bannerBadgeText = `部分已送達 (${deliveredCount}/${totalOrders})`;
                 bannerTitle = '🛵 各單外送進度實時追蹤';
-            } else if (deliveredCount === 0) {
+            } else {
                 bannerBg = '#fff3e0';
                 bannerBorder = '#ffb74d';
                 bannerBadgeBg = '#e65100';
-                bannerBadgeText = '外送運送中';
+                bannerBadgeText = inTransitCount > 0 ? '外送運送中' : '訂單處理中';
                 bannerTitle = '🛵 各單外送進度實時追蹤';
             }
 
@@ -619,15 +774,16 @@
                 const split = (parsedData.splits && parsedData.splits[idx]) || {};
                 const isCancel = isOrderCanceled(term);
                 const isDeliv = !isCancel && term && term.status === 'success';
+                const isSched = !isCancel && !isDeliv && isScheduledOrder(split.time || parsedData.time, split, data.text);
                 const store = term?.storeName || split.store || `店家 ${idx + 1}`;
                 const shortStore = store.length > 8 ? store.substring(0, 8) + '...' : store;
                 const activeClass = idx === 0 ? 'active' : '';
 
-                const statusIcon = isCancel ? '❌' : (isDeliv ? '✓' : '🛵');
-                const cancelClass = isCancel ? 'canceled-tab' : '';
+                const statusIcon = isCancel ? '❌' : (isDeliv ? '✓' : (isSched ? '📅' : '🛵'));
+                const statusClass = isCancel ? 'canceled-tab' : (isSched ? 'scheduled-tab' : '');
 
                 html += `
-                    <button type="button" class="split-tab-btn ${activeClass} ${cancelClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}">
+                    <button type="button" class="split-tab-btn ${activeClass} ${statusClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}">
                         <span>${idx + 1}. ${shortStore}</span>
                         <span style="font-size: 11px;">${statusIcon}</span>
                     </button>
@@ -647,6 +803,7 @@
                 const split = (parsedData.splits && parsedData.splits[idx]) || {};
                 const isCancel = isOrderCanceled(term);
                 const isDeliv = !isCancel && term && term.status === 'success';
+                const isSched = !isCancel && !isDeliv && isScheduledOrder(split.time || parsedData.time, split, data.text);
                 const title = split.title || `【多單 ${idx + 1}】`;
                 const store = term?.storeName || split.store || '外送合作店家';
                 const driverName = term?.driverName || '';
@@ -659,16 +816,16 @@
                 const coordsStr = (lat && lng) ? `${lat}, ${lng}` : '無座標資訊';
                 const googleMapUrl = (lat && lng) ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : '';
 
-                let cardBorderColor = isCancel ? '#ef5350' : (isDeliv ? '#81c784' : '#ffb74d');
-                let badgeBg = isCancel ? '#d32f2f' : (isDeliv ? '#2e7d32' : '#e65100');
-                let badgeText = isCancel ? '❌ 訂單已取消' : (isDeliv ? '✓ 已送達' : '🛵 運送中');
+                let cardBorderColor = isCancel ? '#ef5350' : (isDeliv ? '#81c784' : (isSched ? '#9fa8da' : '#ffb74d'));
+                let badgeBg = isCancel ? '#d32f2f' : (isDeliv ? '#2e7d32' : (isSched ? '#5c6bc0' : '#e65100'));
+                let badgeText = isCancel ? '❌ 訂單已取消' : (isDeliv ? '✓ 已送達' : (isSched ? '📅 預約排程中' : '🛵 運送中'));
 
                 html += `
                     <div class="split-slide-card" style="background: #fff; border: 1.5px solid ${cardBorderColor}; border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
                         <!-- 卡片頂部 -->
                         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 10px;">
                             <div>
-                                <span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : '#1565c0'};">${title}</span>
+                                <span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : (isSched ? '#3949ab' : '#1565c0')};">${title}</span>
                                 <div style="font-weight: bold; color: #111; font-size: 14px; margin-top: 2px;">🏪 ${store}</div>
                             </div>
                             <div>
@@ -704,8 +861,8 @@
                         </a>
                     `;
                 } else if (isDeliv) {
-                    // 已送達：顯示留置照片、外送員、GPS
-                    if (imgUrl) {
+                    // 已送達：顯示留置照片或當面點交、外送員、GPS
+                    if (imgUrl && isDropoffPhoto(imgUrl)) {
                         html += `
                             <div style="position: relative; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; cursor: pointer; height: 180px; display: flex; align-items: center; justify-content: center;" onclick="zoomPhoto('${imgUrl}')">
                                 <img src="${imgUrl}" alt="門口留置照片" style="width: 100%; height: 100%; object-fit: cover;">
@@ -719,6 +876,16 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 8px;">
                                 <span style="color: #666;">現場留置照片</span>
                                 <a href="${imgUrl}" target="_blank" style="color: #06c167; font-weight: bold; text-decoration: none;">另開原圖 ↗</a>
+                            </div>
+                        `;
+                    } else {
+                        html += `
+                            <div style="background: #f1f8e9; border: 1.5px solid #c8e6c9; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+                                <div style="font-size: 24px;">🤝</div>
+                                <div>
+                                    <div style="font-weight: 800; color: #2e7d32; font-size: 13px;">[當面點交 / 無門口留置照片]</div>
+                                    <div style="font-size: 12px; color: #555; line-height: 1.4;">外送夥伴已將餐點親自交付或現場無留置拍照記錄。</div>
+                                </div>
                             </div>
                         `;
                     }
@@ -749,6 +916,18 @@
                         <a href="${url}" target="_blank" style="display: block; text-align: center; color: #06c167; font-size: 12px; font-weight: bold; text-decoration: none; padding: 6px; border: 1px solid #c8e6c9; border-radius: 16px; background: #f1f8e9;">
                             🔗 開啟此單 Uber Eats 原始頁面 ↗
                         </a>
+                    `;
+                } else if (isSched) {
+                    // 預約單：顯示預約排程說明與按鈕
+                    const schedTime = split.time || parsedData.time || '預定時間';
+                    html += `
+                        <div style="background: #ede7f6; border: 1px dashed #b39ddb; border-radius: 8px; padding: 15px; margin: 10px 0; text-align: center;">
+                            <div style="font-size: 28px; margin-bottom: 6px;">📅⏰</div>
+                            <div style="font-weight: bold; color: #4527a0; font-size: 14px; margin-bottom: 4px;">預約單排程中（尚未到配送時間）</div>
+                            <div style="font-size: 13px; color: #311b92; font-weight: 700; margin-bottom: 6px;">預計送達時間：${schedTime}</div>
+                            <div style="font-size: 12px; color: #512da8; line-height: 1.4;">店家已接單排定，將於預定時間開始備餐並安排外送夥伴前往配送。送達並拍照後將即時在此更新現場留置照片。</div>
+                        </div>
+                        <a href="${url}" target="_blank" class="btn" style="margin-top: 8px; padding: 10px; font-size: 14px; background: #5c6bc0; border-color: #3949ab;">📅 開啟 Uber Eats 查看預約訂單 ↗</a>
                     `;
                 } else {
                     // 運送中：顯示進度卡片與地圖按鈕
@@ -911,7 +1090,10 @@
                     }
                     
                     if (currentSplit) {
-                        if (line.startsWith('🏪') || (i>0 && lines[i-1].includes('【多單') && !line.includes('網址'))) {
+                        if (line.startsWith('🕒') || line.startsWith('時間')) {
+                            currentSplit.time = line.includes(':') ? line.substring(line.indexOf(':')+1).trim() : line.replace('🕒', '').trim();
+                        }
+                        else if (line.startsWith('🏪') || (i>0 && lines[i-1].includes('【多單') && !line.includes('網址'))) {
                             currentSplit.store = line.replace('🏪', '').trim();
                         }
                         else if (line.startsWith('🔗') || line.startsWith('網址')) {
@@ -945,6 +1127,11 @@
                     }
                 }
                 if (currentSplit) parsed.splits.push(currentSplit);
+                if (parsed.time) {
+                    parsed.splits.forEach(sp => {
+                        if (!sp.time) sp.time = parsed.time;
+                    });
+                }
                 
             } else {
                 let currentSection = 'header';
@@ -1012,24 +1199,28 @@
                     const term = termResults && termResults[idx];
                     const isCancel = isOrderCanceled(term);
                     const isDeliv = !isCancel && term && term.status === 'success';
+                    const isSched = !isCancel && !isDeliv && isScheduledOrder(split.time || parsed.time, split, rawText);
 
-                    let cardBorder = isCancel ? '#ef9a9a' : (isDeliv ? '#c8e6c9' : '#ddd');
+                    let cardBorder = isCancel ? '#ef9a9a' : (isDeliv ? '#c8e6c9' : (isSched ? '#b39ddb' : '#ddd'));
 
                     html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 14px; box-sizing: border-box;">`;
                     
                     // 標題與此單送達狀態 Pill
                     html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
-                    html += `<span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : '#1565c0'};">${split.title}</span>`;
+                    html += `<span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : (isSched ? '#3949ab' : '#1565c0')};">${split.title}</span>`;
                     if (isCancel) {
                         html += `<span style="background: #d32f2f; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">❌ 此單已取消</span>`;
                     } else if (isDeliv) {
                         html += `<span style="background: #2e7d32; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">✓ 此單已送達</span>`;
+                    } else if (isSched) {
+                        html += `<span style="background: #5c6bc0; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">📅 預約排程</span>`;
                     } else if (tracking_urls.length > idx) {
                         html += `<span style="background: #e65100; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">🛵 運送中</span>`;
                     }
                     html += `</div>`;
 
-                    if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 6px; font-size: 14px;">🏪 ${split.store}</div>`;
+                    if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 4px; font-size: 14px;">🏪 ${split.store}</div>`;
+                    if (split.time) html += `<div style="font-size: 12px; color: #4527a0; font-weight: bold; margin-bottom: 6px;">🕒 時間: ${split.time}</div>`;
 
                     if (isCancel) {
                         const cancelInfo = getCancelInfo(term);
@@ -1043,7 +1234,7 @@
                     let currentTrackUrl = (tracking_urls.length > idx) ? tracking_urls[idx] : null;
                     if (isCancel && currentTrackUrl) {
                         html += `<a href="${currentTrackUrl}" target="_blank" style="color: #666; background: #eee; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">⚠️ 查看取消紀錄 ${idx + 1}</a>`;
-                    } else if (isDeliv && term.imgUrl) {
+                    } else if (isDeliv && term.imgUrl && isDropoffPhoto(term.imgUrl)) {
                         html += `
                             <div style="display: flex; align-items: center; gap: 8px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;">
                                 <span style="font-size: 16px;">📸</span>
@@ -1051,6 +1242,8 @@
                                 <button type="button" onclick="zoomPhoto('${term.imgUrl}')" style="background: #2e7d32; color: #fff; border: none; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: bold; cursor: pointer;">看照片</button>
                             </div>
                         `;
+                    } else if (isSched && currentTrackUrl) {
+                        html += `<a href="${currentTrackUrl}" target="_blank" style="color: #fff; background: #5c6bc0; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">📅 查看預約單 ${idx + 1}</a>`;
                     } else if (currentTrackUrl) {
                         html += `<a href="${currentTrackUrl}" target="_blank" style="color: #fff; background: #06c167; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">🛵 追蹤此單進度 ${idx + 1}</a>`;
                     } else if (split.url) {
@@ -1234,6 +1427,10 @@
                         <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在查詢送達訂單明細...</h3>
                     `;
                     const termRes = await fetchTerminatedOrder(singleUuid, urlParams.get('url'), trackApiBase);
+                    if (isOrderCanceled(termRes)) {
+                        renderCanceledStage(termRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
+                        return;
+                    }
                     if (termRes && termRes.status === 'success') {
                         renderDeliveredStage(termRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
                         return;
@@ -1392,8 +1589,16 @@
                                             return;
                                         }
 
-                                        // 如果得到結果是狀態異常 (例如 Uber Eats 回傳狀態異常: failure)，代表訂單還沒抵達，繼續轉址
-                                        console.log('⏳ 訂單尚未送達 (或回傳異常): 繼續轉址');
+                                        // 如果得到結果是狀態異常 (例如 Uber Eats 回傳狀態異常: failure)，代表訂單還沒抵達
+                                        console.log('⏳ 訂單尚未送達 (或回傳異常)');
+                                    }
+
+                                    // 檢查是否為預約排程單 (Scheduled Order)
+                                    const isSingleSched = isScheduledOrder(parsedData.time, null, data.text);
+                                    if (isSingleSched) {
+                                        console.log('📅 單筆訂單為預約排程單，進入預約展示階段');
+                                        renderScheduledStage(parsedData, data, primaryTrackUrl);
+                                        return;
                                     }
 
                                     let trackHtml = '';
