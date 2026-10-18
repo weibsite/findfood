@@ -5907,23 +5907,37 @@ function recalcCustomizations() {
                         const childSelectedRows = childrenDiv.querySelectorAll('.cust-radio:checked, .cust-qty[data-qty]:not([data-qty="0"])');
                         if (childSelectedRows.length > 0) {
                             hasChildSelection = true;
-                            // 若此選項有子選項，傳遞給下一層的 prefix：
-                            // 頂層若為冗餘組合名稱，直接以該品項 (如 紅萱烏龍) 為 prefix；非冗餘則保留 gTitle
+                            
+                            // 判斷此選項是否與主餐點同名或僅為純包裝層（如 50嵐「溫度與份量: 大●紅茶拿鐵」）
+                            const normTitle = s => (s || '').replace(/[●·\s\-_()（）]/g, '').toLowerCase();
+                            const curTitle = currentItem && currentItem.title ? normTitle(currentItem.title) : '';
+                            const cleanO = normTitle(oTitle);
+                            const isSameAsMainDish = !currentPrefix && curTitle && (cleanO === curTitle || cleanO.includes(curTitle) || curTitle.includes(cleanO));
+                            const isWrapperOption = isSameAsMainDish || (isRedundantRootGroup && groupDiv.querySelectorAll(':scope > .cust-option-row').length === 1);
+
+                            // 若此選項有子選項：
+                            // 1. 若為單品項的包裝層（如 50嵐的大●紅茶拿鐵），不傳遞 prefix，直接讓子選項 (溫度:去冰, 甜度:無糖) 成為自然的一級選項
+                            // 2. 若為真正套餐組合子品項（如 麥當勞分享盒中的「紅萱烏龍」或「搖搖薯條」），使用清晰階層標記 (如 紅萱烏龍) 傳給下一層
                             let nextPrefix;
-                            if (currentPrefix) {
-                                nextPrefix = `${currentPrefix}:${optText}`;
-                            } else if (isRedundantRootGroup) {
-                                nextPrefix = optText;
+                            if (isWrapperOption) {
+                                nextPrefix = '';
+                            } else if (currentPrefix) {
+                                nextPrefix = `${currentPrefix} > ${optText}`;
                             } else {
-                                nextPrefix = `${gTitle}:${optText}`;
+                                nextPrefix = optText;
                             }
                             collectSelections(childrenDiv, nextPrefix);
                         }
                     }
                     
                     if (!hasChildSelection) {
-                        // 葉子節點：若有母層 prefix，必須保留該子選項所屬的 gTitle (如 份量、糖量、冰量)
-                        const thisPath = currentPrefix ? `${currentPrefix}:${gTitle}:${optText}` : `${gTitle}:${optText}`;
+                        // 葉子節點：若有母層 prefix（如套餐子品項 紅萱烏龍），使用清晰符號「>」連接：紅萱烏龍 > 冰量:去冰
+                        let thisPath;
+                        if (currentPrefix) {
+                            thisPath = `${currentPrefix} > ${gTitle}:${optText}`;
+                        } else {
+                            thisPath = `${gTitle}:${optText}`;
+                        }
                         currentItem.selectedOptions.push(thisPath);
                     }
                 }
