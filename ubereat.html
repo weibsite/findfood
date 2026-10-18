@@ -3103,7 +3103,7 @@ function toggleStoreSearch() {
       mainBackBtn.style.visibility = 'visible';
     }
 
-    searchBtn.setAttribute('onclick', 'executeHeaderSearch()');
+    if (searchBtn) searchBtn.setAttribute('onclick', 'executeHeaderSearch()');
 
     input.value = '';
     results.innerHTML = '';
@@ -3126,7 +3126,7 @@ function toggleStoreSearch() {
 
     
 
-    searchBtn.setAttribute('onclick', 'toggleStoreSearch()');
+    if (searchBtn) searchBtn.setAttribute('onclick', 'toggleStoreSearch()');
 
     
 
@@ -4060,7 +4060,10 @@ function goBackToStore() {
 
     document.getElementById('homeView').style.display = 'block';
 
-  if(currentView === 'list' || currentView === 'store') document.getElementById('storeSearchBtn').style.display = 'block'; else document.getElementById('storeSearchBtn').style.display = 'none';
+  const ssb = document.getElementById('storeSearchBtn');
+  if (ssb) {
+    if(currentView === 'list' || currentView === 'store') ssb.style.display = 'block'; else ssb.style.display = 'none';
+  }
 
   if(document.getElementById('headerSearchBox').style.display === 'block') toggleStoreSearch();
 
@@ -6170,7 +6173,8 @@ const note = document.getElementById('modalNote').value.trim();
     const mbBtn1 = document.getElementById('mainBackBtn') || document.getElementById('heroBackBtn');
     if (mbBtn1) mbBtn1.style.visibility = 'hidden';
 
-    document.getElementById('storeSearchBtn').style.display = 'none';
+    const ssb1 = document.getElementById('storeSearchBtn');
+    if (ssb1) ssb1.style.display = 'none';
 
     document.getElementById('listView').style.display = 'none';
 
@@ -6282,6 +6286,18 @@ function isOpeningWithin30Minutes(badgeTime) {
 
 async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, diningMode = 'DELIVERY', badgeTime = '') {
     window.customizationRetries = {}; // Reset retries state on store entry
+    
+    if (typeof originalAppHeaderHtml !== 'undefined' && originalAppHeaderHtml) {
+        const appHeaderEl = document.querySelector('.app-header');
+        if (appHeaderEl && appHeaderEl.innerHTML !== originalAppHeaderHtml) {
+            appHeaderEl.innerHTML = originalAppHeaderHtml;
+            appHeaderEl.style.display = 'flex';
+        }
+    }
+    const cartViewEl = document.getElementById('cartView');
+    if (cartViewEl) cartViewEl.style.display = 'none';
+    const checkoutViewEl = document.getElementById('checkoutView');
+    if (checkoutViewEl) checkoutViewEl.style.display = 'none';
     
     // [全聯特規] 當點選任何「全聯」店家時 (排除「大全聯」)，若目前為預約模式，自動靜默切換為即時模式完成訂單
     let checkStoreName = '';
@@ -6481,7 +6497,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           currentStoreName += ' (不需外送費、需要服務費)';
       }
 
-      document.getElementById('storeSearchBtn').style.display = 'block';
+      const ssb = document.getElementById('storeSearchBtn');
+      if (ssb) ssb.style.display = 'block';
 
       const logoUrl = d.heroImageUrls && d.heroImageUrls.length > 0 ? d.heroImageUrls[0].url : '';
 
