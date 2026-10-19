@@ -374,6 +374,10 @@
 
       <div style="display:flex; align-items:center; gap:5px;">
 
+        <button id="groupBuyBtn" type="button" onclick="handleGroupBuyBtnClick()" style="display:none; background:#ff4b2b; color:#fff; border:none; border-radius:18px; padding:4px 10px; font-size:13px; font-weight:700; cursor:pointer; align-items:center; gap:3px; box-shadow:0 2px 5px rgba(255,75,43,0.3); transition:all 0.2s; white-space:nowrap;">
+          👥 團購
+        </button>
+
         <div id="storeSearchBtn" onclick="toggleStoreSearch()" style="position:relative; background:transparent; border:none; font-size:20px; cursor:pointer; display:none; padding:0; width:34px; height:34px; box-sizing:border-box; margin-left:5px;">
     <div style="pointer-events:none; display:flex; align-items:center; justify-content:center; width:100%; height:100%;">🔍</div>
 </div>
@@ -541,9 +545,17 @@
 
   <div id="storeView">
 
+    <div id="groupBuyTopBar" style="display:none; background: linear-gradient(135deg, #06c167, #048848); color: #fff; padding: 10px 14px; align-items: center; justify-content: space-between; font-size: 13px; font-weight: bold; box-shadow: 0 2px 6px rgba(0,0,0,0.15); margin: 0 -15px 12px -15px;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 16px;">👥</span>
+        <span id="groupBuyTopBarText">多人團購共用購物車中</span>
+      </div>
+      <button type="button" onclick="copyGroupBuyShareLink()" style="background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.4); color: #fff; border-radius: 12px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space:nowrap;">📋 邀請</button>
+    </div>
+
     <div class="store-nav">
 
-      <button class="back-btn" onclick="goBack()">← 返回搜尋結果</button>
+      <button id="storeNavBackBtn" class="back-btn" onclick="goBack()">← 返回搜尋結果</button>
 
     </div>
 
@@ -593,9 +605,70 @@
 
   </div>
 
+<!-- 多人團購相關彈窗 -->
+<div class="modal-overlay" id="groupBuyCreateModal" style="display:none; align-items:center; justify-content:center; z-index:99999;" onclick="if(event.target===this) closeGroupBuyModal()">
+  <div class="modal" style="max-width:340px; padding:24px 20px; border-radius:16px; background:#fff; box-shadow:0 10px 25px rgba(0,0,0,0.2); text-align:left;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-size:18px; color:#111; font-weight:800; display:flex; align-items:center; gap:6px;">
+        <span>👥</span><span>發起多人團購</span>
+      </h3>
+      <button type="button" onclick="closeGroupBuyModal()" style="background:transparent; border:none; font-size:18px; cursor:pointer; color:#888;">✕</button>
+    </div>
+    <div id="gbStoreInfoDisplay" style="background:#f8f9fa; border:1px solid #eee; border-radius:10px; padding:10px 12px; font-size:13px; color:#333; margin-bottom:15px; font-weight:600;"></div>
+    
+    <div style="margin-bottom:12px;">
+      <label style="display:block; font-size:13px; font-weight:700; color:#333; margin-bottom:5px;">
+        🔒 設定結帳密碼 <span style="font-size:11px; color:#f43f5e; font-weight:normal;">(預設 123456)</span>
+      </label>
+      <input type="text" id="gbPasswordInput" value="123456" placeholder="請設定結帳密碼" style="width:100%; padding:10px 12px; border:1.5px solid #ddd; border-radius:10px; font-size:15px; box-sizing:border-box; outline:none; font-weight:bold; letter-spacing:1px;" />
+      <div style="font-size:11px; color:#666; margin-top:4px;">⚠️ 只有持有此密碼的人才能按下結帳按鈕，其他人僅能點餐。</div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block; font-size:13px; font-weight:700; color:#333; margin-bottom:5px;">
+        👤 發起人暱稱
+      </label>
+      <input type="text" id="gbCreatorNameInput" value="團長" placeholder="例如：團長 / 小明" style="width:100%; padding:10px 12px; border:1.5px solid #ddd; border-radius:10px; font-size:14px; box-sizing:border-box; outline:none;" />
+    </div>
+
+    <div style="display:flex; gap:10px;">
+      <button type="button" onclick="closeGroupBuyModal()" style="flex:1; background:#f0f0f0; color:#444; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer;">取消</button>
+      <button type="button" id="gbCreateSubmitBtn" onclick="submitCreateGroupBuy()" style="flex:2; background:#f43f5e; color:#fff; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer; box-shadow:0 2px 6px rgba(244,63,94,0.35);">🚀 產生團購連結</button>
+    </div>
+  </div>
 </div>
 
-<!--  -->
+<div class="modal-overlay" id="groupBuyShareModal" style="display:none; align-items:center; justify-content:center; z-index:99999;">
+  <div class="modal" style="max-width:340px; padding:24px 20px; border-radius:16px; background:#fff; text-align:center;">
+    <div style="font-size:40px; margin-bottom:10px;">🎉</div>
+    <h3 style="margin:0 0 6px 0; font-size:18px; color:#111; font-weight:800;">團購連結已產生！</h3>
+    <p style="font-size:13px; color:#666; margin:0 0 14px 0;">複製以下專屬連結傳送給好友，大家即可加入共用購物車一起點餐：</p>
+    
+    <div style="background:#f8f9fa; border:1.5px dashed #06c167; border-radius:10px; padding:10px; margin-bottom:14px;">
+      <input type="text" id="gbShareLinkInput" readonly style="width:100%; border:none; background:transparent; font-size:13px; color:#06c167; font-weight:bold; text-align:center; outline:none;" onclick="this.select()" />
+    </div>
+
+    <button type="button" onclick="copyGroupBuyShareLink()" style="width:100%; background:#06c167; color:#fff; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer; margin-bottom:8px; box-shadow:0 2px 6px rgba(6,193,103,0.3);">
+      📋 複製團購邀請連結
+    </button>
+    <button type="button" onclick="closeGroupBuyShareModal()" style="width:100%; background:#f0f0f0; color:#333; border:none; padding:10px; border-radius:10px; font-weight:bold; font-size:14px; cursor:pointer;">
+      進入團購點餐
+    </button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="groupBuyAuthModal" style="display:none; align-items:center; justify-content:center; z-index:99999;">
+  <div class="modal" style="max-width:320px; padding:24px 20px; border-radius:16px; background:#fff; text-align:center;">
+    <div style="font-size:36px; margin-bottom:8px;">🔒</div>
+    <h3 style="margin:0 0 8px 0; color:#111; font-size:18px; font-weight:800;">請輸入團購結帳密碼</h3>
+    <p style="font-size:13px; color:#666; margin:0 0 16px 0;">此訂單為多人共用購物車，只有持有結帳密碼才能結帳</p>
+    <input type="password" id="gbAuthPwdInput" placeholder="請輸入結帳密碼" style="width:100%; padding:10px 14px; border:1.5px solid #ddd; border-radius:10px; font-size:16px; text-align:center; box-sizing:border-box; outline:none; margin-bottom:15px;" onkeydown="if(event.key==='Enter') verifyGroupBuyPassword();" />
+    <div style="display:flex; gap:10px;">
+      <button type="button" onclick="cancelGroupBuyAuth()" style="flex:1; background:#eee; color:#333; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">取消</button>
+      <button type="button" onclick="verifyGroupBuyPassword()" style="flex:1; background:#f43f5e; color:#fff; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">確認結帳</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="itemModal"
 
@@ -1018,6 +1091,9 @@ let isAddressSet = false;
     // Config loaded, API_BASE_URL is ready, now we can fetch times
     fetchDeliveryTimes();
     loadServerStatusDot();
+    if (typeof checkAndInitGroupBuyFromUrl === 'function') {
+      checkAndInitGroupBuyFromUrl();
+    }
   });
 
 
@@ -3430,6 +3506,339 @@ function handleStoreSearch(isUserInput = false) {
 
 
 
+// =========================================================
+// 多人團購與共用購物車前端核心邏輯 (Group Buy & Shared Cart)
+// =========================================================
+window.currentGroupBuyId = null;
+window.groupBuyData = null;
+window.groupBuyAuthed = false;
+window.localGroupBuyVersion = 0;
+let groupBuySyncInterval = null;
+
+function handleGroupBuyBtnClick() {
+    if (window.currentGroupBuyId) {
+        openGroupBuyShareModal();
+        return;
+    }
+    openGroupBuyModal();
+}
+
+function openGroupBuyModal() {
+    const modal = document.getElementById('groupBuyCreateModal');
+    const storeInfo = document.getElementById('gbStoreInfoDisplay');
+    if (storeInfo) {
+        storeInfo.innerHTML = `🏪 團購店家：<strong>${escapeHTML(currentStoreName || '當前店家')}</strong>`;
+    }
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeGroupBuyModal() {
+    const modal = document.getElementById('groupBuyCreateModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function openGroupBuyShareModal() {
+    const modal = document.getElementById('groupBuyShareModal');
+    const linkInput = document.getElementById('gbShareLinkInput');
+    if (linkInput && window.currentGroupBuyId) {
+        const origin = window.location.origin.includes('localhost') ? window.location.origin + window.location.pathname : 'https://9ysong.shop/ubereat.html';
+        linkInput.value = `${origin}?group_id=${window.currentGroupBuyId}`;
+    }
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeGroupBuyShareModal() {
+    const modal = document.getElementById('groupBuyShareModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function copyGroupBuyShareLink() {
+    let link = '';
+    const linkInput = document.getElementById('gbShareLinkInput');
+    if (linkInput && linkInput.value) {
+        link = linkInput.value;
+    } else if (window.currentGroupBuyId) {
+        const origin = window.location.origin.includes('localhost') ? window.location.origin + window.location.pathname : 'https://9ysong.shop/ubereat.html';
+        link = `${origin}?group_id=${window.currentGroupBuyId}`;
+    }
+    if (!link) return;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(() => {
+            showToast('📋 團購邀請連結已複製！');
+        }).catch(() => {
+            prompt('請複製以下團購連結發送給好友：', link);
+        });
+    } else {
+        prompt('請複製以下團購連結發送給好友：', link);
+    }
+}
+
+async function submitCreateGroupBuy() {
+    const pwdInput = document.getElementById('gbPasswordInput');
+    const nameInput = document.getElementById('gbCreatorNameInput');
+    const password = (pwdInput ? pwdInput.value.trim() : '') || '123456';
+    const creatorName = (nameInput ? nameInput.value.trim() : '') || '團長';
+
+    if (!currentStoreUuid && !currentStoreName) {
+        alert('請先進入一家餐廳後再發起團購！');
+        return;
+    }
+
+    const submitBtn = document.getElementById('gbCreateSubmitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = '建立中...';
+    }
+
+    const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+    try {
+        const payload = {
+            store_uuid: currentStoreUuid,
+            store_name: currentStoreName,
+            store_url: typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '',
+            address: typeof currentAddressTitle !== 'undefined' ? currentAddressTitle : '',
+            lat: typeof currentLat !== 'undefined' ? currentLat : 25.033,
+            lng: typeof currentLng !== 'undefined' ? currentLng : 121.565,
+            password: password,
+            creator_name: creatorName,
+            items: (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => ({ ...it, user_name: it.user_name || creatorName })) : []
+        };
+
+        const res = await fetch(`${apiBase}/api/group_buy/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const json = await res.json();
+        if (json.status === 'success' && json.group_id) {
+            const groupId = json.group_id;
+            window.currentGroupBuyId = groupId;
+            window.groupBuyData = json.data;
+            window.groupBuyAuthed = true;
+            window.localGroupBuyVersion = json.data.version || 1;
+            cart = json.data.items || [];
+            updateCartBadge();
+            if (typeof updateMenuActions === 'function') updateMenuActions();
+
+            localStorage.setItem('gb_creator_' + groupId, 'true');
+            localStorage.setItem('gb_pwd_' + groupId, password);
+            localStorage.setItem('group_buy_user_name', creatorName);
+
+            closeGroupBuyModal();
+
+            const gbBtn = document.getElementById('groupBuyBtn');
+            if (gbBtn) {
+                gbBtn.innerHTML = '👥 團購中';
+                gbBtn.style.background = '#06c167';
+            }
+
+            renderGroupBuyTopBar(json.data);
+            startGroupBuySync(groupId);
+            openGroupBuyShareModal();
+            copyGroupBuyShareLink();
+        } else {
+            alert('發起團購失敗: ' + (json.message || '伺服器異常'));
+        }
+    } catch (e) {
+        console.error('發起團購錯誤:', e);
+        alert('連線失敗，請稍後再試！');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = '🚀 產生團購連結';
+        }
+    }
+}
+
+function renderGroupBuyTopBar(gb) {
+    const topBar = document.getElementById('groupBuyTopBar');
+    const textEl = document.getElementById('groupBuyTopBarText');
+    const storeNavBack = document.getElementById('storeNavBackBtn');
+    if (topBar && textEl) {
+        textEl.innerHTML = `👥 多人團購：${escapeHTML(gb.store_name || currentStoreName)} | 團長：${escapeHTML(gb.creator_name || '團長')}`;
+        topBar.style.display = 'flex';
+    }
+    if (storeNavBack) {
+        storeNavBack.style.display = 'none';
+    }
+}
+
+function getOrPromptGroupBuyUserName() {
+    let name = localStorage.getItem('group_buy_user_name');
+    if (!name || name.trim() === '') {
+        name = prompt('請輸入您的姓名或暱稱（方便大家在共用購物車辨認餐點）：', '成員');
+        if (!name || name.trim() === '') name = '成員';
+        name = name.trim();
+        localStorage.setItem('group_buy_user_name', name);
+    }
+    return name;
+}
+
+async function groupBuySyncCartAction(action, data = {}) {
+    if (!window.currentGroupBuyId) return null;
+    const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+    try {
+        const uName = getOrPromptGroupBuyUserName();
+        const payload = {
+            group_id: window.currentGroupBuyId,
+            action: action,
+            user_name: uName,
+            ...data
+        };
+        const res = await fetch(`${apiBase}/api/group_buy/cart/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            const json = await res.json();
+            if (json.status === 'success') {
+                window.localGroupBuyVersion = json.version;
+                cart = json.items || [];
+                updateCartBadge();
+                if (typeof updateMenuActions === 'function') updateMenuActions();
+                if (currentView === 'cart') viewCart();
+                return json;
+            }
+        }
+    } catch (e) {
+        console.error('團購購物車同步失敗:', e);
+    }
+    return null;
+}
+
+function startGroupBuySync(groupId) {
+    if (groupBuySyncInterval) clearInterval(groupBuySyncInterval);
+    groupBuySyncInterval = setInterval(async () => {
+        if (!window.currentGroupBuyId) {
+            clearInterval(groupBuySyncInterval);
+            return;
+        }
+        const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+        try {
+            const v = window.localGroupBuyVersion || 0;
+            const res = await fetch(`${apiBase}/api/group_buy/sync?group_id=${window.currentGroupBuyId}&v=${v}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.status === 'success' && json.changed) {
+                    window.localGroupBuyVersion = json.version;
+                    cart = json.items || [];
+                    updateCartBadge();
+                    if (typeof updateMenuActions === 'function') updateMenuActions();
+                    if (currentView === 'cart') {
+                        viewCart();
+                    }
+                    showToast('🛒 團購購物車已同步更新！');
+                }
+            }
+        } catch (e) {}
+    }, 2000);
+}
+
+function showGroupBuyPasswordAuthModal() {
+    const modal = document.getElementById('groupBuyAuthModal');
+    const input = document.getElementById('gbAuthPwdInput');
+    if (input) input.value = '';
+    if (modal) modal.style.display = 'flex';
+    setTimeout(() => { if (input) input.focus(); }, 100);
+}
+
+function closeGroupBuyAuthModal() {
+    const modal = document.getElementById('groupBuyAuthModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function cancelGroupBuyAuth() {
+    closeGroupBuyAuthModal();
+    alert('參與者沒有權限結帳');
+}
+
+async function verifyGroupBuyPassword() {
+    const input = document.getElementById('gbAuthPwdInput');
+    const pwd = input ? input.value.trim() : '';
+    if (!pwd) {
+        alert('請輸入結帳密碼');
+        return;
+    }
+    const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+    try {
+        const res = await fetch(`${apiBase}/api/group_buy/verify_password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                group_id: window.currentGroupBuyId,
+                password: pwd
+            })
+        });
+        const json = await res.json();
+        if (json.status === 'success' && json.verified) {
+            window.groupBuyAuthed = true;
+            closeGroupBuyAuthModal();
+            openCheckoutSummary();
+        } else {
+            closeGroupBuyAuthModal();
+            alert('參與者沒有權限結帳');
+        }
+    } catch (e) {
+        closeGroupBuyAuthModal();
+        alert('參與者沒有權限結帳');
+    }
+}
+
+async function checkAndInitGroupBuyFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const groupId = urlParams.get('group_id') || urlParams.get('group');
+    if (!groupId) return;
+
+    console.log('[GroupBuy] 偵測到團購參數:', groupId);
+    const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+
+    try {
+        const res = await fetch(`${apiBase}/api/group_buy/get?group_id=${groupId}`);
+        if (!res.ok) {
+            alert('找不到此團購或團購已結束');
+            return;
+        }
+        const json = await res.json();
+        if (json.status !== 'success' || !json.data) {
+            alert('無法載入團購資料');
+            return;
+        }
+
+        const gb = json.data;
+        window.currentGroupBuyId = groupId;
+        window.groupBuyData = gb;
+        window.localGroupBuyVersion = gb.version || 1;
+
+        if (localStorage.getItem('gb_creator_' + groupId) === 'true') {
+            window.groupBuyAuthed = true;
+        }
+
+        if (gb.lat && gb.lng) {
+            currentLat = gb.lat;
+            currentLng = gb.lng;
+        }
+        if (gb.address) {
+            currentAddressTitle = gb.address;
+            const addrEl = document.getElementById('addrInput');
+            if (addrEl) addrEl.value = gb.address;
+        }
+
+        cart = gb.items || [];
+        updateCartBadge();
+        if (typeof updateMenuActions === 'function') updateMenuActions();
+
+        await openStore(gb.store_uuid, gb.store_name, gb.store_url || '', false, 'DELIVERY');
+        renderGroupBuyTopBar(gb);
+        startGroupBuySync(groupId);
+
+    } catch (e) {
+        console.error('[GroupBuy] 載入失敗:', e);
+    }
+}
+
 // ==== 購物車與餐廳菜單功能 ====
 
   let cart = [];
@@ -3455,6 +3864,11 @@ let originalAppHeaderHtml = "";
   
 
   window.removeCartItem = function(idx) {
+
+    if (window.currentGroupBuyId && typeof groupBuySyncCartAction === 'function') {
+      groupBuySyncCartAction('remove', { index: idx });
+      return;
+    }
 
     cart.splice(idx, 1);
 
@@ -3613,7 +4027,7 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
           window.noOptionsItems.add(menuItemUuid);
 
-          cart.push({
+          const quickItem = {
 
             title: title,
 
@@ -3634,11 +4048,16 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
             storeDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
       originalStoreDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0))
 
-          });
+          };
 
-          updateCartBadge();
-
-          updateMenuActions();
+          if (window.currentGroupBuyId && typeof groupBuySyncCartAction === 'function') {
+            groupBuySyncCartAction('add', { item: quickItem });
+          } else {
+            cart.push(quickItem);
+            updateCartBadge();
+            updateMenuActions();
+            saveCart();
+          }
 
           showToast(`已加入: ${title}`);
 
@@ -3676,17 +4095,20 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
       if (cart[i].menuItemUuid === uuid) {
 
-        cart[i].qty += 1;
+        if (window.currentGroupBuyId && typeof groupBuySyncCartAction === 'function') {
+          groupBuySyncCartAction('update_qty', { index: i, delta: 1 });
+        } else {
+          cart[i].qty += 1;
+          updateCartBadge();
+          updateMenuActions();
+          saveCart();
+        }
 
         break;
 
       }
 
     }
-
-    updateCartBadge();
-
-    updateMenuActions();
 
   }
 
@@ -3702,12 +4124,16 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
       if (cart[i].menuItemUuid === uuid) {
 
-        cart[i].qty -= 1;
-
-        if (cart[i].qty <= 0) {
-
-          cart.splice(i, 1);
-
+        if (window.currentGroupBuyId && typeof groupBuySyncCartAction === 'function') {
+          groupBuySyncCartAction('update_qty', { index: i, delta: -1 });
+        } else {
+          cart[i].qty -= 1;
+          if (cart[i].qty <= 0) {
+            cart.splice(i, 1);
+          }
+          updateCartBadge();
+          updateMenuActions();
+          saveCart();
         }
 
         break;
@@ -3715,10 +4141,6 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
       }
 
     }
-
-    updateCartBadge();
-
-    updateMenuActions();
 
   }
 
@@ -3898,6 +4320,19 @@ let currentOriginalDeliveryFee = 0;
   let total = 0;
   let totalItemsCount = 0;
 
+  if (window.currentGroupBuyId) {
+    const creatorName = window.groupBuyData?.creator_name || '主辦人';
+    html += `
+      <div style="background:linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%); border:1px solid #ffc9c9; border-radius:12px; padding:12px 14px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:700; color:#d9381e; font-size:14px;">👥 揪團共用購物車</div>
+          <div style="font-size:12px; color:#666; margin-top:2px;">主辦人：${escapeHTML(creatorName)}｜即時同步中</div>
+        </div>
+        <button onclick="openGroupBuyShareModal()" style="background:#ff4b2b; color:#fff; border:none; border-radius:16px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer;">邀請朋友</button>
+      </div>
+    `;
+  }
+
   const storeGroups = {};
   cart.forEach(item => {
     const sName = item.storeName || '未命名餐廳';
@@ -3926,6 +4361,7 @@ let currentOriginalDeliveryFee = 0;
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
           <div style="flex:1; padding-right:12px;">
             <div style="font-weight:700; font-size:16px; color:#111; line-height:1.35;">${escapeHTML(item.title)}</div>
+            ${item.user_name ? `<div style="font-size:12px; color:#ff4b2b; font-weight:700; margin-top:2px;">👤 點餐人：${escapeHTML(item.user_name)}</div>` : ''}
             ${item.qty > 1 ? `<div style="font-size:12px; color:#888; margin-top:2px;">單價 $${item.price}</div>` : ''}
           </div>
           <div style="text-align:right;">
@@ -3965,6 +4401,7 @@ let currentOriginalDeliveryFee = 0;
 
   document.getElementById('cartContent').innerHTML = html;
 
+  currentView = 'cart';
   document.getElementById('homeView').style.display = 'none';
   document.getElementById('storeView').style.display = 'none';
   document.getElementById('listView').style.display = 'none';
@@ -3986,6 +4423,11 @@ let currentOriginalDeliveryFee = 0;
 
 function updateCartItemQty(idx, change) {
 
+  if (window.currentGroupBuyId && typeof groupBuySyncCartAction === 'function') {
+    groupBuySyncCartAction('update_qty', { index: idx, delta: change });
+    return;
+  }
+
   cart[idx].qty += change;
 
   if (cart[idx].qty <= 0) {
@@ -3998,7 +4440,7 @@ function updateCartItemQty(idx, change) {
 
   if (typeof updateMenuActions === 'function') updateMenuActions();
 
-  
+  saveCart();
 
   if (cart.length === 0) {
 
@@ -4018,11 +4460,18 @@ function updateCartItemQty(idx, change) {
 
 function removeCartItem(idx) {
 
+  if (window.currentGroupBuyId && typeof groupBuySyncCartAction === 'function') {
+    groupBuySyncCartAction('remove', { index: idx });
+    return;
+  }
+
   cart.splice(idx, 1);
 
   updateCartBadge();
 
   if (typeof updateMenuActions === 'function') updateMenuActions();
+
+  saveCart();
 
   if (cart.length === 0) { goBackToStore(); return; }
 
@@ -4055,19 +4504,28 @@ function goBackToStore() {
   if (typeof currentStoreName !== 'undefined' && currentStoreName) {
 
     document.getElementById('storeView').style.display = 'block';
+    currentView = 'store';
+
+    const ssb = document.getElementById('storeSearchBtn');
+    if (ssb) ssb.style.display = 'block';
+
+    const gbBtn = document.getElementById('groupBuyBtn');
+    if (gbBtn) gbBtn.style.display = 'inline-flex';
 
   } else {
 
     document.getElementById('homeView').style.display = 'block';
+    currentView = 'home';
 
-  const ssb = document.getElementById('storeSearchBtn');
-  if (ssb) {
-    if(currentView === 'list' || currentView === 'store') ssb.style.display = 'block'; else ssb.style.display = 'none';
+    const ssb = document.getElementById('storeSearchBtn');
+    if (ssb) ssb.style.display = 'none';
+
+    const gbBtn = document.getElementById('groupBuyBtn');
+    if (gbBtn) gbBtn.style.display = 'none';
+
   }
 
-  if(document.getElementById('headerSearchBox').style.display === 'block') toggleStoreSearch();
-
-  }
+  if(document.getElementById('headerSearchBox') && document.getElementById('headerSearchBox').style.display === 'block') toggleStoreSearch();
 
 }
 
@@ -4120,6 +4578,11 @@ window.submitSelectedPlan = function() {
 };
 
 function openCheckoutSummary() {
+    if (window.currentGroupBuyId && !window.groupBuyAuthed) {
+        showGroupBuyPasswordAuthModal();
+        return;
+    }
+
     if (window.isGroceryStore && typeof openGroceryCheckoutSummary === 'function') {
         openGroceryCheckoutSummary();
         return;
@@ -6132,7 +6595,7 @@ const note = document.getElementById('modalNote').value.trim();
 
     
 
-    cart.push({
+    const newItem = {
 
       storeName: currentStoreName,
 
@@ -6151,15 +6614,18 @@ const note = document.getElementById('modalNote').value.trim();
       storeDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
       originalStoreDeliveryFee: (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('麥當勞')) ? 0 : (typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0))
 
-    });
+    };
+
+    if (window.currentGroupBuyId && typeof groupBuySyncCartAction === 'function') {
+      groupBuySyncCartAction('add', { item: newItem });
+    } else {
+      cart.push(newItem);
+      updateCartBadge();
+      updateMenuActions();
+      saveCart();
+    }
 
     closeItemModal();
-
-    updateCartBadge();
-
-    updateMenuActions();
-
-    
 
     showToast('✅ 已加入: ' + currentItem.title);
 
@@ -6170,6 +6636,15 @@ const note = document.getElementById('modalNote').value.trim();
   let currentView = 'home';
 
   function handleMainBack() {
+
+    if (window.currentGroupBuyId) {
+      if (currentView === 'store') return;
+      if (currentView === 'cart' || currentView === 'checkout') {
+        goBackToStore();
+        return;
+      }
+      return;
+    }
 
     if (currentView === 'store') goBack();
 
@@ -6189,6 +6664,9 @@ const note = document.getElementById('modalNote').value.trim();
 
     const ssb1 = document.getElementById('storeSearchBtn');
     if (ssb1) ssb1.style.display = 'none';
+
+    const gbBtn = document.getElementById('groupBuyBtn');
+    if (gbBtn) gbBtn.style.display = 'none';
 
     document.getElementById('listView').style.display = 'none';
 
@@ -6215,6 +6693,9 @@ const note = document.getElementById('modalNote').value.trim();
 
     const mbBtn2 = document.getElementById('mainBackBtn') || document.getElementById('heroBackBtn');
     if (mbBtn2) mbBtn2.style.visibility = 'visible';
+
+    const gbBtn = document.getElementById('groupBuyBtn');
+    if (gbBtn) gbBtn.style.display = 'none';
 
     document.getElementById('storeView').style.display = 'none';
 
@@ -6525,6 +7006,18 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       const ssb = document.getElementById('storeSearchBtn');
       if (ssb) ssb.style.display = 'block';
+
+      const gbBtn = document.getElementById('groupBuyBtn');
+      if (gbBtn) {
+          gbBtn.style.display = 'inline-flex';
+          if (window.currentGroupBuyId) {
+              gbBtn.innerHTML = '👥 團購中';
+              gbBtn.style.background = '#06c167';
+          } else {
+              gbBtn.innerHTML = '👥 團購';
+              gbBtn.style.background = '#ff4b2b';
+          }
+      }
 
       const logoUrl = d.heroImageUrls && d.heroImageUrls.length > 0 ? d.heroImageUrls[0].url : '';
 
