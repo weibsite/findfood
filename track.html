@@ -384,7 +384,7 @@
                         <div style="font-size: 14px; color: #444; line-height: 1.4;">
                             🏪 <strong>店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
                         </div>
-                        ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${data.ext_order_id}</strong></div>` : ''}
+                        ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
                     </div>
 
                     <!-- 取消原因詳細卡片 -->
@@ -469,7 +469,7 @@
                         <div style="font-size: 14px; color: #444; line-height: 1.4;">
                             🏪 <strong>預訂店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
                         </div>
-                        ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${data.ext_order_id}</strong></div>` : ''}
+                        ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
                     </div>
 
                     <!-- 預約排程說明卡片 -->
@@ -493,7 +493,7 @@
 
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
-                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, [primaryUrl], [{ status: 'scheduled' }]);
+                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, [primaryUrl], [{ status: 'scheduled' }], data.ext_order_ids);
                 orderTextArea.style.display = 'block';
             }
         }
@@ -543,7 +543,7 @@
                         <div style="font-size: 14px; color: #444; line-height: 1.4;">
                             🏪 <strong>店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
                         </div>
-                        ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${data.ext_order_id}</strong></div>` : ''}
+                        ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
                     </div>
 
                     <!-- 外送員拍照留置證明 (如有且為真實門口留置照片) -->
@@ -753,7 +753,7 @@
                             📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
                         </div>
                         ${parsedData.globalTotal ? `<div style="font-size: 14px; color: #333; margin-top: 4px;">💰 <strong>全部訂單總額:</strong> <span style="color: #d32f2f; font-weight: bold;">${parsedData.globalTotal}</span></div>` : ''}
-                        ${data && data.ext_order_id ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">訂單總編號: <strong>${data.ext_order_id}</strong></div>` : ''}
+                        ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 4px;">訂單總編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
                         ${canceledCount > 0 ? `
                         <div style="font-size: 12.5px; color: #c62828; margin-top: 6px; padding: 6px 10px; background: rgba(255,255,255,0.7); border-radius: 6px; border: 1px dashed #ef9a9a;">
                             ⚠️ <strong>訂單取消提醒:</strong> 共有 ${canceledCount} 筆子訂單店家無法接單處理，詳細原因請滑動查看下方各單卡片。
@@ -781,10 +781,12 @@
 
                 const statusIcon = isCancel ? '❌' : (isDeliv ? '✓' : (isSched ? '📅' : '🛵'));
                 const statusClass = isCancel ? 'canceled-tab' : (isSched ? 'scheduled-tab' : '');
+                const subExtId = (data && data.ext_order_ids && data.ext_order_ids[idx]) ? data.ext_order_ids[idx] : '';
+                const tabExt = subExtId ? ` (#${subExtId})` : '';
 
                 html += `
                     <button type="button" class="split-tab-btn ${activeClass} ${statusClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}">
-                        <span>${idx + 1}. ${shortStore}</span>
+                        <span>${idx + 1}. ${shortStore}${tabExt}</span>
                         <span style="font-size: 11px;">${statusIcon}</span>
                     </button>
                 `;
@@ -804,7 +806,11 @@
                 const isCancel = isOrderCanceled(term);
                 const isDeliv = !isCancel && term && term.status === 'success';
                 const isSched = !isCancel && !isDeliv && isScheduledOrder(split.time || parsedData.time, split, data.text);
-                const title = split.title || `【多單 ${idx + 1}】`;
+                let title = split.title || `【多單 ${idx + 1}】`;
+                const subExtId = (data && data.ext_order_ids && data.ext_order_ids[idx]) ? data.ext_order_ids[idx] : '';
+                if (subExtId && !title.includes('代訂編號')) {
+                    title = `${title} (代訂編號: ${subExtId})`;
+                }
                 const store = term?.storeName || split.store || '外送合作店家';
                 const driverName = term?.driverName || '';
                 const driverNote = term?.driverNote || '';
@@ -955,7 +961,7 @@
             // 渲染下方拆單餐點明細 (帶有各自送達狀態標籤)
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
-                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, trackingUrls, termResults);
+                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, trackingUrls, termResults, data.ext_order_ids);
                 orderTextArea.style.display = 'block';
             }
 
@@ -1166,9 +1172,10 @@
             return parsed;
         }
 
-        function renderOrderDetails(parsed, rawText, tracking_urls = [], termResults = []) {
+        function renderOrderDetails(parsed, rawText, tracking_urls = [], termResults = [], extOrderIds = []) {
             tracking_urls = tracking_urls || [];
             termResults = termResults || [];
+            extOrderIds = extOrderIds || [];
             if (!parsed.isSplit && !parsed.store && parsed.items.length === 0) {
                 return `<pre style="white-space: pre-wrap; margin:0; font-family: monospace;">${rawText}</pre>`;
             }
@@ -1203,11 +1210,17 @@
 
                     let cardBorder = isCancel ? '#ef9a9a' : (isDeliv ? '#c8e6c9' : (isSched ? '#b39ddb' : '#ddd'));
 
+                    let splitTitle = split.title || `【多單 ${idx + 1}】`;
+                    const subExtId = (extOrderIds && extOrderIds[idx]) ? extOrderIds[idx] : '';
+                    if (subExtId && !splitTitle.includes('代訂編號')) {
+                        splitTitle = `${splitTitle} (代訂編號: ${subExtId})`;
+                    }
+
                     html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 14px; box-sizing: border-box;">`;
                     
                     // 標題與此單送達狀態 Pill
                     html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
-                    html += `<span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : (isSched ? '#3949ab' : '#1565c0')};">${split.title}</span>`;
+                    html += `<span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : (isSched ? '#3949ab' : '#1565c0')};">${splitTitle}</span>`;
                     if (isCancel) {
                         html += `<span style="background: #d32f2f; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">❌ 此單已取消</span>`;
                     } else if (isDeliv) {
@@ -1472,6 +1485,103 @@
                 return Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
             }
 
+            let urgeButtonStatus = 'idle'; // 'idle', 'sending', 'sent'
+
+            function getUrgeButtonHtml() {
+                if (urgeButtonStatus === 'sending') {
+                    return `<button type="button" disabled style="background:#ff9800; color:#fff; border:none; border-radius:18px; padding:3px 12px; font-size:13px; font-weight:bold; cursor:not-allowed; box-shadow:0 2px 4px rgba(0,0,0,0.15); vertical-align:middle;">⏳ 催單中...</button>`;
+                } else if (urgeButtonStatus === 'sent') {
+                    return `<button type="button" disabled style="background:#4caf50; color:#fff; border:none; border-radius:18px; padding:3px 12px; font-size:13px; font-weight:bold; cursor:default; box-shadow:0 2px 4px rgba(0,0,0,0.15); vertical-align:middle;">✓ 已催單</button>`;
+                } else {
+                    return `<button type="button" onclick="triggerUrgeOrder(event)" style="background:#e53935; color:#fff; border:none; border-radius:18px; padding:3px 14px; font-size:13px; font-weight:bold; cursor:pointer; box-shadow:0 2px 5px rgba(229,57,53,0.35); vertical-align:middle; transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">催單</button>`;
+                }
+            }
+
+            async function triggerUrgeOrder(event) {
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                if (urgeButtonStatus === 'sending' || urgeButtonStatus === 'sent') return;
+
+                urgeButtonStatus = 'sending';
+                renderCountdownBox();
+
+                let storeName = '';
+                let timingType = '即時單';
+
+                if (window.currentTrackParsedData) {
+                    const p = window.currentTrackParsedData;
+                    if (p.store) {
+                        storeName = p.store;
+                    } else if (p.splits && p.splits.length > 0) {
+                        const splitStores = [];
+                        p.splits.forEach(s => {
+                            if (s.store && !splitStores.includes(s.store)) splitStores.push(s.store);
+                        });
+                        storeName = splitStores.join('、');
+                    }
+                    
+                    const timeStr = p.time || '';
+                    if (timeStr && !['盡快', '即時', 'ASAP', 'asap', '馬上', '立刻'].some(k => timeStr.includes(k))) {
+                        timingType = '預約單';
+                    }
+                }
+                
+                if (!storeName && window.currentTrackOrderData && window.currentTrackOrderData.text) {
+                    const rawT = window.currentTrackOrderData.text;
+                    const mStores = rawT.match(/(?:🏪|📍\s*店家\s*[:：])\s*([^\n\r]+)/g);
+                    if (mStores) {
+                        storeName = mStores.map(s => s.replace(/(?:🏪|📍\s*店家\s*[:：])\s*/, '').replace(/\(.*?\)/, '').trim()).filter(Boolean).join('、');
+                    }
+                }
+
+                if (!storeName) storeName = 'UberEats訂單';
+
+                const barkTitle = '催單';
+                const barkBody = `${storeName}、${timingType}、在等待訂單完成`;
+
+                try {
+                    if (trackApiBase) {
+                        fetch(`${trackApiBase}/api/urge_order`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                id: orderId,
+                                store: storeName,
+                                type: timingType
+                            })
+                        }).catch(e => console.log('後端催單通報異常:', e));
+                    }
+
+                    await fetch('https://api.day.app/hS6bSRwJuYkkh9Mo9CX4LE', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: barkTitle,
+                            body: barkBody,
+                            group: 'UberEats催單',
+                            ttl: 600
+                        })
+                    });
+
+                    urgeButtonStatus = 'sent';
+                    renderCountdownBox();
+                    alert('已成功送出催單通知！代訂人員將盡快為您確認處理。');
+                } catch (err) {
+                    console.error('發送催單錯誤:', err);
+                    try {
+                        const directUrl = `https://api.day.app/hS6bSRwJuYkkh9Mo9CX4LE/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=${encodeURIComponent('UberEats催單')}&ttl=600`;
+                        const img = new Image();
+                        img.src = directUrl;
+                    } catch(e) {}
+                    urgeButtonStatus = 'sent';
+                    renderCountdownBox();
+                    alert('已送出催單通知！');
+                }
+            }
+            window.triggerUrgeOrder = triggerUrgeOrder;
+
             function renderCountdownBox() {
                 const box = document.getElementById('countdownBox');
                 if (!box || !countdownState) return;
@@ -1486,7 +1596,10 @@
                         `;
                     } else {
                         box.innerHTML = `
-                            <p style="color: #d32f2f; margin: 8px 0; font-weight: bold; font-size: 15px;">目前已超過接單時間10分鐘 請向代訂確認網址</p>
+                            <div style="color: #d32f2f; margin: 8px 0; font-weight: bold; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px;">
+                                <span>目前已超過接單時間10分鐘 請向代訂確認網址</span>
+                                ${getUrgeButtonHtml()}
+                            </div>
                         `;
                     }
                 } else if (countdownState.mode === 'waiting') {
@@ -1497,7 +1610,10 @@
                     } else {
                         box.innerHTML = `
                             <div style="color: #d32f2f; margin-top: 8px; font-weight: bold; line-height: 1.6; font-size: 15px;">
-                                <div>已超過10分鐘請催單</div>
+                                <div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                                    <span>已超過10分鐘請催單</span>
+                                    ${getUrgeButtonHtml()}
+                                </div>
                                 <div style="color: #e65100; font-size: 14px;">如是預約單有可能較慢處理</div>
                                 <div style="color: #e65100; font-size: 14px;">如預約單超過1小時可提醒代訂</div>
                             </div>
@@ -1519,8 +1635,10 @@
                     if (res.ok) {
                         const data = await res.json();
                         if (data.status === 'success') {
+                            window.currentTrackOrderData = data;
                             const parsedData = parseOrderText(data.text);
-                            orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, data.tracking_urls);
+                            window.currentTrackParsedData = parsedData;
+                            orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, data.tracking_urls, [], data.ext_order_ids);
                             orderTextArea.style.backgroundColor = 'transparent';
                             orderTextArea.style.border = 'none';
                             orderTextArea.style.padding = '0';
