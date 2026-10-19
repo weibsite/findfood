@@ -9694,6 +9694,8 @@ function buildSplitSuggestionHtml(result) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">👥</div>';
     } else if (title.includes('時段') || title.includes('預約') || title.includes('尚未營業') || title.includes('無法預約')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">⏰</div>';
+    } else if (title.includes('地址') || title.includes('送達')) {
+        document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">📍</div>';
     } else {
         document.getElementById('errorModalIcon').innerHTML = isError ? '<img src="https://weibsite.github.io/findfood/image/wait.png" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">' : '✅';
     }
@@ -11112,6 +11114,82 @@ window.renderAddrCandidates = function(items) {
     window.syncAddrFloatingPopup();
 };
 
+window.checkAddressMismatchAndPrompt = function(rawUserText, candidateItem, resolvedTitle) {
+    if (!resolvedTitle) return;
+
+    const clean = (s) => {
+        if (!s || typeof s !== 'string') return '';
+        return s
+            .replace(/^📍\s*/, '')
+            .replace(/^台灣(省)?/, '')
+            .replace(/[\s,，、\-_－—]+/g, '')
+            .trim();
+    };
+
+    const cleanResolved = clean(resolvedTitle);
+    if (!cleanResolved) return;
+
+    const candFull = candidateItem?.fullAddress || '';
+    const candLine1 = candidateItem?.addressLine1 || '';
+    const candTitle = candidateItem?.title || '';
+
+    const extractDoorInfo = (s) => {
+        if (!s || typeof s !== 'string') return null;
+        const mWithSub = s.match(/(\d+)\s*[-－之附]\s*(\d+)\s*號?/);
+        if (mWithSub) return { main: mWithSub[1], sub: mWithSub[2] };
+        const mSimple = s.match(/(\d+)\s*號/);
+        if (mSimple) return { main: mSimple[1], sub: '' };
+        return null;
+    };
+
+    const userDoor = extractDoorInfo(rawUserText);
+    const candDoor = extractDoorInfo(candLine1) || extractDoorInfo(candFull) || extractDoorInfo(candTitle);
+    const resolvedDoor = extractDoorInfo(resolvedTitle);
+
+    let isMismatch = false;
+
+    // 情況 1：點選的候選項目或使用者輸入帶有附號（例如 157-116號 或 之116），但解析出的門牌附號不一致或消失（例如變成 157號）
+    const targetSubDoor = (candDoor && candDoor.sub) ? candDoor : ((userDoor && userDoor.sub) ? userDoor : null);
+    if (targetSubDoor && targetSubDoor.sub) {
+        if (!resolvedDoor || resolvedDoor.main !== targetSubDoor.main || resolvedDoor.sub !== targetSubDoor.sub) {
+            isMismatch = true;
+        }
+    }
+
+    // 情況 2：點選的候選項目文字（非單純行政區）未被解析結果包含
+    const cleanCandLine1 = clean(candLine1);
+    if (!isMismatch && cleanCandLine1 && cleanCandLine1.length >= 4) {
+        if (!cleanResolved.includes(cleanCandLine1) && !cleanCandLine1.includes(cleanResolved)) {
+            isMismatch = true;
+        }
+    }
+
+    // 情況 3：使用者原始輸入文字長度足夠，但解析出的門牌號碼主號對不上
+    if (!isMismatch && userDoor && resolvedDoor) {
+        if (userDoor.main !== resolvedDoor.main) {
+            isMismatch = true;
+        }
+    }
+
+    if (!isMismatch) return;
+
+    // 觸發自製提示彈窗
+    const displayResolved = resolvedTitle.replace(/^📍\s*/, '').trim();
+    const content = `
+        <div style="text-align:center; font-size:15px; line-height:1.6; color:#292524; margin-bottom:18px;">
+            系統只能搜尋到「<b style="color:#e11d48; word-break:break-all;">${escapeHTML(displayResolved)}</b>」這個地址。<br><br>
+            請確認這個地址可以送達嗎？<br>
+            <span style="color:#78716c; font-size:13px;">如果不行，可以嘗試搜尋「社區」或「地標」名稱。</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="width:100%; padding:13px; background:#1c1917; color:#fff; border:none; border-radius:12px; font-weight:700; font-size:15px; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,0.12); transition:all 0.2s;">確認此地址可送達，繼續點餐</button>
+            <button onclick="document.getElementById('errorModalOverlay').style.display='none'; const inp = document.getElementById('addrInput'); if(inp){ inp.focus(); inp.select(); }" style="width:100%; padding:11px; background:#f5f5f4; color:#44403c; border:1px solid #d6d3d1; border-radius:12px; font-weight:700; font-size:14px; cursor:pointer; transition:all 0.2s;">重新搜尋社區或地標名稱</button>
+        </div>
+    `;
+
+    showModal('請確認送達地址', '', true, content, true);
+};
+
 window.selectUberAddrCandidate = async function(idx) {
     const item = window.latestAddrCandidates && window.latestAddrCandidates[idx];
     if (!item) return;
@@ -11158,6 +11236,7 @@ window.selectUberAddrCandidate = async function(idx) {
                 window.lastSearchedAddr = resolvedTitle;
                 await setAddress(localHit.lat, localHit.lng, resolvedTitle);
                 window.syncAddrFloatingPopup(true);
+                window.checkAddressMismatchAndPrompt(rawUserText, item, resolvedTitle);
                 return;
             }
 
@@ -11198,6 +11277,7 @@ window.selectUberAddrCandidate = async function(idx) {
                     window.lastSearchedAddr = resolvedTitle;
                     await setAddress(data.lat, data.lng, resolvedTitle);
                     window.syncAddrFloatingPopup(true);
+                    window.checkAddressMismatchAndPrompt(rawUserText, item, resolvedTitle);
                     return;
                 }
             }
