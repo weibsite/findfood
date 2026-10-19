@@ -1316,6 +1316,7 @@ function syncSelectedTimeToHome() {
         newOpt.text = opt.text;
         scheduleSelect.appendChild(newOpt);
         updateTriggerText();
+        if (typeof updateStoreScheduleBadge === 'function') updateStoreScheduleBadge();
     }
 }
 
@@ -1357,9 +1358,37 @@ function closeTimePickerModal() {
     document.getElementById('timePickerModal').style.display = 'none';
 }
 
+function updateStoreScheduleBadge() {
+    const badgeText = document.getElementById('storeScheduleText');
+    const badgeWrap = document.getElementById('storeScheduleBadge');
+    if (!badgeText) return;
+    
+    const scheduleSelect = document.getElementById('scheduleTime');
+    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
+        badgeText.innerText = '🚀 即時訂單 (約5~30分)';
+        if (badgeWrap) {
+            badgeWrap.style.display = 'inline-block';
+            const pillSpan = badgeWrap.querySelector('span');
+            if (pillSpan) pillSpan.style.background = '#f43f5e';
+        }
+    } else {
+        if (scheduleSelect && scheduleSelect.options.length > 0 && scheduleSelect.selectedIndex >= 0) {
+            let optText = scheduleSelect.options[scheduleSelect.selectedIndex].text;
+            if (optText.startsWith('今天 ')) optText = optText.substring(3);
+            badgeText.innerText = `📅 安排於 ${optText}`;
+            if (badgeWrap) {
+                badgeWrap.style.display = 'inline-block';
+                const pillSpan = badgeWrap.querySelector('span');
+                if (pillSpan) pillSpan.style.background = '#000';
+            }
+        }
+    }
+}
+
 function updateTriggerText() {
     const trigger = document.getElementById('triggerTimeText');
     const scheduleSelect = document.getElementById('scheduleTime');
+    if (typeof updateStoreScheduleBadge === 'function') updateStoreScheduleBadge();
     if (!trigger) return;
     
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
@@ -7267,6 +7296,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       let schedNoticeHtml = '';
 
       if (scheduleMode === 'ASAP') {
+          scheduleHtml = `
+            <div id="storeScheduleBadge" style="margin-top:10px; display:inline-block; cursor:pointer;" onclick="openTimePickerModal()" title="點擊修改送達時段">
+              <span style="background: #f43f5e; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); cursor: pointer; user-select: none;">
+                 <span id="storeScheduleText">🚀 即時外送 (約5~30分)</span>
+                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.85;"><path d="M6 9l6 6 6-6"></path></svg>
+              </span>
+            </div>
+          `;
           // 如果客人選即時，但店目前尚未營業且非30分鐘內即將營業
           if (!isCurrentlyOpen && !isWithin30) {
               const tType2 = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
@@ -7360,136 +7397,104 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
 
         const selectedTime = getSelectedScheduleTimestamp() / 1000;
-
         let timeFound = false;
 
-        
-
         availableWindows.forEach(tw => {
-
             if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + 1800) {
-
                 timeFound = true;
-
             }
-
         });
 
-
+        // 智慧容錯：若店家當下營業中 (isCurrentlyOpen)，且所選時段落在當前營業區間或最接近之可用預約時段內 (未來60~90分鐘以內)
+        // 此時段處於營業中可外送範圍內，認定為可接單，不阻擋客人
+        if (!timeFound && isCurrentlyOpen) {
+            const firstWinSec = availableWindows.length > 0 ? availableWindows[0].startTimeSeconds : (nowSec + 3600);
+            if (selectedTime <= firstWinSec + 1800 && selectedTime >= nowSec - 900) {
+                timeFound = true;
+            }
+        }
 
         if (!timeFound) {
-
-            let text = '';
-
             const tType3 = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-            let btnsHtml = `<div style="text-align:center; font-size:15px; margin-bottom:15px; line-height:1.6;">此${tType3}在您選的時段 ( ${selectedScheduleText} ) 休息或並不支援。</div>`;
             
-            const safeName = storeName ? storeName.replace(/'/g, "%27") : '';
-            const safeAction = actionUrl ? actionUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
+            // 若店家有未來的預約時段可選 (或者當前有營業)
+            if (availableWindows.length > 0 || isCurrentlyOpen) {
+                document.getElementById('errorModalOverlay').style.display = 'none';
+                showSchedModalAfterRender = true;
+                window.mustSelectScheduleBeforeCheckout = true;
 
-            // 如果這間店現在其實有營業，可以在最上面給一個「改成即時單」的按鈕
-            if (isCurrentlyOpen) {
-                btnsHtml += `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; confirmTimePicker('ASAP'); openStore('${storeUuid}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', true);" style="margin-top:5px; margin-bottom:15px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">改成即時單 <br><span style="color:#d32f2f; font-size:13px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
-            }
+                const safeName = storeName ? storeName.replace(/'/g, "%27") : '';
+                const safeAction = actionUrl ? actionUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
+                let btnsHtml = '';
 
-            if (availableWindows.length > 0) {
-                btnsHtml += `<div style="color:#111; text-align:center; font-weight:bold; margin-bottom:8px;">👉 餐廳可接單時間(點擊直接修改)：</div>`;
-                const top5 = availableWindows.slice(0, 5);
+                // 如果店家當下正在營業，提供醒目的「改為即時單」按鈕
+                if (isCurrentlyOpen) {
+                    btnsHtml += `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; confirmTimePicker('ASAP'); openStore('${storeUuid}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', true);" style="margin-top:5px; margin-bottom:12px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🚀 改成即時單 (約 10~25 分鐘送達)<br><span style="color:#d32f2f; font-size:12px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
+                }
 
-                top5.forEach(tw => {
-
-                    const sd = new Date(tw.startTimeSeconds * 1000);
-
-                    const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
-
-                    const formatT = (dt) => {
-
-                        const h = dt.getHours();
-
-                        const m = String(dt.getMinutes()).padStart(2, '0');
-
-                        const ampm = h >= 12 ? '下午' : '上午';
-
-                        const h12 = h % 12 || 12;
-
-                        return `${getTimeEmoji(h)} ${ampm} ${h12}:${m}`;
-
-                    };
-
-                    
-
-                    const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
-
-                    const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
-
-                    const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
-
-                    let str;
-
-                    if (sAmpm === eAmpm) {
-
-                      const sH12 = sd.getHours() % 12 || 12;
-
-                      const eH12 = ed.getHours() % 12 || 12;
-
-                      const sMM = String(sd.getMinutes()).padStart(2, '0');
-
-                      const eMM = String(ed.getMinutes()).padStart(2, '0');
-
-                      str = `${dayStr} ${getTimeEmoji(sd.getHours())} ${sAmpm} ${sH12}:${sMM}-${eH12}:${eMM}`;
-
-                    } else {
-
-                      str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
-
-                    }
-
-                    if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
-
-                        if (window.isGroceryStore) {
-
-                            str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
-
+                if (availableWindows.length > 0) {
+                    btnsHtml += `<div style="color:#111; text-align:center; font-weight:bold; margin-bottom:8px; font-size:14px;">👉 ${tType3}可接單的預約時段 (點擊切換)：</div>`;
+                    const top5 = availableWindows.slice(0, 5);
+                    top5.forEach(tw => {
+                        const sd = new Date(tw.startTimeSeconds * 1000);
+                        const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
+                        const formatT = (dt) => {
+                            const h = dt.getHours();
+                            const m = String(dt.getMinutes()).padStart(2, '0');
+                            const ampm = h >= 12 ? '下午' : '上午';
+                            const h12 = h % 12 || 12;
+                            return `${getTimeEmoji(h)} ${ampm} ${h12}:${m}`;
+                        };
+                        const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
+                        const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
+                        const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
+                        let str;
+                        if (sAmpm === eAmpm) {
+                            const sH12 = sd.getHours() % 12 || 12;
+                            const eH12 = ed.getHours() % 12 || 12;
+                            const sMM = String(sd.getMinutes()).padStart(2, '0');
+                            const eMM = String(ed.getMinutes()).padStart(2, '0');
+                            str = `${dayStr} ${getTimeEmoji(sd.getHours())} ${sAmpm} ${sH12}:${sMM}-${eH12}:${eMM}`;
                         } else {
-
-                            str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
-
+                            str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
                         }
+                        if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
+                            if (window.isGroceryStore) {
+                                str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
+                            } else {
+                                str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
+                            }
+                        }
+                        btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:8px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
+                    });
+                }
 
-                    }
-
-                    btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:10px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
-
-                });
-
+                schedNoticeHtml = `
+                    <div style="text-align:center; font-size:15px; margin-bottom:12px; line-height:1.6; color:#333;">
+                        此${tType3}在您選的時段 ( <b>${escapeHTML(selectedScheduleText)}</b> ) 休息或未開放此預約時段。<br>
+                        <span style="color:#f43f5e; font-weight:bold;">請選擇可接單的送達時段：</span>
+                    </div>
+                    <div style="max-height:220px; overflow-y:auto; padding:2px;">
+                        ${btnsHtml}
+                    </div>
+                    <button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.mustSelectScheduleBeforeCheckout = true;" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">先瀏覽菜單 (下單前需選時段)</button>
+                `;
+                // 允許繼續向下執行，進入餐廳瀏覽菜單！
             } else {
-
-                btnsHtml += `<div style="text-align:center; font-size:14px; color:#666; margin-top:10px;">（餐廳目前沒有提供任何預約時段）</div>`;
-
+                // 完全無法預約且當下沒開
+                showModal('店家目前尚未營業', `此${tType3}目前尚未營業，且未提供預約時段。`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
+                resultsDiv.innerHTML = oldHtml;
+                return;
             }
-
-
-
-            showModal('無法接單', '', true, btnsHtml, true);
-
-            resultsDiv.innerHTML = oldHtml;
-
-            return;
-
         } else {
 
             scheduleHtml = `
-
-              <div style="margin-top:10px; display:inline-block;">
-
-                <span style="background: #000; color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: bold;">
-
-                   📅 安排於 ${selectedScheduleText}
-
+              <div id="storeScheduleBadge" style="margin-top:10px; display:inline-block; cursor:pointer;" onclick="openTimePickerModal()" title="點擊修改預約送達時段">
+                <span style="background: #000; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); cursor: pointer; user-select: none;">
+                   <span id="storeScheduleText">📅 安排於 ${selectedScheduleText}</span>
+                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.85;"><path d="M6 9l6 6 6-6"></path></svg>
                 </span>
-
               </div>
-
             `;
 
         }
@@ -8118,7 +8123,8 @@ updateCartBadge();
 window.scrollTo(0, 0);
 
 if (showSchedModalAfterRender && schedNoticeHtml) {
-    showModal('店家目前尚未營業', '', true, schedNoticeHtml, true);
+    const sTitle = (scheduleMode === 'SCHEDULE') ? '⚠️ 請選擇可預約時段' : '店家目前尚未營業';
+    showModal(sTitle, '', true, schedNoticeHtml, true);
 } else if (window.isGroceryStore) {
     setTimeout(() => {
         openGroceryCheckoutSummary();
