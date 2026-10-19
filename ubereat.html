@@ -620,7 +620,8 @@
       <label style="display:block; font-size:13px; font-weight:700; color:#333; margin-bottom:5px;">
         🔒 設定結帳密碼 <span style="font-size:11px; color:#f43f5e; font-weight:normal;">(預設 123456)</span>
       </label>
-      <input type="text" id="gbPasswordInput" value="123456" placeholder="請設定結帳密碼" style="width:100%; padding:10px 12px; border:1.5px solid #ddd; border-radius:10px; font-size:15px; box-sizing:border-box; outline:none; font-weight:bold; letter-spacing:1px;" />
+      <input type="text" id="gbPasswordInput" value="123456" list="gb-password-list" placeholder="請設定結帳密碼" onchange="if(typeof saveSimpleHistory==='function') saveSimpleHistory('gbPasswordInput');" style="width:100%; padding:10px 12px; border:1.5px solid #ddd; border-radius:10px; font-size:15px; box-sizing:border-box; outline:none; font-weight:bold; letter-spacing:1px;" />
+      <datalist id="gb-password-list"></datalist>
       <div style="font-size:11px; color:#666; margin-top:4px;">⚠️ 只有持有此密碼的人才能按下結帳按鈕，其他人僅能點餐。</div>
     </div>
 
@@ -628,7 +629,8 @@
       <label style="display:block; font-size:13px; font-weight:700; color:#333; margin-bottom:5px;">
         👤 發起人暱稱
       </label>
-      <input type="text" id="gbCreatorNameInput" value="團長" placeholder="例如：團長 / 小明" style="width:100%; padding:10px 12px; border:1.5px solid #ddd; border-radius:10px; font-size:14px; box-sizing:border-box; outline:none;" />
+      <input type="text" id="gbCreatorNameInput" value="團長" list="gb-creator-name-list" placeholder="例如：團長 / 小明" onchange="if(typeof saveSimpleHistory==='function') saveSimpleHistory('gbCreatorNameInput');" style="width:100%; padding:10px 12px; border:1.5px solid #ddd; border-radius:10px; font-size:14px; box-sizing:border-box; outline:none;" />
+      <datalist id="gb-creator-name-list"></datalist>
     </div>
 
     <div style="display:flex; gap:10px;">
@@ -662,7 +664,7 @@
     <div style="font-size:36px; margin-bottom:8px;">🔒</div>
     <h3 id="gbAuthModalTitle" style="margin:0 0 8px 0; color:#111; font-size:18px; font-weight:800;">請輸入團購結帳密碼</h3>
     <p id="gbAuthModalDesc" style="font-size:13px; color:#666; margin:0 0 16px 0;">此訂單為多人共用購物車，只有持有結帳密碼才能結帳</p>
-    <input type="password" id="gbAuthPwdInput" placeholder="請輸入密碼" style="width:100%; padding:10px 14px; border:1.5px solid #ddd; border-radius:10px; font-size:16px; text-align:center; box-sizing:border-box; outline:none; margin-bottom:15px;" onkeydown="if(event.key==='Enter') verifyGroupBuyPassword();" />
+    <input type="password" id="gbAuthPwdInput" list="gb-password-list" placeholder="請輸入密碼" style="width:100%; padding:10px 14px; border:1.5px solid #ddd; border-radius:10px; font-size:16px; text-align:center; box-sizing:border-box; outline:none; margin-bottom:15px;" onkeydown="if(event.key==='Enter') verifyGroupBuyPassword();" />
     <div style="display:flex; gap:10px;">
       <button type="button" onclick="cancelGroupBuyAuth()" style="flex:1; background:#eee; color:#333; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">取消</button>
       <button type="button" onclick="verifyGroupBuyPassword()" style="flex:1; background:#f43f5e; color:#fff; border:none; padding:10px; border-radius:8px; font-weight:bold; cursor:pointer;">確認送出</button>
@@ -915,21 +917,20 @@ let isAddressSet = false;
   
 
   function loadHistory() {
-
-    ['foodNotes', 'deliveryNotes', 'query', 'modalNote'].forEach(field => {
-
+    const fieldMap = {
+      'query': 'query-list',
+      'foodNotes': 'food-notes-list',
+      'deliveryNotes': 'delivery-notes-list',
+      'modalNote': 'modal-note-list',
+      'gbPasswordInput': 'gb-password-list',
+      'gbCreatorNameInput': 'gb-creator-name-list'
+    };
+    Object.keys(fieldMap).forEach(field => {
       const history = JSON.parse(localStorage.getItem('finddog_history_' + field)) || [];
-
-      const datalist = document.getElementById(field === 'query' ? 'query-list' : (field === 'foodNotes' ? 'food-notes-list' : 'delivery-notes-list'));
-
+      const datalist = document.getElementById(fieldMap[field]);
       if (datalist) {
-
         datalist.innerHTML = history.map(val => `<option value="${escapeHTML(val)}"></option>`).join('');
-
       }
-
-
-
     });
 
     
@@ -1077,12 +1078,42 @@ let isAddressSet = false;
       }
   });
 
+  // 像備註一樣在使用者端保存團購密碼與暱稱
+  const savedGbPwd = localStorage.getItem('userGroupBuyPassword');
+  const gbPwdEl = document.getElementById('gbPasswordInput');
+  if (gbPwdEl) {
+      if (savedGbPwd !== null && savedGbPwd.trim() !== '') {
+          gbPwdEl.value = savedGbPwd;
+      }
+      gbPwdEl.addEventListener('input', (e) => {
+          localStorage.setItem('userGroupBuyPassword', e.target.value.trim());
+      });
+      gbPwdEl.addEventListener('change', (e) => {
+          const val = e.target.value.trim();
+          localStorage.setItem('userGroupBuyPassword', val);
+          if (typeof saveSimpleHistory === 'function') saveSimpleHistory('gbPasswordInput');
+      });
+  }
 
-    liffInitPromise = liff.init({ liffId: "2011657436-rGVj5SoG" }).catch(err => {
+  const savedGbNickname = localStorage.getItem('group_buy_user_name');
+  const gbNameEl = document.getElementById('gbCreatorNameInput');
+  if (gbNameEl) {
+      if (savedGbNickname !== null && savedGbNickname.trim() !== '' && savedGbNickname.trim() !== '成員') {
+          gbNameEl.value = savedGbNickname;
+      }
+      gbNameEl.addEventListener('input', (e) => {
+          localStorage.setItem('group_buy_user_name', e.target.value.trim());
+      });
+      gbNameEl.addEventListener('change', (e) => {
+          const val = e.target.value.trim();
+          localStorage.setItem('group_buy_user_name', val);
+          if (typeof saveSimpleHistory === 'function') saveSimpleHistory('gbCreatorNameInput');
+      });
+  }
 
-        console.error('LIFF init failed', err);
-
-    });
+  liffInitPromise = liff.init({ liffId: "2011657436-rGVj5SoG" }).catch(err => {
+      console.error('LIFF init failed', err);
+  });
 
     
 
@@ -3883,6 +3914,23 @@ function openGroupBuyModal() {
     if (storeInfo) {
         storeInfo.innerHTML = `🏪 團購店家：<strong>${escapeHTML(currentStoreName || '當前店家')}</strong>`;
     }
+
+    // 每次開啟發起彈窗時，自動載入使用者上次修改並儲存在本地的密碼與暱稱（若無則維持預設值）
+    const pwdInput = document.getElementById('gbPasswordInput');
+    if (pwdInput) {
+        const savedPwd = localStorage.getItem('userGroupBuyPassword');
+        if (savedPwd !== null && savedPwd.trim() !== '') {
+            pwdInput.value = savedPwd;
+        }
+    }
+    const nameInput = document.getElementById('gbCreatorNameInput');
+    if (nameInput) {
+        const savedName = localStorage.getItem('group_buy_user_name');
+        if (savedName !== null && savedName.trim() !== '' && savedName.trim() !== '成員') {
+            nameInput.value = savedName;
+        }
+    }
+
     if (modal) modal.style.display = 'flex';
 }
 
@@ -3933,6 +3981,14 @@ async function submitCreateGroupBuy() {
     const nameInput = document.getElementById('gbCreatorNameInput');
     const password = (pwdInput ? pwdInput.value.trim() : '') || '123456';
     const creatorName = (nameInput ? nameInput.value.trim() : '') || '團長';
+
+    // 像備註一樣存於使用者端
+    localStorage.setItem('userGroupBuyPassword', password);
+    localStorage.setItem('group_buy_user_name', creatorName);
+    if (typeof saveSimpleHistory === 'function') {
+        saveSimpleHistory('gbPasswordInput');
+        saveSimpleHistory('gbCreatorNameInput');
+    }
 
     if (!currentStoreUuid && !currentStoreName) {
         showModal('無法發起團購', '請先進入一家餐廳頁面後再發起團購！');
@@ -4152,6 +4208,9 @@ function getOrPromptGroupBuyUserName(forcePrompt = false) {
         if (!name || name.trim() === '') name = '成員';
         name = name.trim();
         localStorage.setItem('group_buy_user_name', name);
+        const nameInput = document.getElementById('gbCreatorNameInput');
+        if (nameInput && name !== '成員') nameInput.value = name;
+        if (typeof saveSimpleHistory === 'function' && name !== '成員') saveSimpleHistory('gbCreatorNameInput');
     }
     return name;
 }
@@ -4160,8 +4219,12 @@ function changeGroupBuyUserName() {
     const oldName = localStorage.getItem('group_buy_user_name') || '成員';
     const newName = prompt('請輸入您想顯示的姓名或暱稱：', oldName);
     if (newName && newName.trim()) {
-        localStorage.setItem('group_buy_user_name', newName.trim());
-        showToast('暱稱已更新為：' + newName.trim());
+        const trimmed = newName.trim();
+        localStorage.setItem('group_buy_user_name', trimmed);
+        const nameInput = document.getElementById('gbCreatorNameInput');
+        if (nameInput) nameInput.value = trimmed;
+        if (typeof saveSimpleHistory === 'function') saveSimpleHistory('gbCreatorNameInput');
+        showToast('暱稱已更新為：' + trimmed);
         if (currentView === 'cart') viewCart();
     }
 }
@@ -4302,9 +4365,12 @@ function showGroupBuyPasswordAuthModal(callback, customTitle, customDesc) {
     const descEl = document.getElementById('gbAuthModalDesc');
     if (titleEl) titleEl.innerText = customTitle || '請輸入團購結帳密碼';
     if (descEl) descEl.innerText = customDesc || '此訂單為多人共用購物車，只有持有結帳密碼才能結帳或修改其他成員餐點';
-    if (input) input.value = '';
+    if (input) {
+        const savedPwd = (window.currentGroupBuyId && localStorage.getItem('gb_pwd_' + window.currentGroupBuyId)) || localStorage.getItem('userGroupBuyPassword') || '';
+        input.value = savedPwd;
+    }
     if (modal) modal.style.display = 'flex';
-    setTimeout(() => { if (input) input.focus(); }, 100);
+    setTimeout(() => { if (input) { input.focus(); input.select(); } }, 100);
 }
 
 function closeGroupBuyAuthModal() {
@@ -4347,7 +4413,10 @@ async function verifyGroupBuyPassword() {
             window.groupBuyAuthed = true;
             if (window.currentGroupBuyId) {
                 localStorage.setItem('gb_leader_' + window.currentGroupBuyId, 'true');
+                localStorage.setItem('gb_pwd_' + window.currentGroupBuyId, pwd);
             }
+            localStorage.setItem('userGroupBuyPassword', pwd);
+            if (typeof saveSimpleHistory === 'function') saveSimpleHistory('gbPasswordInput');
             closeGroupBuyAuthModal();
             showToast('👑 團長驗證成功！您現在可以修改訂單與結帳');
             if (window._groupBuyAuthCallback) {
