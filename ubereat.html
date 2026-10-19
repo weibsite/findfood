@@ -2372,7 +2372,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
         let isClosed = false;
 
         const storePayloadState = s.tracking && s.tracking.storePayload ? s.tracking.storePayload.storeAvailablityState : '';
-        if (storePayloadState === 'STORE_CLOSED' || storePayloadState === 'NOT_ACCEPTING_ORDERS') {
+        if (storePayloadState === 'STORE_CLOSED') {
             isClosed = true;
         } else if (s.imageOverlay && (s.imageOverlay.text === 'Closed' || s.imageOverlay.text === '已關閉' || s.imageOverlay.badgeType === 'StoreNotOrderable' || s.imageOverlay.badgeType === 'STORE_NOT_ORDERABLE')) {
             isClosed = true;
@@ -6905,7 +6905,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     const isClockTime = !!timeMatch && !badgeTime.includes('分鐘') && !badgeTime.includes('min');
     const displayTime = timeMatch ? timeMatch[0] : '';
     const isWithin30Min = isOpeningWithin30Minutes(badgeTime);
-    const isCardMarkedClosed = badgeTime && (badgeTime.includes('可預約') || badgeTime.includes('休息') || badgeTime.includes('已關閉') || badgeTime.includes('營業'));
+    const isCardMarkedClosed = badgeTime && (badgeTime.includes('可預約') || badgeTime.includes('休息') || badgeTime.includes('已關閉') || badgeTime.includes('後營業') || badgeTime.includes('開始營業')) && !badgeTime.includes('營業中') && !badgeTime.includes('分鐘後送達') && !badgeTime.includes('分鐘內送達') && !badgeTime.includes('分');
 
     // 若為當前 30 分鐘內即將營業的店家，不做攔截，直接自然進入店家
     if (!skipFetch && scheduleMode === 'ASAP' && (isClockTime || isCardMarkedClosed) && !isWithin30Min) {
@@ -7229,7 +7229,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       // 檢查是否被 Uber 標記為關閉 / 休息中 / 無法即時接單
       const isStoreClosedByUber = Boolean(d.closedMessage && d.closedMessage.trim()) ||
           Boolean(d.orderForLaterInfo && (d.orderForLaterInfo.autoSurfaceBottomSheet || (d.orderForLaterInfo.bottomSheetSubtitleMessage && d.orderForLaterInfo.bottomSheetSubtitleMessage.includes('沒有營業')))) ||
-          Boolean(d.tracking && d.tracking.storePayload && (d.tracking.storePayload.storeAvailablityState === 'STORE_CLOSED' || d.tracking.storePayload.storeAvailablityState === 'NOT_ACCEPTING_ORDERS'));
+          Boolean(d.tracking && d.tracking.storePayload && d.tracking.storePayload.storeAvailablityState === 'STORE_CLOSED') ||
+          (d.isOpen === false) || (d.isOrderable === false);
 
       const storeClosedNotice = d.closedMessage ? d.closedMessage.trim() : (d.orderForLaterInfo && d.orderForLaterInfo.bottomSheetSubtitleMessage ? d.orderForLaterInfo.bottomSheetSubtitleMessage.trim() : '');
       const closedTimeMatch = (storeClosedNotice || '').match(/(?:上午|下午)?\s*\d{1,2}:\d{2}\s*(?:AM|PM)?/i);
@@ -7245,6 +7246,13 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           isCurrentlyOpen = false;
       } else if (d.isOpen === true && d.isOrderable === true) {
           isCurrentlyOpen = true;
+      } else if (isWithin30) {
+          isCurrentlyOpen = true;
+      } else if (availableWindows.length > 0) {
+          // 備用防呆：若最近的一個接單時間在未來 60 分鐘以內，也認定為現在有營業可以接即時單
+          if (availableWindows[0].startTimeSeconds - nowSec <= 60 * 60) {
+              isCurrentlyOpen = true;
+          }
       }
 
       window.currentStoreClosed = isStoreClosedByUber || !isCurrentlyOpen;
