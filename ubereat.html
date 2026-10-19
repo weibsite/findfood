@@ -728,6 +728,40 @@
 
 <script>
 
+function showToast(msg) {
+    if (!document.body) {
+        window.addEventListener('DOMContentLoaded', () => showToast(msg));
+        return;
+    }
+    const el = document.createElement('div');
+    el.innerText = msg;
+    el.style.position = 'fixed';
+    el.style.top = '50%';
+    el.style.left = '50%';
+    el.style.transform = 'translate(-50%, -50%)';
+    el.style.background = 'rgba(0,0,0,0.85)';
+    el.style.color = '#fff';
+    el.style.padding = '12px 24px';
+    el.style.borderRadius = '20px';
+    el.style.zIndex = '99999';
+    el.style.fontSize = '15px';
+    el.style.fontWeight = 'bold';
+    el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)';
+    el.style.pointerEvents = 'none';
+    el.style.textAlign = 'center';
+    el.style.maxWidth = '80%';
+    el.style.wordBreak = 'break-word';
+    document.body.appendChild(el);
+    setTimeout(() => {
+        el.style.transition = 'opacity 0.5s';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 500);
+    }, 2000);
+}
+window.showToast = showToast;
+window.alert = function(msg) {
+    showToast(msg);
+};
 
 // New specific function to handle delivery method toggle since we hid the original select
 function setDeliveryMethod(method) {
@@ -2429,7 +2463,7 @@ window.addrDebounceTimer = null;
       let q = document.getElementById('addrInput').value.trim();
       if (q.startsWith('📍 ')) q = q.substring(3).trim();
       if (!q) {
-          alert('請先輸入外送地址！');
+          showModal('請輸入地址', '請先輸入外送地址，以便為您推薦附近的美食與店家！');
           document.getElementById('addrInput').focus();
           return;
       }
@@ -3894,7 +3928,7 @@ async function submitCreateGroupBuy() {
     const creatorName = (nameInput ? nameInput.value.trim() : '') || '團長';
 
     if (!currentStoreUuid && !currentStoreName) {
-        alert('請先進入一家餐廳後再發起團購！');
+        showModal('無法發起團購', '請先進入一家餐廳頁面後再發起團購！');
         return;
     }
 
@@ -3989,11 +4023,11 @@ async function submitCreateGroupBuy() {
             openGroupBuyShareModal();
             copyGroupBuyShareLink();
         } else {
-            alert('發起團購失敗: ' + (json.message || '伺服器異常'));
+            showModal('發起團購失敗', json.message || '伺服器異常，請稍後再試！');
         }
     } catch (e) {
         console.error('發起團購錯誤:', e);
-        alert('連線失敗，請稍後再試！');
+        showModal('連線失敗', '發起團購連線失敗，請檢查網路狀態後再試！');
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
@@ -4278,7 +4312,7 @@ function cancelGroupBuyAuth() {
         window._groupBuyAuthCallback = null;
         cb(false);
     } else {
-        alert('參與者沒有權限結帳');
+        showModal('權限不足', '參與者沒有權限結帳，需由持有密碼的團長進行結帳。');
     }
 }
 
@@ -4286,7 +4320,8 @@ async function verifyGroupBuyPassword() {
     const input = document.getElementById('gbAuthPwdInput');
     const pwd = input ? input.value.trim() : '';
     if (!pwd) {
-        alert('請輸入團購密碼');
+        showToast('⚠️ 請輸入團購密碼');
+        if (input) input.focus();
         return;
     }
     const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
@@ -4317,7 +4352,7 @@ async function verifyGroupBuyPassword() {
             }
         } else {
             closeGroupBuyAuthModal();
-            alert('密碼錯誤！只有本人或團長可以修改此餐點/結帳');
+            showModal('密碼錯誤', '團購密碼錯誤！只有本人或團長可以修改此餐點與進行結帳。');
             if (window._groupBuyAuthCallback) {
                 const cb = window._groupBuyAuthCallback;
                 window._groupBuyAuthCallback = null;
@@ -4326,7 +4361,7 @@ async function verifyGroupBuyPassword() {
         }
     } catch (e) {
         closeGroupBuyAuthModal();
-        alert('連線失敗，請檢查網路！');
+        showModal('連線失敗', '驗證密碼時連線失敗，請檢查網路狀態！');
         if (window._groupBuyAuthCallback) {
             const cb = window._groupBuyAuthCallback;
             window._groupBuyAuthCallback = null;
@@ -4362,12 +4397,12 @@ async function checkAndInitGroupBuyFromUrl() {
     try {
         const res = await fetch(`${apiBase}/api/group_buy/get?group_id=${groupId}`);
         if (!res.ok) {
-            alert('找不到此團購或團購已結束');
+            showModal('找不到團購', '找不到此團購或團購已結束，請向主辦人確認連結是否正確。');
             return;
         }
         const json = await res.json();
         if (json.status !== 'success' || !json.data) {
-            alert('無法載入團購資料');
+            showModal('載入失敗', '無法載入團購資料: ' + (json.message || '伺服器異常'));
             return;
         }
 
@@ -4508,7 +4543,7 @@ let originalAppHeaderHtml = "";
     if (cart.length === 0) {
       document.getElementById('errorModalOverlay').style.display = 'none';
       if (typeof goBackToStore === 'function') goBackToStore();
-      alert('購物車已清空');
+      showToast('🗑️ 購物車已清空');
     } else {
       viewCart();
     }
@@ -4965,7 +5000,7 @@ let currentOriginalDeliveryFee = 0;
     }
 
     if (cart.length === 0) {
-      alert('購物車是空的');
+      showModal('購物車是空的', '購物車目前沒有任何餐點，快去挑選喜歡的美食吧！');
       return;
     }
 
@@ -9641,6 +9676,12 @@ function buildSplitSuggestionHtml(result) {
         document.getElementById('errorModalIcon').innerHTML = '<img src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
+    } else if (title === '購物車是空的') {
+        document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">🛒</div>';
+    } else if (title.includes('密碼') || title.includes('權限')) {
+        document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">🔒</div>';
+    } else if (title.includes('團購')) {
+        document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">👥</div>';
     } else {
         document.getElementById('errorModalIcon').innerHTML = isError ? '<img src="https://weibsite.github.io/findfood/image/wait.png" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">' : '✅';
     }
@@ -9910,7 +9951,7 @@ function showToast(msg) {
 
 
 
-<div id="errorModalOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+<div id="errorModalOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:99999; align-items:center; justify-content:center;">
 
     <div style="background:#fff; width:80%; max-width:400px; border-radius:16px; padding:25px; text-align:center; box-shadow:0 4px 20px rgba(0,0,0,0.15); max-height:80vh; display:flex; flex-direction:column; position:relative;">
 
