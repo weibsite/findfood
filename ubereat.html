@@ -1391,11 +1391,28 @@ function openTimePickerModal() {
 function checkStoreIsOpenNow(d, badgeTime) {
     try {
         if (!d) return false;
+
+        // 1. 若 Uber API 直接標記為營業中且可下單 (最直接權威狀態)
+        if (d.isOpen === true && d.isOrderable === true && !d.closedMessage) {
+            return true;
+        }
+
+        // 2. 檢查外部傳入或全域的 badgeTime / 標題副標 (例如 "10 到 20 分鐘", "15-25 分鐘")
+        const bTime = badgeTime || window.currentStoreBadgeTime || document.getElementById('storeHeaderSubtitle')?.innerText || '';
+        if (bTime) {
+            const isMinText = (bTime.includes('分鐘') || bTime.includes('分')) &&
+                !bTime.includes('後營業') &&
+                !bTime.includes('開始營業') &&
+                !bTime.includes('休息') &&
+                !bTime.includes('未營業');
+            if (isMinText) return true;
+        }
+
+        // 3. 由 d.hours (每日各營業區間) 判斷，支援跨午夜時段 (如 10:30 到 00:59，即 st > et)
         const now = new Date();
         const currentMins = now.getHours() * 60 + now.getMinutes();
         const dayNum = now.getDay();
 
-        // 1. 先由 d.hours (每日各營業區間) 判斷
         if (d && Array.isArray(d.hours) && d.hours.length > 0) {
             const dayMap = { '日': 0, '天': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
             for (const h of d.hours) {
@@ -1423,26 +1440,16 @@ function checkStoreIsOpenNow(d, badgeTime) {
                     const inShift = h.sectionHours.some(sh => {
                         const st = sh.startTime || 0;
                         const et = sh.endTime || 0;
-                        return currentMins >= st && currentMins < et;
+                        if (st <= et) {
+                            return currentMins >= st && currentMins < et;
+                        } else {
+                            // 跨午夜時段 (如 10:30 到 凌晨 00:59)
+                            return currentMins >= st || currentMins < et;
+                        }
                     });
                     if (inShift) return true;
                 }
             }
-        }
-
-        // 2. 檢查外部卡片傳進來的 badgeTime
-        if (badgeTime) {
-            const isMinText = (badgeTime.includes('分鐘') || badgeTime.includes('分')) &&
-                !badgeTime.includes('後營業') &&
-                !badgeTime.includes('開始營業') &&
-                !badgeTime.includes('休息') &&
-                !badgeTime.includes('未營業');
-            if (isMinText) return true;
-        }
-
-        // 3. ASAP 模式下 Uber API 直接標記為營業中
-        if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && d.isOpen === true && d.isOrderable === true && !d.closedMessage) {
-            return true;
         }
     } catch (e) {
         console.error('checkStoreIsOpenNow error:', e);
@@ -1548,8 +1555,8 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
     // 如果店家當下正在營業，提供「改成即時單」按鈕
     if (isCurrentlyOpen) {
         const asapClickAction = isCheckout
-            ? `document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; window.mustSelectScheduleBeforeCheckout = false; confirmTimePicker('ASAP', true, true); setTimeout(() => { if (window.isGroceryStore && typeof openGroceryCheckoutSummary === 'function') openGroceryCheckoutSummary(); else if (typeof openCheckoutSummary === 'function') openCheckoutSummary(); }, 150);`
-            : `document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; window.mustSelectScheduleBeforeCheckout = false; confirmTimePicker('ASAP', true, true); openStore('${currentStoreUuid || ''}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', false);`;
+            ? `document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; window.mustSelectScheduleBeforeCheckout = false; confirmTimePicker('ASAP', true, true); if (typeof updateStoreScheduleBadge === 'function') updateStoreScheduleBadge(); setTimeout(() => { if (window.isGroceryStore && typeof openGroceryCheckoutSummary === 'function') openGroceryCheckoutSummary(); else if (typeof openCheckoutSummary === 'function') openCheckoutSummary(); }, 150);`
+            : `document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; window.mustSelectScheduleBeforeCheckout = false; confirmTimePicker('ASAP', true, true); if (typeof updateStoreScheduleBadge === 'function') updateStoreScheduleBadge();`;
 
         btnsHtml += `<button onclick="${asapClickAction}" style="margin-top:5px; margin-bottom:12px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🚀 改成即時單 (約 10~25 分鐘送達)<br><span style="color:#d32f2f; font-size:12px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
     }
@@ -1597,7 +1604,7 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
     }
 
     let promptHtml = '';
-    let modalTitle = '⚠️ 請選擇可預約時段';
+    let modalTitle = '請選擇可預約時段';
     if (invalidScheduleText) {
         promptHtml = `
             此${tType}${notice}在您選的時段 ( <b>${escapeHTML(invalidScheduleText)}</b> ) 休息或未開放此預約時段。<br>
@@ -1622,7 +1629,7 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
         <button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.mustSelectScheduleBeforeCheckout = true;" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">${cancelBtnText}</button>
     `;
 
-    showModal(modalTitle, content, false, '', true);
+    showModal(modalTitle, '', true, content, true);
 }
 window.showStoreScheduleModal = showStoreScheduleModal;
 
@@ -9670,8 +9677,11 @@ function buildSplitSuggestionHtml(result) {
 
 
   function showModal(title, text, isError = true, htmlContent = '', hideBtn = false) {
+    if (typeof text === 'string' && (text.includes('<div') || text.includes('<button') || text.includes('<span') || text.includes('<p') || text.includes('<br>')) && !htmlContent) {
+        htmlContent = text;
+        text = '';
+    }
 
-    
     if (title === '代訂睡覺中') {
         document.getElementById('errorModalIcon').innerHTML = '<img src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
@@ -9682,23 +9692,29 @@ function buildSplitSuggestionHtml(result) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">🔒</div>';
     } else if (title.includes('團購')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">👥</div>';
+    } else if (title.includes('時段') || title.includes('預約') || title.includes('尚未營業') || title.includes('無法預約')) {
+        document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">⏰</div>';
     } else {
         document.getElementById('errorModalIcon').innerHTML = isError ? '<img src="https://weibsite.github.io/findfood/image/wait.png" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">' : '✅';
     }
 
-
     document.getElementById('errorModalIcon').style.color = isError ? '#d32f2f' : '#f43f5e';
-
     document.getElementById('errorModalTitle').innerText = title;
 
-    document.getElementById('errorModalText').innerHTML = escapeHTML(text).replace(/\\n/g, '<br>');
+    const textEl = document.getElementById('errorModalText');
+    if (text) {
+        textEl.innerHTML = (typeof text === 'string' && text.includes('<') && text.includes('>')) 
+            ? text 
+            : escapeHTML(text).replace(/\n/g, '<br>');
+        textEl.style.display = 'block';
+    } else {
+        textEl.innerHTML = '';
+        textEl.style.display = 'none';
+    }
 
     document.getElementById('errorModalExtra').innerHTML = htmlContent;
-
     document.getElementById('errorModalBtn').style.display = hideBtn ? 'none' : 'block';
-
     document.getElementById('errorModalOverlay').style.display = 'flex';
-
   }
 
 window.renderSplitTab = function(plan) {
