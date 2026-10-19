@@ -1416,12 +1416,55 @@ function openTimePickerModal() {
         } catch(e) {}
     }
     
+    const asapBtn = document.getElementById('modalAsapBtn');
+    if (asapBtn) {
+        const rawData = window.currentStoreRawData;
+        const isStoreOpen = (typeof checkStoreIsOpenNow === 'function' && rawData)
+            ? checkStoreIsOpenNow(rawData)
+            : (window.currentStoreIsOpenForAsap !== undefined ? window.currentStoreIsOpenForAsap : true);
+        if (rawData && !isStoreOpen) {
+            asapBtn.innerText = '🚀 即時訂單 (此店家目前未營業)';
+            asapBtn.style.color = '#94a3b8';
+            asapBtn.style.background = '#f1f5f9';
+        } else {
+            asapBtn.innerText = '即時訂單';
+            asapBtn.style.color = '#000';
+            asapBtn.style.background = '#eee';
+        }
+    }
+    
     document.getElementById('timePickerModal').style.display = 'flex';
 }
+
+function isStoreClosedByUber(d) {
+    if (!d) return false;
+    if (d.isOpen === false || d.isOrderable === false) return true;
+    if (d.closedMessage && typeof d.closedMessage === 'string' && d.closedMessage.trim().length > 0) return true;
+    if (d.orderForLaterInfo) {
+        if (d.orderForLaterInfo.autoSurfaceBottomSheet) return true;
+        const subMsg = d.orderForLaterInfo.bottomSheetSubtitleMessage || '';
+        if (subMsg.includes('沒有營業') || subMsg.includes('未營業') || subMsg.includes('尚未營業') || subMsg.includes('不接受訂單') || subMsg.includes('已打烊') || subMsg.includes('休息中')) {
+            return true;
+        }
+    }
+    if (d.tracking && d.tracking.storePayload) {
+        const state = d.tracking.storePayload.storeAvailablityState || '';
+        if (state === 'STORE_CLOSED' || state === 'CLOSED' || state === 'UNAVAILABLE') {
+            return true;
+        }
+    }
+    return false;
+}
+window.isStoreClosedByUber = isStoreClosedByUber;
 
 function checkStoreIsOpenNow(d, badgeTime) {
     try {
         if (!d) return false;
+
+        // 若被 Uber 明確標記為關閉 / 休息中 / 目前不接受訂單，當下絕非營業中，不可接即時單
+        if (isStoreClosedByUber(d)) {
+            return false;
+        }
 
         // 1. 若 Uber API 直接標記為營業中且可下單 (最直接權威狀態)
         if (d.isOpen === true && d.isOrderable === true && !d.closedMessage) {
@@ -1435,7 +1478,8 @@ function checkStoreIsOpenNow(d, badgeTime) {
                 !bTime.includes('後營業') &&
                 !bTime.includes('開始營業') &&
                 !bTime.includes('休息') &&
-                !bTime.includes('未營業');
+                !bTime.includes('未營業') &&
+                !bTime.includes('已打烊');
             if (isMinText) return true;
         }
 
@@ -1506,8 +1550,10 @@ function validateStoreSchedule() {
     }
 
     if (scheduleMode === 'ASAP') {
-        const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : !window.currentStoreClosed;
-        if (window.currentStoreClosed || !isCurrentlyOpen) {
+        const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData)
+            ? checkStoreIsOpenNow(rawData)
+            : (window.currentStoreIsOpenForAsap !== undefined ? window.currentStoreIsOpenForAsap : !window.currentStoreClosed);
+        if (!isCurrentlyOpen || (rawData && typeof isStoreClosedByUber === 'function' && isStoreClosedByUber(rawData))) {
             return { valid: false, reason: 'ASAP_CLOSED', text: '即時訂單' };
         }
         return { valid: true, text: '即時訂單' };
@@ -1781,12 +1827,13 @@ function updateTriggerText() {
 }
 
 function confirmTimePicker(mode, skipSearch = false, force = false) {
-    if (!force && mode === 'ASAP') {
-        const isOpenNow = (typeof window.checkStoreIsOpenNow === 'function' && window.currentStoreRawData)
-            ? window.checkStoreIsOpenNow(window.currentStoreRawData)
-            : !window.currentStoreClosed;
-        if (!isOpenNow && window.currentStoreClosed) {
-            showModal('無法切換', '當前店家目前尚未營業，無法切換為「盡快送達」。請選擇預約送達時段。');
+    const rawData = window.currentStoreRawData;
+    if (!force && mode === 'ASAP' && rawData) {
+        const isStoreOpen = (typeof window.checkStoreIsOpenNow === 'function')
+            ? window.checkStoreIsOpenNow(rawData)
+            : (window.currentStoreIsOpenForAsap !== undefined ? window.currentStoreIsOpenForAsap : !window.currentStoreClosed);
+        if (!isStoreOpen || (typeof isStoreClosedByUber === 'function' && isStoreClosedByUber(rawData))) {
+            showModal('店家目前尚未營業', '此餐廳目前尚未營業（目前無法接收「即時訂單」）。請選擇預約未來的送達時段以完成訂餐。');
             return;
         }
     }
@@ -1794,8 +1841,9 @@ function confirmTimePicker(mode, skipSearch = false, force = false) {
     const scheduleSelect = document.getElementById('scheduleTime');
     
     if (mode === 'SCHEDULE') {
-        const selectedModalOpt = document.getElementById('modalTimeSelect').options[document.getElementById('modalTimeSelect').selectedIndex];
-        if (selectedModalOpt) {
+        const modalSelect = document.getElementById('modalTimeSelect');
+        const selectedModalOpt = modalSelect ? modalSelect.options[modalSelect.selectedIndex] : null;
+        if (selectedModalOpt && scheduleSelect) {
             scheduleSelect.innerHTML = '';
             const newOpt = document.createElement('option');
             newOpt.value = selectedModalOpt.value;
@@ -1806,6 +1854,11 @@ function confirmTimePicker(mode, skipSearch = false, force = false) {
     
     updateTriggerText();
     closeTimePickerModal();
+    
+    // 如果在餐廳畫面或結帳畫面中切換時段，立即驗證該時段是否合法
+    if (typeof currentView !== 'undefined' && (currentView === 'store' || currentView === 'checkout') && window.currentStoreRawData) {
+        handleStoreScheduleValidation('confirmTimePicker');
+    }
     
     // [優化] 當切換時間時，清除搜尋快取，強制下次搜尋重新抓取正確時間段的資料
     if (typeof lastSearchedQuery !== 'undefined') {
@@ -8371,27 +8424,24 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       // 判斷是否為「當下正在營業中」
       let isCurrentlyOpen = false;
-      if (scheduleMode === 'SCHEDULE') {
-          isCurrentlyOpen = checkIsOpenNow();
+      if (typeof isStoreClosedByUber === 'function' && isStoreClosedByUber(d)) {
+          isCurrentlyOpen = false;
+      } else if (d.isOpen === true && d.isOrderable === true) {
+          isCurrentlyOpen = true;
+      } else if (isWithin30) {
+          isCurrentlyOpen = true;
       } else {
-          if (isStoreClosedByUber) {
-              isCurrentlyOpen = false;
-          } else if (d.isOpen === true && d.isOrderable === true) {
-              isCurrentlyOpen = true;
-          } else if (isWithin30) {
-              isCurrentlyOpen = true;
-          } else if (availableWindows.length > 0 && (availableWindows[0].startTimeSeconds - nowSec <= 60 * 60)) {
-              isCurrentlyOpen = true;
-          } else {
-              isCurrentlyOpen = checkIsOpenNow();
-          }
+          isCurrentlyOpen = checkIsOpenNow();
       }
+
+      window.currentStoreIsOpenForAsap = isCurrentlyOpen;
+      window.currentStoreClosedForAsap = !isCurrentlyOpen;
 
       if (scheduleMode === 'SCHEDULE') {
           // 預約模式下，預約時段是否有效由後續 timeFound 決定，預設先不判定為關閉
           window.currentStoreClosed = false;
       } else {
-          window.currentStoreClosed = isStoreClosedByUber || !isCurrentlyOpen;
+          window.currentStoreClosed = !isCurrentlyOpen;
       }
       window.currentStoreAvailableWindows = availableWindows;
       window.currentStoreClosedNotice = storeClosedNotice;
@@ -10146,7 +10196,7 @@ function showToast(msg) {
         </div>
     </div>
     <button onclick="confirmTimePicker('SCHEDULE')" style="width:100%; padding:15px; background:#10b981; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:bold; margin-bottom:10px; cursor:pointer;">預約訂單</button>
-    <button onclick="confirmTimePicker('ASAP')" style="width:100%; padding:15px; background:#eee; color:#000; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer;">即時訂單</button>
+    <button id="modalAsapBtn" onclick="confirmTimePicker('ASAP')" style="width:100%; padding:15px; background:#eee; color:#000; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer;">即時訂單</button>
   </div>
 </div>
 
