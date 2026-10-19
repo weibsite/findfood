@@ -3593,13 +3593,44 @@ async function submitCreateGroupBuy() {
 
     const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
     try {
+        let cAddr = (typeof currentAddrTitle !== 'undefined' && currentAddrTitle) ? currentAddrTitle : '';
+        if (!cAddr) {
+            const addrEl = document.getElementById('addrInput');
+            if (addrEl && addrEl.value) cAddr = addrEl.value.trim().replace(/^📍\s*/, '');
+        }
+        if (!cAddr) {
+            try {
+                const hist = JSON.parse(localStorage.getItem('finddog_history_address') || '[]');
+                if (hist.length > 0 && hist[0].title) cAddr = hist[0].title.replace(/^📍\s*/, '');
+            } catch(e) {}
+        }
+        let cLat = currentLat;
+        let cLng = currentLng;
+        if (!cLat || !cLng) {
+            try {
+                const hist = JSON.parse(localStorage.getItem('finddog_history_address') || '[]');
+                if (hist.length > 0 && hist[0].lat && hist[0].lng) {
+                    cLat = hist[0].lat;
+                    cLng = hist[0].lng;
+                }
+            } catch(e) {}
+        }
+        const cPhone = localStorage.getItem('userPhone') || (document.getElementById('checkoutPhone') ? document.getElementById('checkoutPhone').value.trim() : '');
+        const cDeliveryNotes = (document.getElementById('deliveryNotes') ? document.getElementById('deliveryNotes').value.trim() : '') || localStorage.getItem('userDeliveryNotes') || '';
+        const cDeliveryMethod = (document.getElementById('deliveryMethod') ? document.getElementById('deliveryMethod').value : '') || localStorage.getItem('userDeliveryMethod') || '當面點交';
+        const cFoodNotes = (document.getElementById('foodNotes') ? document.getElementById('foodNotes').value.trim() : '') || localStorage.getItem('userFoodNotes') || '';
+
         const payload = {
             store_uuid: currentStoreUuid,
             store_name: currentStoreName,
             store_url: typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '',
-            address: typeof currentAddressTitle !== 'undefined' ? currentAddressTitle : '',
-            lat: typeof currentLat !== 'undefined' ? currentLat : 25.033,
-            lng: typeof currentLng !== 'undefined' ? currentLng : 121.565,
+            address: cAddr,
+            lat: cLat || 25.033,
+            lng: cLng || 121.565,
+            phone: cPhone,
+            delivery_notes: cDeliveryNotes,
+            delivery_method: cDeliveryMethod,
+            food_notes: cFoodNotes,
             password: password,
             creator_name: creatorName,
             items: (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => ({ ...it, user_name: it.user_name || creatorName })) : []
@@ -3821,9 +3852,48 @@ async function checkAndInitGroupBuyFromUrl() {
             currentLng = gb.lng;
         }
         if (gb.address) {
-            currentAddressTitle = gb.address;
+            currentAddrTitle = gb.address;
             const addrEl = document.getElementById('addrInput');
             if (addrEl) addrEl.value = gb.address;
+        }
+        isAddressSet = true;
+
+        if (gb.phone) {
+            localStorage.setItem('userPhone', gb.phone);
+            const phoneEl = document.getElementById('checkoutPhone');
+            if (phoneEl) phoneEl.value = gb.phone;
+        }
+        if (gb.delivery_notes !== undefined && gb.delivery_notes !== null) {
+            localStorage.setItem('userDeliveryNotes', gb.delivery_notes);
+            ['deliveryNotes', 'checkoutDeliveryNotes', 'groceryDeliveryNotes'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = gb.delivery_notes;
+            });
+        }
+        if (gb.delivery_method) {
+            localStorage.setItem('userDeliveryMethod', gb.delivery_method);
+            ['deliveryMethod', 'checkoutDeliveryMethod', 'groceryDeliveryMethod'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = gb.delivery_method;
+            });
+            if (typeof setDeliveryMethod === 'function') {
+                setDeliveryMethod(gb.delivery_method);
+            }
+        }
+        if (gb.food_notes !== undefined && gb.food_notes !== null) {
+            localStorage.setItem('userFoodNotes', gb.food_notes);
+            ['foodNotes', 'checkoutFoodNotes', 'groceryFoodNotes'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = gb.food_notes;
+            });
+        }
+
+        if (gb.lat && gb.lng && gb.address && typeof setAddress === 'function') {
+            try {
+                await setAddress(gb.lat, gb.lng, gb.address);
+            } catch(e) {
+                console.warn('[GroupBuy] setAddress error:', e);
+            }
         }
 
         cart = gb.items || [];
@@ -4600,18 +4670,18 @@ function openCheckoutSummary() {
 
   
 
-  const savedPhone = localStorage.getItem('userPhone') || '';
+  const savedPhone = (window.currentGroupBuyId && window.groupBuyData?.phone) ? window.groupBuyData.phone : (localStorage.getItem('userPhone') || '');
 
-  const oldDeliveryNotes = document.getElementById('deliveryNotes') ? document.getElementById('deliveryNotes').value.trim() : '';
+  const oldDeliveryNotes = (window.currentGroupBuyId && window.groupBuyData?.delivery_notes !== undefined) ? window.groupBuyData.delivery_notes : ((document.getElementById('deliveryNotes') ? document.getElementById('deliveryNotes').value.trim() : '') || localStorage.getItem('userDeliveryNotes') || '');
 
-  const selectedMethod = document.getElementById('deliveryMethod') ? document.getElementById('deliveryMethod').value : '當面點交';
+  const selectedMethod = (window.currentGroupBuyId && window.groupBuyData?.delivery_method) ? window.groupBuyData.delivery_method : ((document.getElementById('deliveryMethod') ? document.getElementById('deliveryMethod').value : '') || localStorage.getItem('userDeliveryMethod') || '當面點交');
 
-  const oldFoodNotes = document.getElementById('foodNotes') ? document.getElementById('foodNotes').value.trim() : '';
-
-  
+  const oldFoodNotes = (window.currentGroupBuyId && window.groupBuyData?.food_notes !== undefined) ? window.groupBuyData.food_notes : ((document.getElementById('foodNotes') ? document.getElementById('foodNotes').value.trim() : '') || localStorage.getItem('userFoodNotes') || '');
 
   let addr = document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '';
-
+  if (!addr && window.currentGroupBuyId && window.groupBuyData?.address) {
+    addr = window.groupBuyData.address;
+  }
   if (addr.startsWith('📍 ')) addr = addr.substring(3).trim();
 
   
@@ -5477,6 +5547,9 @@ async function _sendOrderToLine(forceSubmit = false) {
       let addrEl = document.getElementById(prefix + 'AddrInput');
 
       let addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
+      if (!addr && window.currentGroupBuyId && window.groupBuyData?.address) {
+          addr = window.groupBuyData.address;
+      }
       addr = normalizeAddress(addr);
 
       let coordsText = '';
@@ -5486,6 +5559,10 @@ async function _sendOrderToLine(forceSubmit = false) {
           if (typeof currentAddrTitle !== 'undefined' && addr === currentAddrTitle && typeof currentLat !== 'undefined' && currentLat !== null && typeof currentLng !== 'undefined' && currentLng !== null) {
 
               coordsText = ` (${currentLat}, ${currentLng})`;
+
+          } else if (window.currentGroupBuyId && window.groupBuyData?.lat && window.groupBuyData?.lng) {
+
+              coordsText = ` (${window.groupBuyData.lat}, ${window.groupBuyData.lng})`;
 
           } else if (typeof addressHistory !== 'undefined') {
 
