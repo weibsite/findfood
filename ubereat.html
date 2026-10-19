@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 20.0</title>
+<title>點餐系統 20.1</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -1354,8 +1354,272 @@ function openTimePickerModal() {
     document.getElementById('timePickerModal').style.display = 'flex';
 }
 
+function checkStoreIsOpenNow(d, badgeTime) {
+    try {
+        if (!d) return false;
+        const now = new Date();
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+        const dayNum = now.getDay();
+
+        // 1. 先由 d.hours (每日各營業區間) 判斷
+        if (d && Array.isArray(d.hours) && d.hours.length > 0) {
+            const dayMap = { '日': 0, '天': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
+            for (const h of d.hours) {
+                const dr = h.dayRange || '';
+                let isDay = false;
+                if (!dr || dr.includes('每天') || dr.includes('每日') || dr.includes('全天')) {
+                    isDay = true;
+                } else {
+                    const m = dr.match(/(?:星期|週|周)?([一二三四五六日天])\s*(?:-|至|~)\s*(?:星期|週|周)?([一二三四五六日天])/);
+                    if (m) {
+                        const s = dayMap[m[1]];
+                        const e = dayMap[m[2]];
+                        if (s !== undefined && e !== undefined) {
+                            isDay = (s <= e) ? (dayNum >= s && dayNum <= e) : (dayNum >= s || dayNum <= e);
+                        }
+                    }
+                    if (!isDay) {
+                        const singleMatches = [...dr.matchAll(/(?:星期|週|周)?([一二三四五六日天])/g)];
+                        if (singleMatches.length > 0) {
+                            isDay = singleMatches.some(sm => dayMap[sm[1]] === dayNum);
+                        }
+                    }
+                }
+                if (isDay && Array.isArray(h.sectionHours) && h.sectionHours.length > 0) {
+                    const inShift = h.sectionHours.some(sh => {
+                        const st = sh.startTime || 0;
+                        const et = sh.endTime || 0;
+                        return currentMins >= st && currentMins < et;
+                    });
+                    if (inShift) return true;
+                }
+            }
+        }
+
+        // 2. 檢查外部卡片傳進來的 badgeTime
+        if (badgeTime) {
+            const isMinText = (badgeTime.includes('分鐘') || badgeTime.includes('分')) &&
+                !badgeTime.includes('後營業') &&
+                !badgeTime.includes('開始營業') &&
+                !badgeTime.includes('休息') &&
+                !badgeTime.includes('未營業');
+            if (isMinText) return true;
+        }
+
+        // 3. ASAP 模式下 Uber API 直接標記為營業中
+        if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && d.isOpen === true && d.isOrderable === true && !d.closedMessage) {
+            return true;
+        }
+    } catch (e) {
+        console.error('checkStoreIsOpenNow error:', e);
+    }
+    return false;
+}
+window.checkStoreIsOpenNow = checkStoreIsOpenNow;
+
+function validateStoreSchedule() {
+    let windows = window.currentStoreAvailableWindows || [];
+    const rawData = window.currentStoreRawData;
+    if (windows.length === 0 && rawData && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
+        rawData.timeWindowPicker.dates.forEach(dateObj => {
+            if (dateObj.listItems) {
+                dateObj.listItems.forEach(item => {
+                    if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
+                        windows.push(item.timeWindowViewModel.timeWindow);
+                    }
+                });
+            }
+        });
+        window.currentStoreAvailableWindows = windows;
+    }
+
+    if (scheduleMode === 'ASAP') {
+        const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : !window.currentStoreClosed;
+        if (window.currentStoreClosed || !isCurrentlyOpen) {
+            return { valid: false, reason: 'ASAP_CLOSED', text: '即時訂單' };
+        }
+        return { valid: true, text: '即時訂單' };
+    } else if (scheduleMode === 'SCHEDULE') {
+        const scheduleSelect = document.getElementById('scheduleTime');
+        const selectedScheduleValue = scheduleSelect ? scheduleSelect.value : '';
+        let selectedScheduleText = scheduleSelect && scheduleSelect.selectedIndex >= 0 ? scheduleSelect.options[scheduleSelect.selectedIndex].text : '';
+        if (selectedScheduleText.startsWith('今天 ')) selectedScheduleText = selectedScheduleText.substring(3);
+
+        if (!selectedScheduleValue) {
+            return { valid: false, reason: 'NO_SCHEDULE_SELECTED', text: '尚未選擇時段' };
+        }
+
+        const selectedTime = getSelectedScheduleTimestamp() / 1000;
+        let timeFound = false;
+
+        if (windows.length > 0) {
+            for (const tw of windows) {
+                if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + 1800) {
+                    timeFound = true;
+                    break;
+                }
+            }
+        }
+
+        const nowSec = Date.now() / 1000;
+        const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : false;
+        // 智慧容錯：若店家當下營業中 (isCurrentlyOpen)，且所選時段落在當前營業區間或最接近之可用預約時段內 (未來60~90分鐘以內)
+        if (!timeFound && isCurrentlyOpen && (selectedTime - nowSec <= 90 * 60) && (selectedTime >= nowSec - 900)) {
+            const firstWinSec = windows.length > 0 ? windows[0].startTimeSeconds : (nowSec + 3600);
+            if (selectedTime <= firstWinSec + 1800) {
+                timeFound = true;
+            }
+        }
+
+        if (!timeFound) {
+            return { valid: false, reason: 'SCHEDULE_TIME_INVALID', text: selectedScheduleText };
+        }
+
+        return { valid: true, text: selectedScheduleText };
+    }
+
+    return { valid: true };
+}
+window.validateStoreSchedule = validateStoreSchedule;
+
+function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false } = {}) {
+    let windows = window.currentStoreAvailableWindows || [];
+    const rawData = window.currentStoreRawData;
+    if (windows.length === 0 && rawData && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
+        rawData.timeWindowPicker.dates.forEach(dateObj => {
+            if (dateObj.listItems) {
+                dateObj.listItems.forEach(item => {
+                    if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
+                        windows.push(item.timeWindowViewModel.timeWindow);
+                    }
+                });
+            }
+        });
+        window.currentStoreAvailableWindows = windows;
+    }
+
+    const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
+    const notice = window.currentStoreClosedNotice ? `（${escapeHTML(window.currentStoreClosedNotice)}）` : '';
+    const safeName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName.replace(/'/g, "%27") : '';
+    const safeAction = (typeof currentStoreUrl !== 'undefined' && currentStoreUrl) ? currentStoreUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
+    const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : false;
+
+    if (windows.length === 0 && !isCurrentlyOpen) {
+        showModal('店家目前尚未營業', `此${tType}${notice}目前已打烊且未提供預約時段，無法接單。`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
+        return;
+    }
+
+    let btnsHtml = '';
+
+    // 如果店家當下正在營業，提供「改成即時單」按鈕
+    if (isCurrentlyOpen) {
+        const asapClickAction = isCheckout
+            ? `document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; window.mustSelectScheduleBeforeCheckout = false; confirmTimePicker('ASAP', true, true); setTimeout(() => { if (window.isGroceryStore && typeof openGroceryCheckoutSummary === 'function') openGroceryCheckoutSummary(); else if (typeof openCheckoutSummary === 'function') openCheckoutSummary(); }, 150);`
+            : `document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; window.mustSelectScheduleBeforeCheckout = false; confirmTimePicker('ASAP', true, true); openStore('${currentStoreUuid || ''}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', false);`;
+
+        btnsHtml += `<button onclick="${asapClickAction}" style="margin-top:5px; margin-bottom:12px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🚀 改成即時單 (約 10~25 分鐘送達)<br><span style="color:#d32f2f; font-size:12px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
+    }
+
+    if (windows.length > 0) {
+        if (isCurrentlyOpen) {
+            btnsHtml += `<div style="color:#111; text-align:center; font-weight:bold; margin-bottom:8px; font-size:14px;">👉 或選擇可接單的預約時段 (點擊切換)：</div>`;
+        }
+        const top6 = windows.slice(0, 6);
+        top6.forEach(tw => {
+            const sd = new Date(tw.startTimeSeconds * 1000);
+            const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
+            const formatT = (dt) => {
+                const h = dt.getHours();
+                const m = String(dt.getMinutes()).padStart(2, '0');
+                const ampm = h >= 12 ? '下午' : '上午';
+                const h12 = h % 12 || 12;
+                return (typeof getTimeEmoji === 'function' ? getTimeEmoji(h) : '📅') + ` ${ampm} ${h12}:${m}`;
+            };
+            const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
+            const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
+            const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
+            let str;
+            if (sAmpm === eAmpm) {
+                const sH12 = sd.getHours() % 12 || 12;
+                const eH12 = ed.getHours() % 12 || 12;
+                const sMM = String(sd.getMinutes()).padStart(2, '0');
+                const eMM = String(ed.getMinutes()).padStart(2, '0');
+                const emoji = typeof getTimeEmoji === 'function' ? getTimeEmoji(sd.getHours()) : '📅';
+                str = `${dayStr} ${emoji} ${sAmpm} ${sH12}:${sMM}-${eH12}:${eMM}`;
+            } else {
+                str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
+            }
+            if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
+                if (window.isGroceryStore) {
+                    str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
+                } else {
+                    str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
+                }
+            }
+
+            const clickFunc = isCheckout ? 'quickSetScheduleAndProceed' : 'quickSetSchedule';
+            btnsHtml += `<button onclick="${clickFunc}(${tw.startTimeSeconds}, '${currentStoreUuid || ''}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:8px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
+        });
+    }
+
+    let promptHtml = '';
+    let modalTitle = '⚠️ 請選擇可預約時段';
+    if (invalidScheduleText) {
+        promptHtml = `
+            此${tType}${notice}在您選的時段 ( <b>${escapeHTML(invalidScheduleText)}</b> ) 休息或未開放此預約時段。<br>
+            <span style="color:#f43f5e; font-weight:bold;">請選擇可接單的送達時段：</span>
+        `;
+    } else {
+        modalTitle = '店家目前尚未營業';
+        promptHtml = `
+            此${tType}${notice}目前尚未營業，無法以「盡快送達」結帳。<br>
+            <span style="color:#f43f5e; font-weight:bold;">請選擇預約送達時段以完成訂單：</span>
+        `;
+    }
+
+    const cancelBtnText = isCheckout ? '返回' : '先瀏覽菜單 (下單前需選時段)';
+    const content = `
+        <div style="text-align:center; font-size:15px; margin-bottom:12px; line-height:1.6; color:#333;">
+            ${promptHtml}
+        </div>
+        <div style="max-height:220px; overflow-y:auto; padding:2px;">
+            ${btnsHtml}
+        </div>
+        <button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.mustSelectScheduleBeforeCheckout = true;" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">${cancelBtnText}</button>
+    `;
+
+    showModal(modalTitle, content, false, '', true);
+}
+window.showStoreScheduleModal = showStoreScheduleModal;
+
+function showScheduleSelectModalForClosedStore() {
+    showStoreScheduleModal({ isCheckout: true });
+}
+window.showScheduleSelectModalForClosedStore = showScheduleSelectModalForClosedStore;
+
+function handleStoreScheduleValidation(triggerSource = '') {
+    if (typeof currentView === 'undefined' || currentView !== 'store') return;
+    if (!window.currentStoreRawData) return;
+    
+    const schedCheck = validateStoreSchedule();
+    if (!schedCheck.valid) {
+        window.currentStoreClosed = true;
+        window.mustSelectScheduleBeforeCheckout = true;
+        if (typeof updateStoreScheduleBadge === 'function') updateStoreScheduleBadge();
+        showStoreScheduleModal({ invalidScheduleText: schedCheck.text, isCheckout: false });
+    } else {
+        window.currentStoreClosed = false;
+        window.mustSelectScheduleBeforeCheckout = false;
+        if (typeof updateStoreScheduleBadge === 'function') updateStoreScheduleBadge();
+    }
+}
+window.handleStoreScheduleValidation = handleStoreScheduleValidation;
+
 function closeTimePickerModal() {
     document.getElementById('timePickerModal').style.display = 'none';
+    if (typeof currentView !== 'undefined' && currentView === 'store' && window.currentStoreRawData) {
+        handleStoreScheduleValidation('closeModal');
+    }
 }
 
 function updateStoreScheduleBadge() {
@@ -1365,21 +1629,39 @@ function updateStoreScheduleBadge() {
     
     const scheduleSelect = document.getElementById('scheduleTime');
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
-        badgeText.innerText = '🚀 即時訂單 (約5~30分)';
-        if (badgeWrap) {
-            badgeWrap.style.display = 'inline-block';
-            const pillSpan = badgeWrap.querySelector('span');
-            if (pillSpan) pillSpan.style.background = '#f43f5e';
+        if (window.currentStoreClosed || window.mustSelectScheduleBeforeCheckout) {
+            badgeText.innerText = '⚠️ 店家目前尚未營業 (點擊預約)';
+            if (badgeWrap) {
+                badgeWrap.style.display = 'inline-block';
+                const pillSpan = badgeWrap.querySelector('span');
+                if (pillSpan) pillSpan.style.background = '#e11d48';
+            }
+        } else {
+            badgeText.innerText = '🚀 即時訂單 (約5~30分)';
+            if (badgeWrap) {
+                badgeWrap.style.display = 'inline-block';
+                const pillSpan = badgeWrap.querySelector('span');
+                if (pillSpan) pillSpan.style.background = '#f43f5e';
+            }
         }
     } else {
         if (scheduleSelect && scheduleSelect.options.length > 0 && scheduleSelect.selectedIndex >= 0) {
             let optText = scheduleSelect.options[scheduleSelect.selectedIndex].text;
             if (optText.startsWith('今天 ')) optText = optText.substring(3);
-            badgeText.innerText = `📅 安排於 ${optText}`;
-            if (badgeWrap) {
-                badgeWrap.style.display = 'inline-block';
-                const pillSpan = badgeWrap.querySelector('span');
-                if (pillSpan) pillSpan.style.background = '#000';
+            if (window.currentStoreClosed || window.mustSelectScheduleBeforeCheckout) {
+                badgeText.innerText = `⚠️ ${optText} 休息中 (點擊修改)`;
+                if (badgeWrap) {
+                    badgeWrap.style.display = 'inline-block';
+                    const pillSpan = badgeWrap.querySelector('span');
+                    if (pillSpan) pillSpan.style.background = '#d97706';
+                }
+            } else {
+                badgeText.innerText = `📅 安排於 ${optText}`;
+                if (badgeWrap) {
+                    badgeWrap.style.display = 'inline-block';
+                    const pillSpan = badgeWrap.querySelector('span');
+                    if (pillSpan) pillSpan.style.background = '#000';
+                }
             }
         }
     }
@@ -1425,12 +1707,14 @@ function updateTriggerText() {
 }
 
 function confirmTimePicker(mode, skipSearch = false, force = false) {
-    if (!force && mode === 'ASAP' && window.currentStoreClosed) {
-        showModal('無法切換', '當前店家目前尚未營業，無法切換為「盡快送達」。請選擇預約送達時段。');
-        return;
-    }
-    if (mode === 'SCHEDULE') {
-        window.mustSelectScheduleBeforeCheckout = false;
+    if (!force && mode === 'ASAP') {
+        const isOpenNow = (typeof window.checkStoreIsOpenNow === 'function' && window.currentStoreRawData)
+            ? window.checkStoreIsOpenNow(window.currentStoreRawData)
+            : !window.currentStoreClosed;
+        if (!isOpenNow && window.currentStoreClosed) {
+            showModal('無法切換', '當前店家目前尚未營業，無法切換為「盡快送達」。請選擇預約送達時段。');
+            return;
+        }
     }
     scheduleMode = mode;
     const scheduleSelect = document.getElementById('scheduleTime');
@@ -5221,8 +5505,15 @@ function openCheckoutSummary() {
         return;
     }
 
-    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && (window.mustSelectScheduleBeforeCheckout || window.currentStoreClosed)) {
-        showScheduleSelectModalForClosedStore();
+    const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
+    if (!schedCheck.valid) {
+        window.currentStoreClosed = true;
+        window.mustSelectScheduleBeforeCheckout = true;
+        if (typeof showStoreScheduleModal === 'function') {
+            showStoreScheduleModal({ invalidScheduleText: (scheduleMode === 'SCHEDULE' ? schedCheck.text : ''), isCheckout: true });
+        } else if (typeof showScheduleSelectModalForClosedStore === 'function') {
+            showScheduleSelectModalForClosedStore();
+        }
         return;
     }
 
@@ -5566,8 +5857,15 @@ function toggleSummaryItem(idx) {
 
 
 function openGroceryCheckoutSummary() {
-  if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && (window.mustSelectScheduleBeforeCheckout || window.currentStoreClosed)) {
-      showScheduleSelectModalForClosedStore();
+  const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
+  if (!schedCheck.valid) {
+      window.currentStoreClosed = true;
+      window.mustSelectScheduleBeforeCheckout = true;
+      if (typeof showStoreScheduleModal === 'function') {
+          showStoreScheduleModal({ invalidScheduleText: (scheduleMode === 'SCHEDULE' ? schedCheck.text : ''), isCheckout: true });
+      } else if (typeof showScheduleSelectModalForClosedStore === 'function') {
+          showScheduleSelectModalForClosedStore();
+      }
       return;
   }
 
@@ -5908,8 +6206,15 @@ async function sendOrderToLine(forceSubmit = false) {
 }
 
 async function _sendOrderToLine(forceSubmit = false) {
-      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && (window.mustSelectScheduleBeforeCheckout || window.currentStoreClosed)) {
-          showScheduleSelectModalForClosedStore();
+      const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
+      if (!schedCheck.valid) {
+          window.currentStoreClosed = true;
+          window.mustSelectScheduleBeforeCheckout = true;
+          if (typeof showStoreScheduleModal === 'function') {
+              showStoreScheduleModal({ invalidScheduleText: (scheduleMode === 'SCHEDULE' ? schedCheck.text : ''), isCheckout: true });
+          } else if (typeof showScheduleSelectModalForClosedStore === 'function') {
+              showScheduleSelectModalForClosedStore();
+          }
           return;
       }
 
@@ -8061,6 +8366,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         if (!timeFound) {
             window.currentStoreClosed = true;
             window.mustSelectScheduleBeforeCheckout = true;
+            scheduleHtml = `
+              <div id="storeScheduleBadge" style="margin-top:10px; display:inline-block; cursor:pointer;" onclick="openTimePickerModal()" title="點擊修改預約送達時段">
+                <span style="background: #d97706; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); cursor: pointer; user-select: none;">
+                   <span id="storeScheduleText">⚠️ ${selectedScheduleText} 休息中 (點擊修改)</span>
+                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.85;"><path d="M6 9l6 6 6-6"></path></svg>
+                </span>
+              </div>
+            `;
             const tType3 = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
             
             // 若店家有未來的預約時段可選 (或者當前有營業)
@@ -8872,63 +9185,9 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
   }
 
   function showScheduleSelectModalForClosedStore() {
-    const windows = window.currentStoreAvailableWindows || [];
-    const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-    const notice = window.currentStoreClosedNotice ? `（${escapeHTML(window.currentStoreClosedNotice)}）` : '';
-    
-    if (windows.length === 0) {
-        showModal('店家目前尚未營業', `此${tType}${notice}目前已打烊且未提供預約時段，無法接單。`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
-        return;
+    if (typeof showStoreScheduleModal === 'function') {
+        showStoreScheduleModal({ isCheckout: true });
     }
-    
-    let btnsHtml = '';
-    const safeName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName.replace(/'/g, "%27") : '';
-    const safeAction = (typeof currentStoreUrl !== 'undefined' && currentStoreUrl) ? currentStoreUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
-    const top6 = windows.slice(0, 6);
-    top6.forEach(tw => {
-        const sd = new Date(tw.startTimeSeconds * 1000);
-        const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
-        const formatT = (dt) => {
-            const h = dt.getHours();
-            const m = String(dt.getMinutes()).padStart(2, '0');
-            const ampm = h >= 12 ? '下午' : '上午';
-            const h12 = h % 12 || 12;
-            return `${getTimeEmoji(h)} ${ampm} ${h12}:${m}`;
-        };
-        const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
-        const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
-        const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
-        let str;
-        if (sAmpm === eAmpm) {
-          const sH12 = sd.getHours() % 12 || 12;
-          const eH12 = ed.getHours() % 12 || 12;
-          const sMM = String(sd.getMinutes()).padStart(2, '0');
-          const eMM = String(ed.getMinutes()).padStart(2, '0');
-          str = `${dayStr} ${getTimeEmoji(sd.getHours())} ${sAmpm} ${sH12}:${sMM}-${eH12}:${eMM}`;
-        } else {
-          str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
-        }
-        if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
-            if (window.isGroceryStore) {
-                str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
-            } else {
-                str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
-            }
-        }
-        btnsHtml += `<button onclick="quickSetScheduleAndProceed(${tw.startTimeSeconds}, '${currentStoreUuid || ''}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:10px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
-    });
-    
-    const content = `
-        <div style="text-align:center; font-size:15px; margin-bottom:12px; line-height:1.6; color:#333;">
-            此${tType}${notice}目前尚未營業，無法以「盡快送達」結帳。<br>
-            <span style="color:#f43f5e; font-weight:bold;">請選擇預約送達時段以完成訂單：</span>
-        </div>
-        <div style="max-height:220px; overflow-y:auto; padding:2px;">
-            ${btnsHtml}
-        </div>
-        <button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">返回</button>
-    `;
-    showModal('⚠️ 請選擇預約送達時段', '', true, content, true);
   }
 
 
