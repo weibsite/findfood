@@ -1649,7 +1649,7 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
         `;
     }
 
-    const cancelBtnText = isCheckout ? '返回' : '先瀏覽菜單 (下單前需選時段)';
+    const cancelBtnText = isCheckout ? '返回' : '返回上一頁';
     const content = `
         <div style="text-align:center; font-size:15px; margin-bottom:12px; line-height:1.6; color:#333;">
             ${promptHtml}
@@ -1657,10 +1657,12 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
         <div style="max-height:220px; overflow-y:auto; padding:2px;">
             ${btnsHtml}
         </div>
-        <button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.mustSelectScheduleBeforeCheckout = true;" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">${cancelBtnText}</button>
+        <button onclick="closeErrorModal();" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">${cancelBtnText}</button>
     `;
 
-    showModal(modalTitle, '', true, content, true);
+    showModal(modalTitle, '', true, content, true, isCheckout ? null : function() {
+        handleMainBack();
+    });
 }
 window.showStoreScheduleModal = showStoreScheduleModal;
 
@@ -4128,9 +4130,12 @@ function exitGroupBuyToPersonal() {
     window.groupBuyData = null;
     window.isGroupBuyClosed = false;
     window.groupBuyAuthed = false;
-    cart = [];
-    saveCart();
-    updateCartBadge();
+    if (typeof clearCart === 'function') clearCart();
+    else {
+        cart = [];
+        saveCart();
+        updateCartBadge();
+    }
     const url = new URL(window.location.href);
     url.searchParams.delete('group_id');
     url.searchParams.delete('group');
@@ -4163,7 +4168,11 @@ async function markGroupBuySubmitted(orderText = '') {
             })
         });
         window.isGroupBuyClosed = true;
-        if (window.groupBuyData) window.groupBuyData.status = 'submitted';
+        if (window.groupBuyData) {
+            window.groupBuyData.status = 'submitted';
+            window.groupBuyData.items = [];
+        }
+        if (typeof clearCart === 'function') clearCart();
         if (typeof renderGroupBuyTopBar === 'function') renderGroupBuyTopBar(window.groupBuyData || {});
         if (typeof updateMenuActions === 'function') updateMenuActions();
     } catch (e) {
@@ -4305,24 +4314,28 @@ function startGroupBuySync(groupId) {
                 const json = await res.json();
                 if (json.status === 'success' && json.changed) {
                     window.localGroupBuyVersion = json.version;
-                    cart = json.items || [];
-                    updateCartBadge();
 
                     // 偵測到團購已送出結帳
                     if (json.group_status === 'submitted' || json.group_status === 'closed' || (json.last_event && json.last_event.type === 'order_submitted')) {
+                        if (typeof clearCart === 'function') clearCart();
                         if (!window.isGroupBuyClosed) {
                             window.isGroupBuyClosed = true;
-                            if (window.groupBuyData) window.groupBuyData.status = 'submitted';
+                            if (window.groupBuyData) {
+                                window.groupBuyData.status = 'submitted';
+                                window.groupBuyData.items = [];
+                            }
                             renderGroupBuyTopBar(window.groupBuyData || {});
                             if (typeof updateMenuActions === 'function') updateMenuActions();
                             const submitMsg = (json.last_event && json.last_event.message) ? json.last_event.message : '團長已完成結帳並送出訂單，團購已截止！';
                             showModal('🎉 團長已送出訂單', submitMsg, false, `
                                 <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
-                                    <button onclick="document.getElementById('errorModalOverlay').style.display='none'; viewCart();" style="width:100%; padding:11px; background:#06c167; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">👀 查看最終訂單明細</button>
                                     <button onclick="document.getElementById('errorModalOverlay').style.display='none'; exitGroupBuyToPersonal();" style="width:100%; padding:11px; background:#f43f5e; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">🛒 我要自己另外點餐</button>
                                 </div>
                             `, true);
                         }
+                    } else {
+                        cart = json.items || [];
+                        updateCartBadge();
                     }
 
                     if (typeof updateMenuActions === 'function') updateMenuActions();
@@ -4489,12 +4502,12 @@ async function checkAndInitGroupBuyFromUrl() {
 
         if (gb.status === 'submitted' || gb.status === 'closed') {
             window.isGroupBuyClosed = true;
+            if (typeof clearCart === 'function') clearCart();
             setTimeout(() => {
                 const subTime = gb.submitted_at || '';
                 const creator = gb.creator_name || '主辦人';
                 showModal('🔒 團購訂單已送出', `此團購已由團長 (${creator}) 送出訂單${subTime ? '（' + subTime + '）' : ''}，目前已截止點餐，無法再加入或修改餐點。`, true, `
                     <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
-                        <button onclick="document.getElementById('errorModalOverlay').style.display='none'; viewCart();" style="width:100%; padding:11px; background:#06c167; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">👀 查看最終訂單明細</button>
                         <button onclick="document.getElementById('errorModalOverlay').style.display='none'; exitGroupBuyToPersonal();" style="width:100%; padding:11px; background:#f43f5e; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">🛒 我要自己另外點餐</button>
                     </div>
                 `, true);
@@ -4559,7 +4572,7 @@ async function checkAndInitGroupBuyFromUrl() {
             }
         }
 
-        cart = gb.items || [];
+        cart = (gb.status === 'submitted' || gb.status === 'closed') ? [] : (gb.items || []);
         updateCartBadge();
         if (typeof updateMenuActions === 'function') updateMenuActions();
 
@@ -4585,14 +4598,45 @@ let originalAppHeaderHtml = "";
     if (saved) cart = JSON.parse(saved);
 
   } catch(e) {}
+  window.cart = cart;
 
   
 
   function saveCart() {
 
     localStorage.setItem('uberCart', JSON.stringify(cart));
+    window.cart = cart;
 
   }
+
+  function clearCart() {
+    cart = [];
+    window.cart = [];
+    try {
+      localStorage.removeItem('uberCart');
+      localStorage.setItem('uberCart', JSON.stringify([]));
+      localStorage.removeItem('uberCartIsDiscount');
+    } catch(e) {}
+    if (window.groupBuyData) {
+      window.groupBuyData.items = [];
+    }
+    if (typeof updateCartBadge === 'function') updateCartBadge();
+    if (typeof updateMenuActions === 'function') updateMenuActions();
+    const checkoutContent = document.getElementById('checkoutContent');
+    if (checkoutContent) checkoutContent.innerHTML = '';
+    const cartItems = document.getElementById('cartItems');
+    if (cartItems) cartItems.innerHTML = '';
+    const cv = document.getElementById('checkoutView');
+    if (cv && cv.style.display === 'block') cv.style.display = 'none';
+    const cartV = document.getElementById('cartView');
+    if (cartV && cartV.style.display === 'block') cartV.style.display = 'none';
+    if (currentView === 'checkout' || currentView === 'cart') {
+      currentView = 'store';
+      const sv = document.getElementById('storeView');
+      if (sv) sv.style.display = 'block';
+    }
+  }
+  window.clearCart = clearCart;
 
   
 
@@ -6256,8 +6300,7 @@ function copyAndRetrySendOrder(btn, orderText) {
     btn.style.color = '#fff';
 
     // 清空購物車與標記訂單完成狀態
-    cart = [];
-    if (typeof updateCartBadge === 'function') updateCartBadge();
+    clearCart();
     window._orderSent = true;
 
     // 2. 順便背景自動嘗試再送一次 (靜默執行，但不跳出任何錯誤)
@@ -6279,8 +6322,7 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
     if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
         markGroupBuySubmitted(msgText);
     }
-    cart = [];
-    updateCartBadge();
+    clearCart();
     window._orderSent = true;
     const safeOrderText = encodeURIComponent(msgText).replace(/'/g, "%27");
     
@@ -6977,8 +7019,7 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
     if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
       await markGroupBuySubmitted(msgText);
     }
-    cart = [];
-    updateCartBadge();
+    clearCart();
     window._orderSent = true;
     const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 20px;">無法自動為您送出訂單</div><button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息</button>`;
 
@@ -7008,8 +7049,7 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
         await markGroupBuySubmitted(msgText);
       }
 
-      cart = [];
-      updateCartBadge();
+      clearCart();
       window._orderSent = true;
 
 
@@ -7730,6 +7770,8 @@ const note = document.getElementById('modalNote').value.trim();
 
 
   let currentView = 'home';
+  window.getCurrentView = () => currentView;
+  window.setCurrentView = (v) => { currentView = v; };
 
   function handleMainBack() {
 
@@ -7742,7 +7784,14 @@ const note = document.getElementById('modalNote').value.trim();
       return;
     }
 
-    if (currentView === 'store') goBack();
+    if (currentView === 'store') {
+      const resultsEl = document.getElementById('results');
+      if (!resultsEl || !resultsEl.children || resultsEl.children.length === 0) {
+        goHome();
+      } else {
+        goBack();
+      }
+    }
 
     else if (currentView === 'list') goHome();
 
@@ -7941,13 +7990,12 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     }
 
     if (cart.length > 0 && storeName && cart[0].storeName && cart[0].storeName !== storeName) {
-
-        cart = [];
-
-        saveCart();
-
-        updateCartBadge();
-
+        if (typeof clearCart === 'function') clearCart();
+        else {
+            cart = [];
+            saveCart();
+            updateCartBadge();
+        }
     }
 
     
@@ -8423,7 +8471,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                       <div style="max-height:220px; overflow-y:auto; padding:2px;">
                           ${btnsHtml}
                       </div>
-                      <button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.mustSelectScheduleBeforeCheckout = true;" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">先瀏覽菜單 (下單前需選時段)</button>
+                      <button onclick="closeErrorModal();" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">返回上一頁</button>
                   `;
                   // 繼續向下執行，讓 openStore 自然完成畫面轉場切換與菜單渲染
               } else {
@@ -8499,7 +8547,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
                 // 如果店家當下正在營業，提供醒目的「改為即時單」按鈕
                 if (isCurrentlyOpen) {
-                    btnsHtml += `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; confirmTimePicker('ASAP', true, true); openStore('${storeUuid}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', false);" style="margin-top:5px; margin-bottom:12px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🚀 改成即時單 (約 10~25 分鐘送達)<br><span style="color:#d32f2f; font-size:12px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
+                    btnsHtml += `<button onclick="window.errorModalCloseCallback = null; document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; confirmTimePicker('ASAP', true, true); openStore('${storeUuid}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', false);" style="margin-top:5px; margin-bottom:12px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🚀 改成即時單 (約 10~25 分鐘送達)<br><span style="color:#d32f2f; font-size:12px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
                 }
 
                 if (availableWindows.length > 0) {
@@ -8547,7 +8595,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                     <div style="max-height:220px; overflow-y:auto; padding:2px;">
                         ${btnsHtml}
                     </div>
-                    <button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.mustSelectScheduleBeforeCheckout = true;" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">先瀏覽菜單 (下單前需選時段)</button>
+                    <button onclick="closeErrorModal();" style="margin-top:12px; background:#fff; color:#555; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; font-size:14px;">返回上一頁</button>
                 `;
                 // 允許繼續向下執行，進入餐廳瀏覽菜單！
             } else {
@@ -9196,7 +9244,9 @@ window.scrollTo(0, 0);
 
 if (showSchedModalAfterRender && schedNoticeHtml) {
     const sTitle = (scheduleMode === 'SCHEDULE') ? '⚠️ 請選擇可預約時段' : '店家目前尚未營業';
-    showModal(sTitle, '', true, schedNoticeHtml, true);
+    showModal(sTitle, '', true, schedNoticeHtml, true, function() {
+        handleMainBack();
+    });
 } else if (window.isGroceryStore) {
     setTimeout(() => {
         openGroceryCheckoutSummary();
@@ -9226,6 +9276,7 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
   
 
   function quickSetSchedule(startTimeSeconds, storeUuid, encodedStoreName, actionUrl) {
+    window.errorModalCloseCallback = null;
     document.getElementById('errorModalOverlay').style.display='none';
     window.mustSelectScheduleBeforeCheckout = false;
     
@@ -9745,7 +9796,20 @@ function buildSplitSuggestionHtml(result) {
 
 
 
-  function showModal(title, text, isError = true, htmlContent = '', hideBtn = false) {
+  window.errorModalCloseCallback = null;
+
+  function closeErrorModal() {
+    const cb = window.errorModalCloseCallback;
+    window.errorModalCloseCallback = null;
+    const overlay = document.getElementById('errorModalOverlay');
+    if (overlay) overlay.style.display = 'none';
+    if (typeof cb === 'function') {
+        cb();
+    }
+  }
+
+  function showModal(title, text, isError = true, htmlContent = '', hideBtn = false, onClose = null) {
+    window.errorModalCloseCallback = (typeof onClose === 'function') ? onClose : null;
     if (typeof text === 'string' && (text.includes('<div') || text.includes('<button') || text.includes('<span') || text.includes('<p') || text.includes('<br>')) && !htmlContent) {
         htmlContent = text;
         text = '';
@@ -10038,11 +10102,11 @@ function showToast(msg) {
 
 
 
-<div id="errorModalOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:99999; align-items:center; justify-content:center;">
+<div id="errorModalOverlay" onclick="if(event.target === this) closeErrorModal();" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:99999; align-items:center; justify-content:center;">
 
     <div style="background:#fff; width:80%; max-width:400px; border-radius:16px; padding:25px; text-align:center; box-shadow:0 4px 20px rgba(0,0,0,0.15); max-height:80vh; display:flex; flex-direction:column; position:relative;">
 
-      <button onclick="document.getElementById('errorModalOverlay').style.display='none'" style="position:absolute; top:15px; right:15px; background:transparent; border:none; font-size:24px; color:#999; cursor:pointer; line-height:1;">&times;</button>
+      <button id="errorModalCloseBtn" onclick="closeErrorModal()" style="position:absolute; top:15px; right:15px; background:transparent; border:none; font-size:24px; color:#999; cursor:pointer; line-height:1;">&times;</button>
 
       <div id="errorModalIcon" style="font-size:48px; margin-bottom:15px;">❌</div>
 
@@ -10056,7 +10120,7 @@ function showToast(msg) {
 
       </div>
 
-      <button id="errorModalBtn" onclick="document.getElementById('errorModalOverlay').style.display='none'" style="background:#111; color:#fff; border:none; border-radius:12px; padding:14px 20px; font-size:16px; font-weight:bold; cursor:pointer; width:100%;">我知道了</button>
+      <button id="errorModalBtn" onclick="closeErrorModal()" style="background:#111; color:#fff; border:none; border-radius:12px; padding:14px 20px; font-size:16px; font-weight:bold; cursor:pointer; width:100%;">我知道了</button>
 
     </div>
 
