@@ -1424,8 +1424,8 @@ function updateTriggerText() {
     }
 }
 
-function confirmTimePicker(mode, skipSearch = false) {
-    if (mode === 'ASAP' && window.currentStoreClosed) {
+function confirmTimePicker(mode, skipSearch = false, force = false) {
+    if (!force && mode === 'ASAP' && window.currentStoreClosed) {
         showModal('無法切換', '當前店家目前尚未營業，無法切換為「盡快送達」。請選擇預約送達時段。');
         return;
     }
@@ -7843,22 +7843,92 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const isNextWindowWithin30 = availableWindows.length > 0 && ((availableWindows[0].startTimeSeconds - nowSec) <= 30 * 60) && ((availableWindows[0].startTimeSeconds - nowSec) >= -15 * 60);
       const isWithin30 = isOpeningWithin30Minutes(badgeTime || storeClosedNotice) || isNextWindowWithin30;
 
+      // 輔助函式：判斷店家此時此刻 (當下) 是否處於營業中
+      const checkIsOpenNow = () => {
+          try {
+              const now = new Date();
+              const currentMins = now.getHours() * 60 + now.getMinutes();
+              const dayNum = now.getDay();
+
+              // 1. 先由 d.hours (每日各營業區間) 判斷
+              if (d && Array.isArray(d.hours) && d.hours.length > 0) {
+                  const dayMap = { '日': 0, '天': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
+                  for (const h of d.hours) {
+                      const dr = h.dayRange || '';
+                      let isDay = false;
+                      if (!dr || dr.includes('每天') || dr.includes('每日') || dr.includes('全天')) {
+                          isDay = true;
+                      } else {
+                          const m = dr.match(/(?:星期|週|周)?([一二三四五六日天])\s*(?:-|至|~)\s*(?:星期|週|周)?([一二三四五六日天])/);
+                          if (m) {
+                              const s = dayMap[m[1]];
+                              const e = dayMap[m[2]];
+                              if (s !== undefined && e !== undefined) {
+                                  isDay = (s <= e) ? (dayNum >= s && dayNum <= e) : (dayNum >= s || dayNum <= e);
+                              }
+                          }
+                          if (!isDay) {
+                              const singleMatches = [...dr.matchAll(/(?:星期|週|周)?([一二三四五六日天])/g)];
+                              if (singleMatches.length > 0) {
+                                  isDay = singleMatches.some(sm => dayMap[sm[1]] === dayNum);
+                              }
+                          }
+                      }
+                      if (isDay && Array.isArray(h.sectionHours) && h.sectionHours.length > 0) {
+                          const inShift = h.sectionHours.some(sh => {
+                              const st = sh.startTime || 0;
+                              const et = sh.endTime || 0;
+                              return currentMins >= st && currentMins < et;
+                          });
+                          if (inShift) return true;
+                      }
+                  }
+              }
+
+              // 2. 檢查外部卡片傳進來的 badgeTime
+              if (badgeTime) {
+                  const isMinText = (badgeTime.includes('分鐘') || badgeTime.includes('分')) &&
+                      !badgeTime.includes('後營業') &&
+                      !badgeTime.includes('開始營業') &&
+                      !badgeTime.includes('休息') &&
+                      !badgeTime.includes('未營業');
+                  if (isMinText) return true;
+              }
+
+              // 3. ASAP 模式下 Uber API 直接標記為營業中
+              if (scheduleMode === 'ASAP' && d.isOpen === true && d.isOrderable === true && !isStoreClosedByUber) {
+                  return true;
+              }
+          } catch (e) {
+              console.error('checkIsOpenNow error:', e);
+          }
+          return false;
+      };
+
       // 判斷是否為「當下正在營業中」
       let isCurrentlyOpen = false;
-      if (isStoreClosedByUber) {
-          isCurrentlyOpen = false;
-      } else if (d.isOpen === true && d.isOrderable === true) {
-          isCurrentlyOpen = true;
-      } else if (isWithin30) {
-          isCurrentlyOpen = true;
-      } else if (availableWindows.length > 0) {
-          // 備用防呆：若最近的一個接單時間在未來 60 分鐘以內，也認定為現在有營業可以接即時單
-          if (availableWindows[0].startTimeSeconds - nowSec <= 60 * 60) {
+      if (scheduleMode === 'SCHEDULE') {
+          isCurrentlyOpen = checkIsOpenNow();
+      } else {
+          if (isStoreClosedByUber) {
+              isCurrentlyOpen = false;
+          } else if (d.isOpen === true && d.isOrderable === true) {
               isCurrentlyOpen = true;
+          } else if (isWithin30) {
+              isCurrentlyOpen = true;
+          } else if (availableWindows.length > 0 && (availableWindows[0].startTimeSeconds - nowSec <= 60 * 60)) {
+              isCurrentlyOpen = true;
+          } else {
+              isCurrentlyOpen = checkIsOpenNow();
           }
       }
 
-      window.currentStoreClosed = isStoreClosedByUber || !isCurrentlyOpen;
+      if (scheduleMode === 'SCHEDULE') {
+          // 預約模式下，預約時段是否有效由後續 timeFound 決定，預設先不判定為關閉
+          window.currentStoreClosed = false;
+      } else {
+          window.currentStoreClosed = isStoreClosedByUber || !isCurrentlyOpen;
+      }
       window.currentStoreAvailableWindows = availableWindows;
       window.currentStoreClosedNotice = storeClosedNotice;
       window.currentStoreDisplayTime = effectiveDisplayTime;
@@ -7983,12 +8053,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         // 此時段處於營業中可外送範圍內，認定為可接單，不阻擋客人
         if (!timeFound && isCurrentlyOpen) {
             const firstWinSec = availableWindows.length > 0 ? availableWindows[0].startTimeSeconds : (nowSec + 3600);
-            if (selectedTime <= firstWinSec + 1800 && selectedTime >= nowSec - 900) {
+            if ((selectedTime - nowSec <= 90 * 60) && selectedTime <= firstWinSec + 1800 && selectedTime >= nowSec - 900) {
                 timeFound = true;
             }
         }
 
         if (!timeFound) {
+            window.currentStoreClosed = true;
+            window.mustSelectScheduleBeforeCheckout = true;
             const tType3 = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
             
             // 若店家有未來的預約時段可選 (或者當前有營業)
@@ -8003,7 +8075,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
                 // 如果店家當下正在營業，提供醒目的「改為即時單」按鈕
                 if (isCurrentlyOpen) {
-                    btnsHtml += `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; confirmTimePicker('ASAP'); openStore('${storeUuid}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', true);" style="margin-top:5px; margin-bottom:12px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🚀 改成即時單 (約 10~25 分鐘送達)<br><span style="color:#d32f2f; font-size:12px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
+                    btnsHtml += `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; window.currentStoreClosed = false; confirmTimePicker('ASAP', true, true); openStore('${storeUuid}', decodeURIComponent('${encodeURIComponent(safeName)}'), '${safeAction}', false);" style="margin-top:5px; margin-bottom:12px; background:#fff; color:#000; border:2px solid #000; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🚀 改成即時單 (約 10~25 分鐘送達)<br><span style="color:#d32f2f; font-size:12px; font-weight:normal;">*無法獲得預約優惠</span></button>`;
                 }
 
                 if (availableWindows.length > 0) {
@@ -8061,6 +8133,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                 return;
             }
         } else {
+            window.currentStoreClosed = false;
+            window.mustSelectScheduleBeforeCheckout = false;
 
             scheduleHtml = `
               <div id="storeScheduleBadge" style="margin-top:10px; display:inline-block; cursor:pointer;" onclick="openTimePickerModal()" title="點擊修改預約送達時段">
