@@ -833,6 +833,20 @@ function getSelectedScheduleTimestamp() {
       }
   }
 
+  function getPreOrderDiscount(targetTimestamp) {
+      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') return 0;
+      const ts = targetTimestamp || (typeof getSelectedScheduleTimestamp === 'function' ? getSelectedScheduleTimestamp() : 0);
+      if (!ts) return 0;
+      const diffMs = ts - Date.now();
+      if (diffMs <= 0) return 0;
+      const diffMinutes = diffMs / 60000;
+      if (diffMinutes >= 179) {
+          return 10;
+      } else {
+          return 5;
+      }
+  }
+
   let API_BASE_URL = 'https://api.9ysong.shop';
 
   let WS_URL = 'wss://api.9ysong.shop/ws';
@@ -1359,11 +1373,21 @@ function renderModalTimes() {
             displayTitle = `${getTimeEmoji(h)} ${startAmpm} ${startH12}:${startMM} - ${getTimeEmoji(endH)} ${endAmpm} ${endH12}:${endMM}`;
         }
         
+        const baseDate = new Date(dateStr + "T00:00:00+08:00");
+        const slotTimeMs = baseDate.getTime() + (st * 60 * 1000);
+        const diffMinutes = (slotTimeMs - now.getTime()) / 60000;
+        const disc = (diffMinutes >= 179) ? 10 : 5;
+        const discStr = `(-$${disc})`;
+
         const opt = document.createElement('option');
-        opt.value = JSON.stringify({ date: dateStr, startTime: st, endTime: et, title: displayTitle });
-        opt.text = displayTitle;
+        opt.value = JSON.stringify({ date: dateStr, startTime: st, endTime: et, title: displayTitle, discount: disc });
+        opt.text = `${displayTitle}  ${discStr}`;
+        opt.style.color = '#e11d48';
+        opt.style.fontWeight = 'bold';
         timeSelect.appendChild(opt);
     });
+
+    if (typeof updateModalDiscountNotice === 'function') updateModalDiscountNotice();
     
     // 即時同步第一個時段到畫面 (若非即時訂單模式)
     if (typeof syncSelectedTimeToHome === 'function' && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
@@ -1384,6 +1408,28 @@ function syncSelectedTimeToHome() {
         scheduleSelect.appendChild(newOpt);
         updateTriggerText();
         if (typeof updateStoreScheduleBadge === 'function') updateStoreScheduleBadge();
+    }
+}
+
+function updateModalDiscountNotice() {
+    const notice = document.getElementById('modalDiscountNotice');
+    if (!notice) return;
+    const timeSelect = document.getElementById('modalTimeSelect');
+    if (!timeSelect || timeSelect.selectedIndex < 0 || timeSelect.options.length === 0) {
+        notice.innerText = '';
+        return;
+    }
+    const opt = timeSelect.options[timeSelect.selectedIndex];
+    if (!opt) return;
+    try {
+        const parsed = JSON.parse(opt.value);
+        const baseDate = new Date(parsed.date + "T00:00:00+08:00");
+        const slotTimeMs = baseDate.getTime() + (parsed.startTime * 60 * 1000);
+        const diffMinutes = (slotTimeMs - Date.now()) / 60000;
+        const disc = (diffMinutes >= 179) ? 10 : 5;
+        notice.innerText = `✨ 預約優惠：本時段結帳可折抵 $${disc} 元 (-$${disc})`;
+    } catch(e) {
+        notice.innerText = '';
     }
 }
 
@@ -1418,6 +1464,7 @@ function openTimePickerModal() {
         } catch(e) {}
     }
     
+    if (typeof updateModalDiscountNotice === 'function') updateModalDiscountNotice();
     document.getElementById('timePickerModal').style.display = 'flex';
 }
 
@@ -1623,12 +1670,11 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
             } else {
                 str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
             }
-            if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
-                if (window.isGroceryStore) {
-                    str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
-                } else {
-                    str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
-                }
+            const diffMin = (sd.getTime() - Date.now()) / 60000;
+            if (diffMin >= 179) {
+                str += ' <span style="color:#e11d48; font-weight:bold;">(-$10)</span>';
+            } else {
+                str += ' <span style="color:#e11d48; font-weight:bold;">(-$5)</span>';
             }
 
             const clickFunc = isCheckout ? 'quickSetScheduleAndProceed' : 'quickSetSchedule';
@@ -1753,9 +1799,22 @@ function updateTriggerText() {
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
         trigger.innerText = '🚀 即時訂單';
         trigger.style.color = '#f43f5e';
-        if (promoTag) promoTag.style.display = 'inline';
+        if (promoTag) {
+            promoTag.style.display = 'inline';
+            promoTag.innerText = '預約最高每單折20元';
+            promoTag.style.color = '#01B468';
+        }
     } else {
-        if (promoTag) promoTag.style.display = 'none';
+        const disc = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
+        if (promoTag) {
+            if (disc > 0) {
+                promoTag.style.display = 'inline';
+                promoTag.innerText = `(-$${disc})`;
+                promoTag.style.color = '#e11d48';
+            } else {
+                promoTag.style.display = 'none';
+            }
+        }
         if (scheduleSelect && scheduleSelect.options.length > 0) {
             try {
                 const parsed = JSON.parse(scheduleSelect.value);
@@ -5867,7 +5926,10 @@ if (isDiscount) {
     origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠專區:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$10</td></tr>`;
 }
 
-origTable += (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$10</td></tr>` : '';
+const preOrderDisc = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
+if (preOrderDisc > 0) {
+    origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">預訂折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$${preOrderDisc}</td></tr>`;
+}
 origTable += `</table>`;
 origTable += `<div style="font-weight:bold; font-size:16px; margin-top:10px; border-top:1px solid #ccc; padding-top:6px;">`;
 origTable += (function(){
@@ -5885,7 +5947,7 @@ origTable += (function(){
     });
 
     const pd = total >= 300 ? 150 : Math.floor(total/2);
-    const pr = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? 10 : 0;
+    const pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
     const pickup = localStorage.getItem("uberCartIsDiscount") === "true" ? 10 : 0;
     return `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${total + visualSvcFee + totalOrigExcess}</span> <span style="color:#d32f2f; font-size:18px;">$${total - pd + visualSvcFee + totalExcess - pr - pickup}</span>`;
 })();
@@ -5904,7 +5966,7 @@ if (costRes && costRes.shouldSplit) {
             binEx += Math.max(0, ...bsg[s].map(it => (it.storeName && it.storeName.includes('麥當勞')) ? 0 : (it.storeDeliveryFee||0)));
         });
         splitExcess += binEx;
-        let pr = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? (window.isGroceryStore ? 15 : 10) : 0;
+        let pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
         splitPreorder += pr;
     });
 
@@ -6672,7 +6734,7 @@ async function _sendOrderToLine(forceSubmit = false) {
     }
       let feePerBin = 50;
 
-      let preOrderDiscount = isPreOrder ? (window.isGroceryStore ? 15 : 10) : 0;
+      let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
 
 
 
@@ -6781,7 +6843,7 @@ costRes.bins.forEach((bin, bIdx) => {
 
           if (isPickup) msgText += `  🌟 優惠專區折扣: -$10\n`;
 
-          if (preOrderDiscount > 0) msgText += `  🕒 預訂折扣(3小時以上): -$${preOrderDiscount}\n`;
+          if (preOrderDiscount > 0) msgText += `  🕒 預訂折扣: -$${preOrderDiscount}\n`;
 
           msgText += `  ➡️ 結算: $${binTotal}\n\n`;
 
@@ -6891,7 +6953,7 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-        let preOrderDiscount = isPreOrder ? 10 : 0;
+        let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
 
         
         const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
@@ -6917,7 +6979,7 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
           msgText += `🏍️ 代訂費: $${serviceFee}\n`;
           msgText += `🛵 外送加成: $${totalExcessDeliveryFee}\n`;
           msgText += `🧑‍💼 服務費: $0\n`;
-          if (preOrderDiscount > 0) msgText += `📅 預定折扣(3小時以上): -$${preOrderDiscount}\n`;
+          if (preOrderDiscount > 0) msgText += `📅 預訂折扣: -$${preOrderDiscount}\n`;
         if (isPickup) msgText += `🌟 優惠專區折扣: -$10\n`;
           msgText += `\n💰 總計: $${grandTotal}`;
       }
@@ -8485,12 +8547,11 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                       } else {
                         str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
                       }
-                      if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
-                          if (window.isGroceryStore) {
-                              str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
-                          } else {
-                              str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
-                          }
+                      const diffMin = (sd.getTime() - Date.now()) / 60000;
+                      if (diffMin >= 179) {
+                          str += ' <span style="color:#e11d48; font-weight:bold;">(-$10)</span>';
+                      } else {
+                          str += ' <span style="color:#e11d48; font-weight:bold;">(-$5)</span>';
                       }
                       btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:10px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
                   });
@@ -8608,12 +8669,11 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                         } else {
                             str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
                         }
-                        if (sd.getTime() - Date.now() >= 2.99 * 3600000) {
-                            if (window.isGroceryStore) {
-                                str += ' <span style="color:#f43f5e; font-weight:bold;">代訂費$45</span>';
-                            } else {
-                                str += ' <span style="color:#f43f5e; font-weight:bold;">-$10優惠</span>';
-                            }
+                        const diffMin = (sd.getTime() - Date.now()) / 60000;
+                        if (diffMin >= 179) {
+                            str += ' <span style="color:#e11d48; font-weight:bold;">(-$10)</span>';
+                        } else {
+                            str += ' <span style="color:#e11d48; font-weight:bold;">(-$5)</span>';
                         }
                         btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:8px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
                     });
@@ -9488,25 +9548,8 @@ function normalizeAddress(addr) {
 
   let promoDiscount = totalSum >= 300 ? 150 : Math.floor(totalSum / 2);
 
-  let preOrderDiscount = 0;
-
-  
-        const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
-if (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
-
-    const ts = document.getElementById('scheduleTime');
-
-    if (ts && ts.value) {
-
-      if (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000) {
-
-            preOrderDiscount = window.isGroceryStore ? 15 : 10;
-
-      }
-
-    }
-
-  }
+  let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
+  const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
 
   
 
@@ -9931,7 +9974,7 @@ window.renderSplitTab = function(plan) {
     const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
     const binPickupDisc = isDiscount ? 10 : 0;
     
-    let binPreorder = (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && document.getElementById('scheduleTime') && document.getElementById('scheduleTime').value && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) ? (window.isGroceryStore ? 15 : 10) : 0;
+    let binPreorder = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
     
     let binTotal = binFood - binPromo + binFee + binExcess - binPickupDisc - binPreorder;
     
@@ -10171,12 +10214,13 @@ function showToast(msg) {
             <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none"><path d="M17 11.7V14.9L12 11.1L7 14.9V11.7L12 7.9L17 11.7Z" fill="#333" transform="rotate(180, 12, 12)"></path></svg>
         </div>
     </div>
-    <div style="position:relative; margin-bottom:25px;">
-        <select id="modalTimeSelect" onchange="if(typeof syncSelectedTimeToHome==='function') syncSelectedTimeToHome();" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
+    <div style="position:relative; margin-bottom:15px;">
+        <select id="modalTimeSelect" onchange="if(typeof syncSelectedTimeToHome==='function') syncSelectedTimeToHome(); if(typeof updateModalDiscountNotice==='function') updateModalDiscountNotice();" style="width:100%; padding:15px; font-size:16px; border:1px solid #ddd; border-radius:8px; appearance:none; outline:none; font-weight:bold; cursor:pointer; background:#fff;"></select>
         <div style="position:absolute; right:15px; top:18px; pointer-events:none;">
             <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none"><path d="M17 11.7V14.9L12 11.1L7 14.9V11.7L12 7.9L17 11.7Z" fill="#333" transform="rotate(180, 12, 12)"></path></svg>
         </div>
     </div>
+    <div id="modalDiscountNotice" style="margin-top:-8px; margin-bottom:20px; font-size:14px; font-weight:bold; color:#e11d48; text-align:right;"></div>
     <button onclick="confirmTimePicker('SCHEDULE')" style="width:100%; padding:15px; background:#10b981; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:bold; margin-bottom:10px; cursor:pointer;">預約訂單</button>
     <button onclick="confirmTimePicker('ASAP')" style="width:100%; padding:15px; background:#eee; color:#000; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer;">🚀 即時訂單</button>
   </div>
