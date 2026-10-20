@@ -835,6 +835,30 @@ function getSelectedScheduleTimestamp() {
 
   function getPreOrderDiscount(targetTimestamp) {
       if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') return 0;
+      const isGrocery = (typeof window !== 'undefined' && window.isGroceryStore) || 
+                        (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+      
+      const schedSelect = document.getElementById('scheduleTime');
+      let isThreeHour = false;
+      if (schedSelect && schedSelect.value) {
+          try {
+              const parsed = JSON.parse(schedSelect.value);
+              if (parsed.startTime !== undefined && parsed.endTime !== undefined) {
+                  if ((parsed.endTime - parsed.startTime) === 180) {
+                      isThreeHour = true;
+                  }
+              }
+              if (parsed.discount === 25) {
+                  isThreeHour = true;
+              }
+          } catch(e) {}
+      }
+      
+      if (isGrocery) {
+          // 生鮮雜貨預約任何時段沒有 -$5、-$10，只有三小時時段會 -$25
+          return isThreeHour ? 25 : 0;
+      }
+      
       const ts = targetTimestamp || (typeof getSelectedScheduleTimestamp === 'function' ? getSelectedScheduleTimestamp() : 0);
       if (!ts) return 0;
       const diffMs = ts - Date.now();
@@ -1170,6 +1194,7 @@ let isAddressSet = false;
     
     // Config loaded, API_BASE_URL is ready, now we can fetch times
     loadStoreBlacklist();
+    if (typeof loadThreeHourStores === 'function') loadThreeHourStores();
     fetchDeliveryTimes();
     loadServerStatusDot();
     if (typeof checkAndInitGroupBuyFromUrl === 'function') {
@@ -1270,8 +1295,21 @@ let isAddressSet = false;
     const tomorrow = new Date();
     tomorrow.setDate(today.getDate() + 1);
     
+    const storeRaw = window.currentStoreRawData;
+    let datesList = uberTimeData.dates;
+    if (storeRaw && storeRaw.timeWindowPicker && storeRaw.timeWindowPicker.dates && storeRaw.timeWindowPicker.dates.length > 0) {
+        const sDates = storeRaw.timeWindowPicker.dates.map(d => {
+            if (d.date) return d.date;
+            if (d.listItems && d.listItems.length > 0) {
+                return d.listItems[0]?.timeWindowViewModel?.timeWindow?.date;
+            }
+            return null;
+        }).filter(Boolean);
+        if (sDates.length > 0) datesList = sDates;
+    }
+
     let firstAvailableDate = null;
-    uberTimeData.dates.forEach((dStr, idx) => {
+    datesList.forEach((dStr, idx) => {
         const d = new Date(dStr);
         const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
         let label = '';
@@ -1337,14 +1375,44 @@ function renderModalTimes() {
     if (!timeSelect) return;
     timeSelect.innerHTML = '';
     
-    if (!uberTimeData || !uberTimeData.timeRanges || !uberTimeData.timeRanges[dateStr]) return;
+    const storeRaw = window.currentStoreRawData;
+    let storeRanges = null;
+    if (storeRaw && storeRaw.timeWindowPicker && storeRaw.timeWindowPicker.dates) {
+        const matchingStoreDate = storeRaw.timeWindowPicker.dates.find(d => {
+            if (d.date === dateStr) return true;
+            if (d.listItems && d.listItems.length > 0) {
+                return d.listItems[0]?.timeWindowViewModel?.timeWindow?.date === dateStr;
+            }
+            return false;
+        });
+        if (matchingStoreDate && matchingStoreDate.listItems && matchingStoreDate.listItems.length > 0) {
+            storeRanges = [];
+            matchingStoreDate.listItems.forEach(item => {
+                const tw = item.timeWindowViewModel?.timeWindow;
+                if (tw) {
+                    storeRanges.push({
+                        startTime: tw.startTime,
+                        endTime: tw.endTime,
+                        startTimeSeconds: tw.startTimeSeconds,
+                        date: tw.date || dateStr
+                    });
+                }
+            });
+            const sName = window.currentStoreName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || storeRaw?.title || '';
+            const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+            if (typeof interleaveThreeHourWindows === 'function') {
+                storeRanges = interleaveThreeHourWindows(storeRanges, sName, isGr);
+            }
+        }
+    }
+    
+    const ranges = (storeRanges && storeRanges.length > 0) ? storeRanges : (uberTimeData?.timeRanges?.[dateStr] || []);
+    if (!ranges || ranges.length === 0) return;
     
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const isToday = (dateStr === todayStr) || (new Date(dateStr).toDateString() === now.toDateString());
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    
-    const ranges = uberTimeData.timeRanges[dateStr];
     ranges.forEach(w => {
         const st = w.startTime || 0;
         const et = w.endTime || 0;
@@ -1373,17 +1441,33 @@ function renderModalTimes() {
             displayTitle = `${getTimeEmoji(h)} ${startAmpm} ${startH12}:${startMM} - ${getTimeEmoji(endH)} ${endAmpm} ${endH12}:${endMM}`;
         }
         
-        const baseDate = new Date(dateStr + "T00:00:00+08:00");
-        const slotTimeMs = baseDate.getTime() + (st * 60 * 1000);
-        const diffMinutes = (slotTimeMs - now.getTime()) / 60000;
-        const disc = (diffMinutes >= 179) ? 10 : 5;
-        const discStr = `(-$${disc})`;
+        const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+        const isThreeHour = (et - st === 180) || w.isThreeHour;
+        let disc = 0;
+        let discStr = '';
+        if (isGr) {
+            if (isThreeHour) {
+                disc = 25;
+                discStr = '  (-$25)';
+            }
+        } else {
+            const baseDate = new Date(dateStr + "T00:00:00+08:00");
+            const slotTimeMs = baseDate.getTime() + (st * 60 * 1000);
+            const diffMinutes = (slotTimeMs - now.getTime()) / 60000;
+            disc = (diffMinutes >= 179) ? 10 : 5;
+            discStr = `  (-$${disc})`;
+        }
 
         const opt = document.createElement('option');
         opt.value = JSON.stringify({ date: dateStr, startTime: st, endTime: et, title: displayTitle, discount: disc });
-        opt.text = `${displayTitle}  ${discStr}`;
-        opt.style.color = '#e11d48';
-        opt.style.fontWeight = 'bold';
+        opt.text = `${displayTitle}${discStr}`;
+        if (disc > 0) {
+            opt.style.color = '#e11d48';
+            opt.style.fontWeight = 'bold';
+        } else {
+            opt.style.color = '#111';
+            opt.style.fontWeight = 'normal';
+        }
         timeSelect.appendChild(opt);
     });
 
@@ -1423,11 +1507,11 @@ function updateModalDiscountNotice() {
     if (!opt) return;
     try {
         const parsed = JSON.parse(opt.value);
-        const baseDate = new Date(parsed.date + "T00:00:00+08:00");
-        const slotTimeMs = baseDate.getTime() + (parsed.startTime * 60 * 1000);
-        const diffMinutes = (slotTimeMs - Date.now()) / 60000;
-        const disc = (diffMinutes >= 179) ? 10 : 5;
-        notice.innerText = `✨ 預約優惠：本時段結帳可折抵 $${disc} 元 (-$${disc})`;
+        if (parsed.discount && parsed.discount > 0) {
+            notice.innerText = `✨ 預約優惠：本時段結帳可折抵 $${parsed.discount} 元 (-$${parsed.discount})`;
+        } else {
+            notice.innerText = '';
+        }
     } catch(e) {
         notice.innerText = '';
     }
@@ -1435,6 +1519,11 @@ function updateModalDiscountNotice() {
 
 function openTimePickerModal() {
     if (!uberTimeData || !uberTimeData.dates) return;
+    
+    const storeRaw = window.currentStoreRawData;
+    if (storeRaw && storeRaw.timeWindowPicker && storeRaw.timeWindowPicker.dates) {
+        renderDates();
+    }
     
     // 同步當前已選的日期與時段到彈窗選單
     const scheduleSelect = document.getElementById('scheduleTime');
@@ -1551,6 +1640,10 @@ function validateStoreSchedule() {
                 });
             }
         });
+        const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+        if (typeof interleaveThreeHourWindows === 'function') {
+            windows = interleaveThreeHourWindows(windows, currentStoreName, isGr);
+        }
         window.currentStoreAvailableWindows = windows;
     }
 
@@ -1575,7 +1668,8 @@ function validateStoreSchedule() {
 
         if (windows.length > 0) {
             for (const tw of windows) {
-                if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + 1800) {
+                const duration = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) * 60 : 1800;
+                if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + duration) {
                     timeFound = true;
                     break;
                 }
@@ -1586,8 +1680,10 @@ function validateStoreSchedule() {
         const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : false;
         // 智慧容錯：若店家當下營業中 (isCurrentlyOpen)，且所選時段落在當前營業區間或最接近之可用預約時段內 (未來60~90分鐘以內)
         if (!timeFound && isCurrentlyOpen && (selectedTime - nowSec <= 90 * 60) && (selectedTime >= nowSec - 900)) {
-            const firstWinSec = windows.length > 0 ? windows[0].startTimeSeconds : (nowSec + 3600);
-            if (selectedTime <= firstWinSec + 1800) {
+            const firstWin = windows.length > 0 ? windows[0] : null;
+            const firstWinSec = firstWin ? firstWin.startTimeSeconds : (nowSec + 3600);
+            const firstDuration = (firstWin && firstWin.endTime && firstWin.startTime) ? (firstWin.endTime - firstWin.startTime) * 60 : 1800;
+            if (selectedTime <= firstWinSec + firstDuration) {
                 timeFound = true;
             }
         }
@@ -1616,6 +1712,10 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
                 });
             }
         });
+        const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+        if (typeof interleaveThreeHourWindows === 'function') {
+            windows = interleaveThreeHourWindows(windows, currentStoreName, isGr);
+        }
         window.currentStoreAvailableWindows = windows;
     }
 
@@ -1647,8 +1747,9 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
         }
         const top6 = windows.slice(0, 6);
         top6.forEach(tw => {
+            const durationSec = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) * 60 : 1800;
             const sd = new Date(tw.startTimeSeconds * 1000);
-            const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
+            const ed = new Date((tw.startTimeSeconds + durationSec) * 1000);
             const formatT = (dt) => {
                 const h = dt.getHours();
                 const m = String(dt.getMinutes()).padStart(2, '0');
@@ -1670,15 +1771,14 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
             } else {
                 str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
             }
-            const diffMin = (sd.getTime() - Date.now()) / 60000;
-            if (diffMin >= 179) {
-                str += ' <span style="color:#e11d48; font-weight:bold;">(-$10)</span>';
-            } else {
-                str += ' <span style="color:#e11d48; font-weight:bold;">(-$5)</span>';
+            const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+            if (typeof getSlotDiscountInfo === 'function') {
+                const discInfo = getSlotDiscountInfo(tw, isGr);
+                str += discInfo.tagHtml;
             }
 
             const clickFunc = isCheckout ? 'quickSetScheduleAndProceed' : 'quickSetSchedule';
-            btnsHtml += `<button onclick="${clickFunc}(${tw.startTimeSeconds}, '${currentStoreUuid || ''}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:8px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
+            btnsHtml += `<button onclick="${clickFunc}(${tw.startTimeSeconds}, '${currentStoreUuid || ''}', '${encodeURIComponent(safeName)}', '${safeAction}', ${tw.startTime || 0}, ${tw.endTime || 0})" style="margin-top:8px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
         });
     }
 
@@ -6108,38 +6208,46 @@ function openGroceryCheckoutSummary() {
   const isForcedPxmart = typeof isPxmartName === 'function' ? isPxmartName(currentStoreName) : (currentStoreName && currentStoreName.includes('全聯') && !currentStoreName.includes('大全聯'));
 
   let timeText = '盡快送達';
-
-  let isPreOrder = false;
+  let isAdvanceBooking = false; // 179分鐘以上: 專人代訂費 45 元
+  let isThreeHourSlot = false;  // 三小時時段: 優惠時段折扣 -$25
 
   if (!isForcedPxmart && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
-
     const timeSelect = document.getElementById('scheduleTime');
-
     if (timeSelect && timeSelect.options[timeSelect.selectedIndex]) {
-
       timeText = document.getElementById('triggerTimeText') ? document.getElementById('triggerTimeText').innerText : timeSelect.options[timeSelect.selectedIndex].text;
 
-      const tsVal = timeSelect.value;
-
-      if (tsVal && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) {
-
-        isPreOrder = true;
-
+      const ts = typeof getSelectedScheduleTimestamp === 'function' ? getSelectedScheduleTimestamp() : 0;
+      if (ts && (ts - Date.now() >= 179 * 60 * 1000)) {
+        isAdvanceBooking = true;
       }
 
+      const tsVal = timeSelect.value;
+      if (tsVal) {
+          try {
+              const parsed = JSON.parse(tsVal);
+              if ((parsed.endTime - parsed.startTime === 180) || parsed.discount === 25) {
+                  isThreeHourSlot = true;
+              }
+          } catch(e) {}
+      }
     }
-
   }
 
-
+  const agentFee = isAdvanceBooking ? 45 : 60;
+  const timeSlotDiscount = isThreeHourSlot ? 25 : 0;
 
   let svcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${window.groceryServiceFee}` : '$30~$60不等';
-
   let svcCalcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `${window.groceryServiceFee}` : '30~60';
 
-  let totalPreOrderStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${449 - 180 + window.groceryServiceFee + 45}` : '$344 ~ $374';
-
-  let totalNormalStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${449 - 180 + window.groceryServiceFee + 60}` : '$359 ~ $389';
+  let totalEstimateStr = '';
+  if (window.groceryServiceFee !== undefined && window.groceryServiceFee !== null) {
+      const netTotal = 449 - 180 + window.groceryServiceFee + agentFee - timeSlotDiscount;
+      totalEstimateStr = `$${netTotal}`;
+  } else {
+      const minTotal = 449 - 180 + 30 + agentFee - timeSlotDiscount;
+      const maxTotal = 449 - 180 + 60 + agentFee - timeSlotDiscount;
+      totalEstimateStr = `$${minTotal} ~ $${maxTotal}`;
+  }
 
 
 
@@ -6208,7 +6316,13 @@ function openGroceryCheckoutSummary() {
         <div style="margin-bottom:15px; display:flex; align-items:center;"><strong>外送時間:</strong> <span style="margin-left:5px;">${escapeHTML(timeText)}</span> <button onclick="openTimePickerModal()" style="margin-left:10px; padding:2px 10px; font-size:12px; cursor:pointer; background:#fff; border:1px solid #000; border-radius:15px; font-weight:bold; color:#000;">修改</button></div>
       `}
 
-      ${isPreOrder ? `<div style="color:#f43f5e; margin-bottom:4px;">✨ 預約滿3小時享代訂費優惠 $45</div>` : ''}
+      ${(isThreeHourSlot || isAdvanceBooking) ? `
+        <div style="color:#f43f5e; margin-bottom:4px; font-size:14px; font-weight:bold;">
+          ${isThreeHourSlot ? '✨ 預約三小時時段享優惠時段折扣 -$25' : ''}
+          ${(isThreeHourSlot && isAdvanceBooking) ? '，且' : (isAdvanceBooking ? '✨ ' : '')}
+          ${isAdvanceBooking ? '提前179分鐘預約享專人代訂費優惠 $45' : ''}
+        </div>
+      ` : ''}
 
       </div>
 
@@ -6228,15 +6342,21 @@ function openGroceryCheckoutSummary() {
 
         <div style="display:flex; justify-content:space-between;"><span>🛵 平台服務費</span><span>${svcStr}</span></div>
 
-        ${isPreOrder ? `
+        ${isAdvanceBooking ? `
 
-        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(滿3小時優惠)</span></span></div>
+        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(179分鐘以上預約優惠)</span></span></div>
 
         ` : `
 
         <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$60</span></div>
 
         `}
+
+        ${isThreeHourSlot ? `
+
+        <div style="display:flex; justify-content:space-between; color:#f43f5e; font-weight:bold;"><span>⏰ 優惠時段折扣</span><span>-$25</span></div>
+
+        ` : ''}
 
       </div>
 
@@ -6250,19 +6370,9 @@ function openGroceryCheckoutSummary() {
 
         <div style="color:#555;">
 
-          ${isPreOrder ? `
+          449 (商品) - 180 (優惠) + ${svcCalcStr} (平台費) + ${agentFee} (代訂費)${isThreeHourSlot ? ' - 25 (優惠時段)' : ''}<br>
 
-          449 (商品) - 180 (優惠) + ${svcCalcStr} (平台費) + 45 (代訂費)<br>
-
-          <strong style="color:#d32f2f; font-size:18px;">預估總計約: ${totalPreOrderStr}</strong>
-
-          ` : `
-
-          449 (商品) - 180 (優惠) + ${svcCalcStr} (平台費) + 60 (代訂費)<br>
-
-          <strong style="color:#d32f2f; font-size:18px;">預估總計約: ${totalNormalStr}</strong>
-
-          `}
+          <strong style="color:#d32f2f; font-size:18px;">預估總計約: ${totalEstimateStr}</strong>
 
         </div>
 
@@ -6532,8 +6642,8 @@ async function _sendOrderToLine(forceSubmit = false) {
 
 
             let timeText = '盡快送達';
-
-      let isPreOrder = false;
+      let isAdvanceBooking = false; // 179分鐘以上: 專人代訂費 45 元
+      let isThreeHourSlot = false;  // 三小時時段: 優惠時段折扣 -$25
 
       if (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
 
@@ -6543,12 +6653,20 @@ async function _sendOrderToLine(forceSubmit = false) {
 
           timeText = document.getElementById('triggerTimeText') ? document.getElementById('triggerTimeText').innerText : timeSelect.options[timeSelect.selectedIndex].text;
 
+          const ts = typeof getSelectedScheduleTimestamp === 'function' ? getSelectedScheduleTimestamp() : 0;
+          if (ts && (ts - Date.now() >= 179 * 60 * 1000)) {
+            isAdvanceBooking = true;
+          }
+
           const tsVal = timeSelect.value;
 
-          if (tsVal && (getSelectedScheduleTimestamp() - new Date().getTime() >= 2.99 * 3600000)) {
-
-            isPreOrder = true;
-
+          if (tsVal) {
+              try {
+                  const parsed = JSON.parse(tsVal);
+                  if ((parsed.endTime - parsed.startTime === 180) || parsed.discount === 25) {
+                      isThreeHourSlot = true;
+                  }
+              } catch(e) {}
           }
 
         }
@@ -6568,13 +6686,19 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       msgText += `⏱ 預計取餐：${timeText}\n`;
 
-      if (isPreOrder) {
+      if (isAdvanceBooking) {
 
-          msgText += `💼 專人代訂費: $45 (滿3小時預約優惠)\n`;
+          msgText += `💼 專人代訂費: $45 (179分鐘以上預約優惠)\n`;
 
       } else {
 
           msgText += `💼 專人代訂費: $60\n`;
+
+      }
+
+      if (isThreeHourSlot) {
+
+          msgText += `⏰ 優惠時段折扣: -$25\n`;
 
       }
 
@@ -7874,6 +7998,9 @@ const note = document.getElementById('modalNote').value.trim();
 
   function goHome() {
     window.isDiscountZone = false;
+    window.currentStoreRawData = null;
+    window.currentStoreName = '';
+    window.currentStoreUuid = '';
 
     currentView = 'home';
 
@@ -8015,9 +8142,12 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     let checkStoreName = '';
     try { checkStoreName = decodeURIComponent(storeName || ''); } catch (e) { checkStoreName = storeName || ''; }
 
-    // 檢查店家黑名單 (若未載入則先載入)
+    // 檢查店家黑名單與三小時時段店家 (若未載入則先載入)
     if (!window._blacklistLoaded && typeof loadStoreBlacklist === 'function') {
         await loadStoreBlacklist();
+    }
+    if (!window._threeHourStoresLoaded && typeof loadThreeHourStores === 'function') {
+        await loadThreeHourStores();
     }
     if (checkStoreName && typeof isStoreBlacklisted === 'function' && isStoreBlacklisted(checkStoreName)) {
         showModal('無法代購', '此店家無法使用折價券，無法代購請見諒', true);
@@ -8094,6 +8224,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     } catch (e) {
         currentStoreName = storeName;
     }
+    window.currentStoreName = currentStoreName;
 
     if(actionUrl) {
         currentStoreUrl = 'https://www.ubereats.com/tw' + actionUrl + (actionUrl.includes('?') ? '&' : '?') + 'diningMode=' + diningMode;
@@ -8384,6 +8515,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           });
 
       }
+      if (typeof interleaveThreeHourWindows === 'function') {
+          availableWindows = interleaveThreeHourWindows(availableWindows, storeName, isGrocery);
+      }
 
 
 
@@ -8524,8 +8658,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                   let btnsHtml = '';
                   const top5 = availableWindows.slice(0, 5);
                   top5.forEach(tw => {
+                      const durationSec = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) * 60 : 1800;
                       const sd = new Date(tw.startTimeSeconds * 1000);
-                      const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
+                      const ed = new Date((tw.startTimeSeconds + durationSec) * 1000);
                       const formatT = (dt) => {
                           const h = dt.getHours();
                           const m = String(dt.getMinutes()).padStart(2, '0');
@@ -8547,13 +8682,12 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                       } else {
                         str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
                       }
-                      const diffMin = (sd.getTime() - Date.now()) / 60000;
-                      if (diffMin >= 179) {
-                          str += ' <span style="color:#e11d48; font-weight:bold;">(-$10)</span>';
-                      } else {
-                          str += ' <span style="color:#e11d48; font-weight:bold;">(-$5)</span>';
+                      const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+                      if (typeof getSlotDiscountInfo === 'function') {
+                          const discInfo = getSlotDiscountInfo(tw, isGr);
+                          str += discInfo.tagHtml;
                       }
-                      btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:10px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
+                      btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}', ${tw.startTime || 0}, ${tw.endTime || 0})" style="margin-top:10px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:12px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
                   });
 
                   schedNoticeHtml = `
@@ -8601,7 +8735,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         let timeFound = false;
 
         availableWindows.forEach(tw => {
-            if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + 1800) {
+            const duration = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) * 60 : 1800;
+            if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + duration) {
                 timeFound = true;
             }
         });
@@ -8609,8 +8744,10 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         // 智慧容錯：若店家當下營業中 (isCurrentlyOpen)，且所選時段落在當前營業區間或最接近之可用預約時段內 (未來60~90分鐘以內)
         // 此時段處於營業中可外送範圍內，認定為可接單，不阻擋客人
         if (!timeFound && isCurrentlyOpen) {
-            const firstWinSec = availableWindows.length > 0 ? availableWindows[0].startTimeSeconds : (nowSec + 3600);
-            if ((selectedTime - nowSec <= 90 * 60) && selectedTime <= firstWinSec + 1800 && selectedTime >= nowSec - 900) {
+            const firstWin = availableWindows.length > 0 ? availableWindows[0] : null;
+            const firstWinSec = firstWin ? firstWin.startTimeSeconds : (nowSec + 3600);
+            const firstDuration = (firstWin && firstWin.endTime && firstWin.startTime) ? (firstWin.endTime - firstWin.startTime) * 60 : 1800;
+            if ((selectedTime - nowSec <= 90 * 60) && selectedTime <= firstWinSec + firstDuration && selectedTime >= nowSec - 900) {
                 timeFound = true;
             }
         }
@@ -8647,8 +8784,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                     btnsHtml += `<div style="color:#111; text-align:center; font-weight:bold; margin-bottom:8px; font-size:14px;">👉 ${tType3}可接單的預約時段 (點擊切換)：</div>`;
                     const top5 = availableWindows.slice(0, 5);
                     top5.forEach(tw => {
+                        const durationSec = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) * 60 : 1800;
                         const sd = new Date(tw.startTimeSeconds * 1000);
-                        const ed = new Date((tw.startTimeSeconds + 1800) * 1000);
+                        const ed = new Date((tw.startTimeSeconds + durationSec) * 1000);
                         const formatT = (dt) => {
                             const h = dt.getHours();
                             const m = String(dt.getMinutes()).padStart(2, '0');
@@ -8669,13 +8807,12 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                         } else {
                             str = `${dayStr} ${formatT(sd)} - ${formatT(ed)}`;
                         }
-                        const diffMin = (sd.getTime() - Date.now()) / 60000;
-                        if (diffMin >= 179) {
-                            str += ' <span style="color:#e11d48; font-weight:bold;">(-$10)</span>';
-                        } else {
-                            str += ' <span style="color:#e11d48; font-weight:bold;">(-$5)</span>';
+                        const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+                        if (typeof getSlotDiscountInfo === 'function') {
+                            const discInfo = getSlotDiscountInfo(tw, isGr);
+                            str += discInfo.tagHtml;
                         }
-                        btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}')" style="margin-top:8px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
+                        btnsHtml += `<button onclick="quickSetSchedule(${tw.startTimeSeconds}, '${storeUuid}', '${encodeURIComponent(safeName)}', '${safeAction}', ${tw.startTime || 0}, ${tw.endTime || 0})" style="margin-top:8px; background:#f0f0f0; color:#111; border:1px solid #ccc; border-radius:8px; padding:10px; width:100%; cursor:pointer; font-weight:bold; text-align:center;">${str}</button>`;
                     });
                 }
 
@@ -9367,7 +9504,7 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
 
   
 
-  function quickSetSchedule(startTimeSeconds, storeUuid, encodedStoreName, actionUrl) {
+  function quickSetSchedule(startTimeSeconds, storeUuid, encodedStoreName, actionUrl, customStartMin, customEndMin) {
     window.errorModalCloseCallback = null;
     document.getElementById('errorModalOverlay').style.display='none';
     window.mustSelectScheduleBeforeCheckout = false;
@@ -9375,44 +9512,119 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
     // Switch to SCHEDULE mode
     scheduleMode = 'SCHEDULE';
     const targetDate = new Date(startTimeSeconds * 1000);
-    
-    // Find the correct date in modalDateSelect
     const pad = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
     const targetDateStr = targetDate.getFullYear() + '-' + pad(targetDate.getMonth()+1) + '-' + pad(targetDate.getDate());
     
-    if (uberTimeData && uberTimeData.dates) {
-        const dateIdx = uberTimeData.dates.indexOf(targetDateStr);
+    const modalDateSelect = document.getElementById('modalDateSelect');
+    if (modalDateSelect) {
+        const dateIdx = Array.from(modalDateSelect.options).findIndex(o => o.value === targetDateStr);
         if (dateIdx !== -1) {
-            const modalDateSelect = document.getElementById('modalDateSelect');
             modalDateSelect.selectedIndex = dateIdx;
             renderModalTimes();
         }
     }
     
-    // Now find the matching time slot in modalTimeSelect
-    const modalTimeSelect = document.getElementById('modalTimeSelect');
     const scheduleSelect = document.getElementById('scheduleTime');
-    let found = false;
+    const modalTimeSelect = document.getElementById('modalTimeSelect');
     
-    for (let i = 0; i < modalTimeSelect.options.length; i++) {
-        let optTime = 0;
-        try {
-            const parsed = JSON.parse(modalTimeSelect.options[i].value);
-            const baseDate = new Date(parsed.date + "T00:00:00+08:00");
-            optTime = baseDate.getTime() + (parsed.startTime * 60 * 1000);
-        } catch(e) {
-            optTime = new Date(modalTimeSelect.options[i].value).getTime();
+    // 若時段區間不是預設 30 分鐘 (例如生鮮雜貨 60 分鐘區間 600~660)
+    if (customStartMin !== undefined && customEndMin !== undefined && (customEndMin - customStartMin) !== 30) {
+        const startH = Math.floor(customStartMin / 60);
+        const startM = customStartMin % 60;
+        const endH = Math.floor(customEndMin / 60);
+        const endM = customEndMin % 60;
+        const sAmpm = startH >= 12 ? '下午' : '上午';
+        const eAmpm = endH >= 12 ? '下午' : '上午';
+        const sH12 = startH % 12 || 12;
+        const eH12 = endH % 12 || 12;
+        const sMM = String(startM).padStart(2, '0');
+        const eMM = String(endM).padStart(2, '0');
+        const emoji = typeof getTimeEmoji === 'function' ? getTimeEmoji(startH) : '📅';
+        
+        let customTitle = '';
+        if (sAmpm === eAmpm) {
+            customTitle = `${emoji} ${sAmpm} ${sH12}:${sMM} - ${eH12}:${eMM}`;
+        } else {
+            customTitle = `${emoji} ${sAmpm} ${sH12}:${sMM} - ${getTimeEmoji(endH)} ${eAmpm} ${eH12}:${eMM}`;
         }
         
-        if (Math.abs(optTime - targetDate.getTime()) < 60000) {
-            modalTimeSelect.selectedIndex = i;
-            found = true;
-            break;
+        const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+        const isThreeHour = ((customEndMin - customStartMin) === 180);
+        let disc = 0;
+        if (isGr) {
+            disc = isThreeHour ? 25 : 0;
+        } else {
+            const diffMinutes = (startTimeSeconds * 1000 - Date.now()) / 60000;
+            disc = (diffMinutes >= 179) ? 10 : 5;
         }
+        const discStr = (disc > 0) ? ` (-$${disc})` : '';
+        
+        const optVal = JSON.stringify({
+            date: targetDateStr,
+            startTime: customStartMin,
+            endTime: customEndMin,
+            title: customTitle,
+            discount: disc
+        });
+        
+        if (scheduleSelect) {
+            scheduleSelect.innerHTML = '';
+            const newOpt = document.createElement('option');
+            newOpt.value = optVal;
+            newOpt.text = `${customTitle}${discStr}`;
+            scheduleSelect.appendChild(newOpt);
+        }
+        
+        if (modalTimeSelect) {
+            let found = false;
+            for (let i = 0; i < modalTimeSelect.options.length; i++) {
+                try {
+                    const parsed = JSON.parse(modalTimeSelect.options[i].value);
+                    if (parsed.date === targetDateStr && parsed.startTime === customStartMin && parsed.endTime === customEndMin) {
+                        modalTimeSelect.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                } catch(e) {}
+            }
+            if (!found) {
+                const modalOpt = document.createElement('option');
+                modalOpt.value = optVal;
+                modalOpt.text = `${customTitle}${discStr}`;
+                if (disc > 0) {
+                    modalOpt.style.color = '#e11d48';
+                    modalOpt.style.fontWeight = 'bold';
+                }
+                modalTimeSelect.insertBefore(modalOpt, modalTimeSelect.firstChild);
+                modalTimeSelect.selectedIndex = 0;
+            }
+        }
+        
+        updateTriggerText();
+        closeTimePickerModal();
+    } else {
+        // 標準 30 分鐘時段配對
+        let found = false;
+        if (modalTimeSelect) {
+            for (let i = 0; i < modalTimeSelect.options.length; i++) {
+                let optTime = 0;
+                try {
+                    const parsed = JSON.parse(modalTimeSelect.options[i].value);
+                    const baseDate = new Date(parsed.date + "T00:00:00+08:00");
+                    optTime = baseDate.getTime() + (parsed.startTime * 60 * 1000);
+                } catch(e) {
+                    optTime = new Date(modalTimeSelect.options[i].value).getTime();
+                }
+                
+                if (Math.abs(optTime - targetDate.getTime()) < 60000) {
+                    modalTimeSelect.selectedIndex = i;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        confirmTimePicker('SCHEDULE');
     }
-    
-    // Use confirmTimePicker to sync everything properly
-    confirmTimePicker('SCHEDULE');
     
     // Re-open the store with the new time
     if (encodedStoreName) {
@@ -9426,8 +9638,8 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
     }
   }
 
-  function quickSetScheduleAndProceed(startTimeSeconds, storeUuid, encodedStoreName, actionUrl) {
-    quickSetSchedule(startTimeSeconds, storeUuid, encodedStoreName, actionUrl);
+  function quickSetScheduleAndProceed(startTimeSeconds, storeUuid, encodedStoreName, actionUrl, customStartMin, customEndMin) {
+    quickSetSchedule(startTimeSeconds, storeUuid, encodedStoreName, actionUrl, customStartMin, customEndMin);
     window.mustSelectScheduleBeforeCheckout = false;
     setTimeout(() => {
         if (window.isGroceryStore && typeof openGroceryCheckoutSummary === 'function') {
@@ -11994,6 +12206,118 @@ function isStoreBlacklisted(name) {
         }
     }
     return false;
+}
+
+// ============================================================
+// 三小時時段店家管理 (生鮮雜貨專屬穿插 3 小時時段)
+// ============================================================
+window.threeHourStores = ['大全聯'];
+window._threeHourStoresLoaded = false;
+
+async function loadThreeHourStores() {
+    try {
+        const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+        const res = await fetch(`${apiBase}/api/three_hour_stores?t=${Date.now()}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.stores) && data.stores.length > 0) {
+                window.threeHourStores = data.stores;
+                window._threeHourStoresLoaded = true;
+                console.log('Loaded three hour stores:', window.threeHourStores);
+            }
+        }
+    } catch (e) {
+        console.warn('載入三小時時段店家名單失敗:', e);
+    }
+}
+
+function isThreeHourStore(name) {
+    if (!name) return false;
+    const list = (window.threeHourStores && window.threeHourStores.length > 0) ? window.threeHourStores : ['大全聯'];
+    const cleanName = String(name).toLowerCase();
+    for (const kw of list) {
+        if (!kw) continue;
+        const cleanKw = String(kw).trim().toLowerCase();
+        if (cleanKw && cleanName.includes(cleanKw)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function interleaveThreeHourWindows(windows, storeName, isGrocery) {
+    if (!windows || !Array.isArray(windows) || windows.length === 0) return windows || [];
+    
+    // 只有在名單內的「生鮮雜貨」且「能預約」的店家才穿插三小時時段
+    const matchesStore = isThreeHourStore(storeName);
+    if (!isGrocery || !matchesStore) {
+        return windows;
+    }
+    
+    // 依日期分組
+    const groupsByDate = {};
+    windows.forEach(w => {
+        let dStr = w.date;
+        if (!dStr && w.startTimeSeconds) {
+            const dt = new Date(w.startTimeSeconds * 1000);
+            const pad = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
+            dStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+        }
+        if (!dStr) dStr = 'default';
+        if (!groupsByDate[dStr]) groupsByDate[dStr] = [];
+        groupsByDate[dStr].push(w);
+    });
+    
+    const result = [];
+    Object.keys(groupsByDate).forEach(dStr => {
+        const dayWins = groupsByDate[dStr];
+        dayWins.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+        
+        const maxEndTime = Math.max(...dayWins.map(w => w.endTime || 0));
+        
+        if (dayWins.length > 0) {
+            // 第一個時段保持原本 1 小時 (例如 10:00~11:00)
+            result.push(dayWins[0]);
+            
+            // 從第二個時段開始，在原本時段前穿插 3 小時時段 (startTime ~ startTime + 180)
+            for (let i = 1; i < dayWins.length; i++) {
+                const w = dayWins[i];
+                const st = w.startTime || 0;
+                // 如果加上 3 小時 (180 分鐘) 不超過當天營業結束時間
+                if (st + 180 <= maxEndTime) {
+                    const durationSec = 180 * 60;
+                    const threeHourWin = {
+                        ...w,
+                        endTime: st + 180,
+                        durationSec: durationSec,
+                        isThreeHour: true
+                    };
+                    result.push(threeHourWin);
+                }
+                result.push(w);
+            }
+        }
+    });
+    
+    return result;
+}
+
+function getSlotDiscountInfo(tw, isGrocery) {
+    const durationMin = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) : 30;
+    const isThreeHour = (durationMin === 180) || tw.isThreeHour;
+    
+    if (isGrocery) {
+        if (isThreeHour) {
+            return { discount: 25, tag: '(-$25)', tagHtml: ' <span style="color:#e11d48; font-weight:bold;">(-$25)</span>' };
+        } else {
+            return { discount: 0, tag: '', tagHtml: '' };
+        }
+    } else {
+        const sdTime = tw.startTimeSeconds ? tw.startTimeSeconds * 1000 : Date.now();
+        const diffMin = (sdTime - Date.now()) / 60000;
+        const disc = (diffMin >= 179) ? 10 : 5;
+        return { discount: disc, tag: `(-$${disc})`, tagHtml: ` <span style="color:#e11d48; font-weight:bold;">(-$${disc})</span>` };
+    }
 }
 
 </script>
