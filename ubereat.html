@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 21.0</title>
+<title>點餐系統 21.1</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -1154,6 +1154,7 @@ let isAddressSet = false;
     initSchedulePicker();
     
     // Config loaded, API_BASE_URL is ready, now we can fetch times
+    loadStoreBlacklist();
     fetchDeliveryTimes();
     loadServerStatusDot();
     if (typeof checkAndInitGroupBuyFromUrl === 'function') {
@@ -7943,7 +7944,19 @@ function isOpeningWithin30Minutes(badgeTime) {
 }
 
 async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, diningMode = 'DELIVERY', badgeTime = '') {
-    window.customizationRetries = {}; // Reset retries state on store entry
+    window.customizationRetries = {};
+
+    let checkStoreName = '';
+    try { checkStoreName = decodeURIComponent(storeName || ''); } catch (e) { checkStoreName = storeName || ''; }
+
+    // 檢查店家黑名單 (若未載入則先載入)
+    if (!window._blacklistLoaded && typeof loadStoreBlacklist === 'function') {
+        await loadStoreBlacklist();
+    }
+    if (checkStoreName && typeof isStoreBlacklisted === 'function' && isStoreBlacklisted(checkStoreName)) {
+        showModal('無法代購', '此店家無法使用折價券，無法代購請見諒', true);
+        return;
+    } // Reset retries state on store entry
     
     if (typeof originalAppHeaderHtml !== 'undefined' && originalAppHeaderHtml) {
         const appHeaderEl = document.querySelector('.app-header');
@@ -7958,8 +7971,6 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     if (checkoutViewEl) checkoutViewEl.style.display = 'none';
     
     // [全聯特規] 當點選任何「全聯」店家時 (排除「大全聯」)，若目前為預約模式，自動靜默切換為即時模式完成訂單
-    let checkStoreName = '';
-    try { checkStoreName = decodeURIComponent(storeName || ''); } catch (e) { checkStoreName = storeName || ''; }
     if (isPxmartName(checkStoreName) && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
         if (typeof confirmTimePicker === 'function') {
             confirmTimePicker('ASAP', true);
@@ -8148,6 +8159,17 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const d = json.data;
 
       window.currentStoreRawData = d;
+
+      // 檢查取得後的官方店家標題是否在黑名單中
+      if (d && d.title && typeof isStoreBlacklisted === 'function' && isStoreBlacklisted(d.title)) {
+          resultsDiv.innerHTML = oldHtml;
+          document.getElementById('homeView').style.display = 'block';
+          document.getElementById('storeView').style.display = 'none';
+          document.getElementById('listView').style.display = 'none';
+          currentView = 'home';
+          showModal('無法代購', '此店家無法使用折價券，無法代購請見諒', true);
+          return;
+      }
 
       window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP');
       if (window.isGroceryStore && !currentStoreName.includes('不需外送費、服務費')) {
@@ -11887,6 +11909,43 @@ function onGroceryUrlManual() {
     document.getElementById('gwActions').innerHTML = `
       <button onclick="closeGroceryWaitingOverlay()" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">返回 LINE 聊天室</button>
     `;
+}
+
+
+// ============================================================
+// 店家黑名單管理 (無法代購店家)
+// ============================================================
+window.storeBlacklist = [];
+window._blacklistLoaded = false;
+
+async function loadStoreBlacklist() {
+    try {
+        const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+        const res = await fetch(`${apiBase}/api/blacklist_stores?t=${Date.now()}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.blacklist)) {
+                window.storeBlacklist = data.blacklist;
+                window._blacklistLoaded = true;
+                console.log('Loaded store blacklist:', window.storeBlacklist);
+            }
+        }
+    } catch (e) {
+        console.warn('載入店家黑名單失敗:', e);
+    }
+}
+
+function isStoreBlacklisted(name) {
+    if (!name || !window.storeBlacklist || window.storeBlacklist.length === 0) return false;
+    const cleanName = String(name).toLowerCase();
+    for (const kw of window.storeBlacklist) {
+        if (!kw) continue;
+        const cleanKw = String(kw).trim().toLowerCase();
+        if (cleanKw && cleanName.includes(cleanKw)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 </script>
