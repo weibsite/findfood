@@ -7029,6 +7029,12 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
 
   }
 
+  // --- 若為生鮮雜貨訂單，在手機 LINE (LIFF) 環境下，進入等待配對讀取畫面並自動轉址 ---
+  if (window.isGroceryStore) {
+      await handleGroceryOrderSubmit(msgText);
+      return;
+  }
+
 
 
   try {
@@ -11702,7 +11708,233 @@ window.setDeliveryMethod = function(method) {
         if (d) d.className = 'inactive';
     }
 };
+
+// ============================================================
+// 生鮮雜貨等待專屬網址與自動轉址功能
+// ============================================================
+let groceryPollTimer = null;
+let groceryPollAttempts = 0;
+
+async function getLiffUserId() {
+    let uid = '';
+    try {
+        if (typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) {
+            if (liff.isLoggedIn && liff.isLoggedIn()) {
+                const profile = await liff.getProfile();
+                if (profile && profile.userId) uid = profile.userId;
+            }
+        }
+    } catch(e) {
+        console.warn('liff.getProfile failed:', e);
+    }
+    if (!uid && typeof liff !== 'undefined' && liff.getContext) {
+        try {
+            const ctx = liff.getContext();
+            if (ctx && ctx.userId) uid = ctx.userId;
+        } catch(e) {}
+    }
+    if (!uid && typeof liff !== 'undefined' && liff.getDecodedIDToken) {
+        try {
+            const idToken = liff.getDecodedIDToken();
+            if (idToken && idToken.sub) uid = idToken.sub;
+        } catch(e) {}
+    }
+    return uid;
+}
+
+function showGroceryWaitingOverlay(storeName) {
+    const el = document.getElementById('groceryWaitingOverlay');
+    if (!el) return;
+    document.getElementById('gwTitle').innerText = '正在建立專屬購物車...';
+    document.getElementById('gwTitle').style.color = '#1E293B';
+    document.getElementById('gwStore').innerText = '🏪 ' + (storeName || '生鮮雜貨門市');
+    document.getElementById('gwEmoji').innerText = '🥦';
+    document.getElementById('gwSpinner').style.display = 'block';
+    document.getElementById('gwSpinner').style.borderTopColor = '#059669';
+    document.getElementById('gwContent').style.display = 'block';
+    document.getElementById('gwContent').innerHTML = `
+      <div id="gwStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span><span>訂單已傳送至 LINE 聊天室</span></div>
+      <div id="gwStep2" style="display:flex; align-items:center; gap:6px; color:#059669; font-weight:bold; margin-top:4px;"><span>⏳</span><span>連線代購系統配對專屬優惠中...</span></div>
+      <div id="gwStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span><span>完成後將自動前往選購商品</span></div>
+    `;
+    document.getElementById('gwTip').innerText = '💡 外送地址稍後請忽略，代訂會依您填寫的地址安排。';
+    document.getElementById('gwActions').innerHTML = `
+      <button onclick="closeGroceryWaitingOverlay()" style="background:transparent; border:none; color:#64748B; font-size:13px; cursor:pointer; padding:6px; text-decoration:underline;">回到聊天室等候</button>
+    `;
+    el.style.display = 'flex';
+}
+
+function hideGroceryWaitingOverlay() {
+    const el = document.getElementById('groceryWaitingOverlay');
+    if (el) el.style.display = 'none';
+    if (groceryPollTimer) {
+        clearInterval(groceryPollTimer);
+        groceryPollTimer = null;
+    }
+}
+
+function closeGroceryWaitingOverlay() {
+    hideGroceryWaitingOverlay();
+    if (typeof liff !== 'undefined' && liff.closeWindow) {
+        try { liff.closeWindow(); } catch(e) {}
+    }
+}
+
+async function handleGroceryOrderSubmit(msgText) {
+    const storeName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : '生鮮雜貨門市';
+    showGroceryWaitingOverlay(storeName);
+
+    // 取得 LINE User ID
+    const userId = await getLiffUserId();
+
+    // 透過 LIFF 送出訊息到 LINE 聊天室
+    try {
+        await liff.sendMessages([{ type: "text", text: msgText }]);
+        clearCart();
+        window._orderSent = true;
+    } catch (err) {
+        console.error("sendMessages error:", err);
+        hideGroceryWaitingOverlay();
+        showPermissionFailModal(msgText, err ? err.message : '');
+        return;
+    }
+
+    // 啟動輪詢取得專屬網址
+    groceryPollAttempts = 0;
+    const maxAttempts = 30; // 30 次 * 1.5 秒 = 45 秒
+    const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+
+    groceryPollTimer = setInterval(async () => {
+        groceryPollAttempts++;
+        try {
+            const checkUrl = `${apiBase}/api/grocery/check_url?user_id=${encodeURIComponent(userId)}&t=${Date.now()}`;
+            const res = await fetch(checkUrl);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'success' && data.join_url) {
+                    clearInterval(groceryPollTimer);
+                    groceryPollTimer = null;
+                    onGroceryUrlSuccess(data.join_url, data.store_name || storeName);
+                    return;
+                } else if (data.status === 'manual') {
+                    clearInterval(groceryPollTimer);
+                    groceryPollTimer = null;
+                    onGroceryUrlManual();
+                    return;
+                }
+            }
+        } catch (e) {
+            console.log('Poll grocery check_url error:', e);
+        }
+
+        if (groceryPollAttempts >= maxAttempts) {
+            clearInterval(groceryPollTimer);
+            groceryPollTimer = null;
+            onGroceryUrlTimeout();
+        }
+    }, 1500);
+}
+
+function onGroceryUrlSuccess(joinUrl, storeName) {
+    document.getElementById('gwTitle').innerText = '🎉 專屬網址配對成功！';
+    document.getElementById('gwTitle').style.color = '#059669';
+    document.getElementById('gwEmoji').innerText = '🛒';
+    document.getElementById('gwSpinner').style.display = 'none';
+    document.getElementById('gwContent').innerHTML = `
+      <div style="text-align:center; padding:5px 0;">
+        <div style="font-weight:bold; color:#059669; font-size:15px; margin-bottom:4px;">即將自動前往選購商品！</div>
+        <div style="color:#64748B; font-size:12px;">（專屬購物車已備妥，地址請忽略）</div>
+      </div>
+    `;
+    document.getElementById('gwTip').innerText = '若未自動跳轉，請點擊下方按鈕前往：';
+    document.getElementById('gwActions').innerHTML = `
+      <button onclick="window.location.href='${joinUrl}'" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即前往選購商品</button>
+    `;
+
+    // 延遲 800ms 自動跳轉
+    setTimeout(() => {
+        window.location.href = joinUrl;
+    }, 800);
+}
+
+function onGroceryUrlTimeout() {
+    document.getElementById('gwTitle').innerText = '⏳ 系統正在排隊配對中';
+    document.getElementById('gwEmoji').innerText = '⏳';
+    document.getElementById('gwSpinner').style.display = 'none';
+    document.getElementById('gwContent').innerHTML = `
+      <div style="line-height:1.6; text-align:left; font-size:13px; color:#475569;">
+        目前訂購人數較多，代訂人員正在為您安排專屬購物帳號。<br><br>
+        專屬購物網址稍後將由 <b>LINE 官方帳號</b> 發送給您，請回聊天室等候通知！
+      </div>
+    `;
+    document.getElementById('gwTip').innerText = '';
+    document.getElementById('gwActions').innerHTML = `
+      <button onclick="closeGroceryWaitingOverlay()" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">返回 LINE 聊天室</button>
+    `;
+}
+
+function onGroceryUrlManual() {
+    document.getElementById('gwTitle').innerText = '👨‍💼 已轉由專人為您安排';
+    document.getElementById('gwEmoji').innerText = '👨‍💼';
+    document.getElementById('gwSpinner').style.display = 'none';
+    document.getElementById('gwContent').innerHTML = `
+      <div style="line-height:1.6; text-align:left; font-size:13px; color:#475569;">
+        您的生鮮雜貨訂單已轉由代訂專人為您處理。<br><br>
+        專人稍後將於 LINE 聊天室提供購物網址給您，敬請稍候片刻！
+      </div>
+    `;
+    document.getElementById('gwTip').innerText = '';
+    document.getElementById('gwActions').innerHTML = `
+      <button onclick="closeGroceryWaitingOverlay()" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">返回 LINE 聊天室</button>
+    `;
+}
+
 </script>
+
+
+<!-- 生鮮雜貨專屬團購網址等待與跳轉遮罩 -->
+<div id="groceryWaitingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.78); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); z-index:999999; align-items:center; justify-content:center; box-sizing:border-box; padding:20px;">
+  <div style="background:#fff; border-radius:24px; padding:30px 24px; max-width:340px; width:100%; text-align:center; box-shadow:0 20px 40px rgba(0,0,0,0.3); animation:gwPop 0.3s ease-out; position:relative;">
+    
+    <!-- 動態圖示區 -->
+    <div id="gwIconContainer" style="margin-bottom:15px; position:relative; display:inline-block;">
+      <div id="gwSpinner" style="width:72px; height:72px; border:4px solid #E2E8F0; border-top:4px solid #059669; border-radius:50%; animation:gwSpin 1s linear infinite; margin:0 auto;"></div>
+      <div id="gwEmoji" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:32px;">🥦</div>
+    </div>
+    
+    <!-- 標題與店家 -->
+    <h3 id="gwTitle" style="margin:0 0 6px 0; font-size:18px; color:#1E293B; font-weight:800;">正在建立專屬購物車...</h3>
+    <div id="gwStore" style="font-size:14px; font-weight:bold; color:#059669; margin-bottom:15px; word-break:break-all;"></div>
+    
+    <!-- 進度內容區 -->
+    <div id="gwContent" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px; font-size:13px; color:#475569; text-align:left; line-height:1.7; margin-bottom:15px;">
+      <div id="gwStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span><span>訂單已傳送至 LINE 聊天室</span></div>
+      <div id="gwStep2" style="display:flex; align-items:center; gap:6px; color:#059669; font-weight:bold; margin-top:4px;"><span>⏳</span><span>連線代購系統配對專屬優惠中...</span></div>
+      <div id="gwStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span><span>完成後將自動前往選購商品</span></div>
+    </div>
+    
+    <!-- 提示小字 -->
+    <div id="gwTip" style="font-size:12px; color:#94A3B8; line-height:1.5; margin-bottom:15px;">
+      💡 外送地址稍後請忽略，代訂會依您填寫的地址安排。
+    </div>
+    
+    <!-- 按鈕區 -->
+    <div id="gwActions" style="display:flex; flex-direction:column; gap:8px;">
+      <button id="gwCancelBtn" onclick="closeGroceryWaitingOverlay()" style="background:transparent; border:none; color:#64748B; font-size:13px; cursor:pointer; padding:6px; text-decoration:underline;">回到聊天室等候</button>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes gwSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes gwPop {
+  0% { transform: scale(0.85); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+</style>
 
 </body>
 </html>
