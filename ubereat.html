@@ -441,10 +441,10 @@
         </div>
         <div style="flex:1; min-width:0;">
           <div style="font-size:12px; font-weight:700; color:#57534e;">外送時間</div>
-          <div id="triggerTimeText" style="font-size:17px; font-weight:700; color:#f43f5e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🚀 立刻</div>
+          <div id="triggerTimeText" style="font-size:17px; font-weight:700; color:#f43f5e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🚀 即時訂單</div>
           <select id="scheduleTime" style="display:none;"></select>
         </div>
-        <span id="asapPromoTag" style="color:#e11d48; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折20元</span>
+        <span id="asapPromoTag" style="color:#01B468; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折20元</span>
         <svg aria-hidden="true" fill="none" height="20" stroke="#78716c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" viewBox="0 0 24 24" width="20" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"></path></svg>
       </div>
     </div>
@@ -1713,7 +1713,7 @@ function updateStoreScheduleBadge() {
                 if (pillSpan) pillSpan.style.background = '#e11d48';
             }
         } else {
-            badgeText.innerText = '🚀 立刻';
+            badgeText.innerText = '🚀 即時訂單';
             if (badgeWrap) {
                 badgeWrap.style.display = 'inline-block';
                 const pillSpan = badgeWrap.querySelector('span');
@@ -1751,7 +1751,7 @@ function updateTriggerText() {
     if (!trigger) return;
     
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') {
-        trigger.innerText = '🚀 立刻';
+        trigger.innerText = '🚀 即時訂單';
         trigger.style.color = '#f43f5e';
         if (promoTag) promoTag.style.display = 'inline';
     } else {
@@ -8439,7 +8439,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           scheduleHtml = `
             <div id="storeScheduleBadge" style="margin-top:10px; display:inline-block; cursor:pointer;" onclick="openTimePickerModal()" title="點擊修改送達時段">
               <span style="background: #f43f5e; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); cursor: pointer; user-select: none;">
-                 <span id="storeScheduleText">🚀 立刻</span>
+                 <span id="storeScheduleText">🚀 即時訂單</span>
                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.85;"><path d="M6 9l6 6 6-6"></path></svg>
               </span>
             </div>
@@ -10178,7 +10178,7 @@ function showToast(msg) {
         </div>
     </div>
     <button onclick="confirmTimePicker('SCHEDULE')" style="width:100%; padding:15px; background:#10b981; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:bold; margin-bottom:10px; cursor:pointer;">預約訂單</button>
-    <button onclick="confirmTimePicker('ASAP')" style="width:100%; padding:15px; background:#eee; color:#000; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer;">🚀 立刻</button>
+    <button onclick="confirmTimePicker('ASAP')" style="width:100%; padding:15px; background:#eee; color:#000; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer;">🚀 即時訂單</button>
   </div>
 </div>
 
