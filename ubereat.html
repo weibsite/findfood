@@ -444,7 +444,7 @@
           <div id="triggerTimeText" style="font-size:17px; font-weight:700; color:#f43f5e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🚀 即時訂單</div>
           <select id="scheduleTime" style="display:none;"></select>
         </div>
-        <span id="asapPromoTag" style="color:#01B468; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折20元</span>
+        <span id="asapPromoTag" style="color:#e11d48; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折20元</span>
         <svg aria-hidden="true" fill="none" height="20" stroke="#78716c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" viewBox="0 0 24 24" width="20" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"></path></svg>
       </div>
     </div>
@@ -1286,6 +1286,58 @@ let isAddressSet = false;
     renderDates();
   }
 
+  function getAvailableTimeRangesCount(dStr) {
+    if (!uberTimeData) return 0;
+    const storeRaw = window.currentStoreRawData;
+    let storeRanges = null;
+    if (storeRaw && storeRaw.timeWindowPicker && storeRaw.timeWindowPicker.dates) {
+        const matchingStoreDate = storeRaw.timeWindowPicker.dates.find(d => {
+            if (d.date === dStr) return true;
+            if (d.listItems && d.listItems.length > 0) {
+                return d.listItems[0]?.timeWindowViewModel?.timeWindow?.date === dStr;
+            }
+            return false;
+        });
+        if (matchingStoreDate && matchingStoreDate.listItems && matchingStoreDate.listItems.length > 0) {
+            storeRanges = [];
+            matchingStoreDate.listItems.forEach(item => {
+                const tw = item.timeWindowViewModel?.timeWindow;
+                if (tw) {
+                    storeRanges.push({
+                        startTime: tw.startTime,
+                        endTime: tw.endTime,
+                        startTimeSeconds: tw.startTimeSeconds,
+                        date: tw.date || dStr
+                    });
+                }
+            });
+            const sName = window.currentStoreName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || storeRaw?.title || '';
+            const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+            if (typeof interleaveThreeHourWindows === 'function') {
+                storeRanges = interleaveThreeHourWindows(storeRanges, sName, isGr);
+            }
+        }
+    }
+    
+    const ranges = (storeRanges && storeRanges.length > 0) ? storeRanges : (uberTimeData?.timeRanges?.[dStr] || []);
+    if (!ranges || ranges.length === 0) return 0;
+    
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const isToday = (dStr === todayStr) || (new Date(dStr).toDateString() === now.toDateString());
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    let count = 0;
+    for (let i = 0; i < ranges.length; i++) {
+        const st = ranges[i].startTime || 0;
+        if (isToday && st < currentMinutes) {
+            continue;
+        }
+        count++;
+    }
+    return count;
+  }
+
   function renderDates() {
     if (!uberTimeData || !uberTimeData.dates) return;
     const dateSelect = document.getElementById('modalDateSelect');
@@ -1308,12 +1360,21 @@ let isAddressSet = false;
         if (sDates.length > 0) datesList = sDates;
     }
 
-    let firstAvailableDate = null;
     datesList.forEach((dStr, idx) => {
         const d = new Date(dStr);
         const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+        const isToday = (d.toDateString() === today.toDateString());
+        
+        // 挑選時間如果今日的時段已經沒有時段 就不需要有今日可以選
+        if (isToday) {
+            const availCount = getAvailableTimeRangesCount(dStr);
+            if (availCount === 0) {
+                return;
+            }
+        }
+        
         let label = '';
-        if (d.toDateString() === today.toDateString()) {
+        if (isToday) {
             label = `今天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
         } else if (d.toDateString() === tomorrow.toDateString()) {
             label = `明天 (${d.getMonth()+1}/${d.getDate()} 週${dayNames[d.getDay()]})`;
@@ -1331,36 +1392,40 @@ let isAddressSet = false;
     // Automatically set default trigger text
     const modalSelect = document.getElementById('modalTimeSelect');
     const scheduleSelect = document.getElementById('scheduleTime');
-    if (modalSelect && scheduleSelect && modalSelect.options.length > 0) {
-        if (scheduleSelect.options.length === 0) {
-            const targetIdx = modalSelect.options.length > 1 ? 1 : 0;
-            const newOpt = document.createElement('option');
-            newOpt.value = modalSelect.options[targetIdx].value;
-            newOpt.text = modalSelect.options[targetIdx].text;
-            scheduleSelect.appendChild(newOpt);
+    if (modalSelect && scheduleSelect && modalSelect.options.length > 0 && modalSelect.options[0].value !== '') {
+        if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+            if (scheduleSelect.options.length === 0) {
+                const targetIdx = modalSelect.options.length > 1 ? 1 : 0;
+                const newOpt = document.createElement('option');
+                newOpt.value = modalSelect.options[targetIdx].value;
+                newOpt.text = modalSelect.options[targetIdx].text;
+                scheduleSelect.appendChild(newOpt);
+            }
+            updateTriggerText();
         }
-        updateTriggerText();
     }
     autoFixEmptyTime();
 }
 
 function autoFixEmptyTime() {
-    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP') return;
     const modalSelect = document.getElementById('modalTimeSelect');
     const dateSelect = document.getElementById('modalDateSelect');
     const scheduleSelect = document.getElementById('scheduleTime');
-    if (!modalSelect || !dateSelect || !scheduleSelect) return;
-    if (modalSelect.options.length === 0 && dateSelect.options.length > 0) {
+    if (!modalSelect || !dateSelect) return;
+    const isCurrentValid = modalSelect.options.length > 0 && modalSelect.options[0].value !== '';
+    if (!isCurrentValid && dateSelect.options.length > 0) {
         for (let i = 0; i < dateSelect.options.length; i++) {
             dateSelect.selectedIndex = i;
             renderModalTimes();
-            if (modalSelect.options.length > 0) {
-                scheduleSelect.innerHTML = '';
-                const newOpt = document.createElement('option');
-                newOpt.value = modalSelect.options[0].value;
-                newOpt.text = modalSelect.options[0].text;
-                scheduleSelect.appendChild(newOpt);
-                if (typeof updateTriggerText === 'function') updateTriggerText();
+            if (modalSelect.options.length > 0 && modalSelect.options[0].value !== '') {
+                if (scheduleSelect && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+                    scheduleSelect.innerHTML = '';
+                    const newOpt = document.createElement('option');
+                    newOpt.value = modalSelect.options[0].value;
+                    newOpt.text = modalSelect.options[0].text;
+                    scheduleSelect.appendChild(newOpt);
+                    if (typeof updateTriggerText === 'function') updateTriggerText();
+                }
                 break;
             }
         }
@@ -1407,12 +1472,22 @@ function renderModalTimes() {
     }
     
     const ranges = (storeRanges && storeRanges.length > 0) ? storeRanges : (uberTimeData?.timeRanges?.[dateStr] || []);
-    if (!ranges || ranges.length === 0) return;
+    if (!ranges || ranges.length === 0) {
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.text = '⚠️ 此日期已無可預約時段，請選擇其他日期';
+        emptyOpt.disabled = true;
+        emptyOpt.selected = true;
+        timeSelect.appendChild(emptyOpt);
+        if (typeof updateModalDiscountNotice === 'function') updateModalDiscountNotice();
+        return;
+    }
     
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const isToday = (dateStr === todayStr) || (new Date(dateStr).toDateString() === now.toDateString());
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    let validCount = 0;
     ranges.forEach(w => {
         const st = w.startTime || 0;
         const et = w.endTime || 0;
@@ -1468,13 +1543,23 @@ function renderModalTimes() {
             opt.style.color = '#111';
             opt.style.fontWeight = 'normal';
         }
+        validCount++;
         timeSelect.appendChild(opt);
     });
+
+    if (validCount === 0) {
+        const emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.text = '⚠️ 此日期已無可預約時段，請選擇其他日期';
+        emptyOpt.disabled = true;
+        emptyOpt.selected = true;
+        timeSelect.appendChild(emptyOpt);
+    }
 
     if (typeof updateModalDiscountNotice === 'function') updateModalDiscountNotice();
     
     // 即時同步第一個時段到畫面 (若非即時訂單模式)
-    if (typeof syncSelectedTimeToHome === 'function' && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP') {
+    if (typeof syncSelectedTimeToHome === 'function' && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && validCount > 0) {
         syncSelectedTimeToHome();
     }
 }
@@ -1518,7 +1603,14 @@ function updateModalDiscountNotice() {
 }
 
 function openTimePickerModal() {
-    if (!uberTimeData || !uberTimeData.dates) return;
+    if (!uberTimeData || !uberTimeData.dates) {
+        fetchDeliveryTimes().then(() => {
+            if (uberTimeData && uberTimeData.dates) {
+                openTimePickerModal();
+            }
+        });
+        return;
+    }
     
     const storeRaw = window.currentStoreRawData;
     if (storeRaw && storeRaw.timeWindowPicker && storeRaw.timeWindowPicker.dates) {
@@ -1527,10 +1619,11 @@ function openTimePickerModal() {
     
     // 同步當前已選的日期與時段到彈窗選單
     const scheduleSelect = document.getElementById('scheduleTime');
+    const dateSelect = document.getElementById('modalDateSelect');
+    const timeSelect = document.getElementById('modalTimeSelect');
     if (scheduleMode === 'SCHEDULE' && scheduleSelect && scheduleSelect.value) {
         try {
             const parsed = JSON.parse(scheduleSelect.value);
-            const dateSelect = document.getElementById('modalDateSelect');
             if (dateSelect && parsed.date) {
                 const dateIdx = Array.from(dateSelect.options).findIndex(o => o.value === parsed.date);
                 if (dateIdx !== -1 && dateSelect.selectedIndex !== dateIdx) {
@@ -1538,7 +1631,6 @@ function openTimePickerModal() {
                     renderModalTimes();
                 }
             }
-            const timeSelect = document.getElementById('modalTimeSelect');
             if (timeSelect) {
                 for (let i = 0; i < timeSelect.options.length; i++) {
                     try {
@@ -1551,6 +1643,10 @@ function openTimePickerModal() {
                 }
             }
         } catch(e) {}
+    } else {
+        if (!timeSelect || timeSelect.options.length === 0 || timeSelect.options[0].value === '') {
+            autoFixEmptyTime();
+        }
     }
     
     if (typeof updateModalDiscountNotice === 'function') updateModalDiscountNotice();
@@ -1902,7 +1998,7 @@ function updateTriggerText() {
         if (promoTag) {
             promoTag.style.display = 'inline';
             promoTag.innerText = '預約最高每單折20元';
-            promoTag.style.color = '#01B468';
+            promoTag.style.color = '#e11d48';
         }
     } else {
         const disc = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
@@ -1958,8 +2054,13 @@ function confirmTimePicker(mode, skipSearch = false, force = false) {
     const scheduleSelect = document.getElementById('scheduleTime');
     
     if (mode === 'SCHEDULE') {
-        const selectedModalOpt = document.getElementById('modalTimeSelect').options[document.getElementById('modalTimeSelect').selectedIndex];
-        if (selectedModalOpt) {
+        const modalSelect = document.getElementById('modalTimeSelect');
+        const selectedModalOpt = modalSelect ? modalSelect.options[modalSelect.selectedIndex] : null;
+        if (!selectedModalOpt || !selectedModalOpt.value) {
+            showModal('請選擇時段', '當前選取的日期已無可預約時段，請切換其他日期或選擇「🚀 即時訂單」。');
+            return;
+        }
+        if (scheduleSelect) {
             scheduleSelect.innerHTML = '';
             const newOpt = document.createElement('option');
             newOpt.value = selectedModalOpt.value;
@@ -5128,7 +5229,16 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
         btn.innerText = window.currentGroupBuyId ? `👥 團購清單 (${totalQty})` : `🛍️ 檢視購物車(${totalQty})`;
       }
 
-      btn.style.display = (totalQty > 0) ? 'block' : 'none';
+      const homeView = document.getElementById('homeView');
+      const isHomeViewVisible = homeView && (homeView.style.display !== 'none');
+      const isHome = (typeof currentView !== 'undefined' && currentView === 'home') || isHomeViewVisible;
+
+      // 即使購物車有東西的情況下，在有尋找想吃的餐點的頁面 (homeView) 下方不要顯示檢視購物車
+      if (isHome) {
+        btn.style.display = 'none';
+      } else {
+        btn.style.display = (totalQty > 0) ? 'block' : 'none';
+      }
 
     }
 
@@ -8018,6 +8128,7 @@ const note = document.getElementById('modalNote').value.trim();
     document.getElementById('storeView').style.display = 'none';
 
     document.getElementById('homeView').style.display = 'block';
+    updateCartBadge();
 
     if (window._isRandomOrEmptySearch) {
       const qInput = document.getElementById('query');
