@@ -4,6 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>店家目前營業狀態</title>
+    <script>
+        // ★ 核心優化：最頂端第 0 毫秒立即發起狀態請求，不等 DOM，與頁面渲染並行
+        const DEFAULT_API = "https://api.9ysong.shop";
+        const ORDER_URL = "https://liff.line.me/2011657436-rGVj5SoG";
+        
+        let targetApi = DEFAULT_API;
+        try {
+            const savedUrl = localStorage.getItem('line_url');
+            if (savedUrl) targetApi = savedUrl;
+        } catch(e) {}
+        
+        const statusFetch = fetch(targetApi + '/api/status')
+            .then(r => r.ok ? r.json() : Promise.reject('API Error'))
+            .catch(err => {
+                console.error("狀態查詢異常", err);
+                return { type: 'offline', text: '斷線中' };
+            });
+
+        // 背景非同步更新 config.json（快取動態 URL，不卡死本次）
+        fetch('/config.json?t=' + Date.now())
+            .then(r => r.json())
+            .then(cfg => { if (cfg && cfg.line_url) localStorage.setItem('line_url', cfg.line_url); })
+            .catch(() => {});
+    </script>
     <style>
         html, body { 
             height: 100%; 
@@ -49,7 +73,6 @@
         
         .status-section.busy { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); }
         .status-section.busy .status-badge { color: #2980b9; font-size: 20px; padding: 15px 25px; }
-        
         
         .status-section.connecting { background: #ffffff; color: #333; }
         .status-section.connecting .status-title { color: #333; }
@@ -106,15 +129,15 @@
     </style>
 </head>
 <body>
-    <div id="status-container" class="status-section connecting">
+    <div id="status-container" class="status-section">
         <div class="status-title">店家目前營業狀態</div>
-        <div id="status-text" class="status-badge">連線中...</div>
+        <div id="status-text" class="status-badge">接單中</div>
         <div class="notice-text">
             訂單請於3小時前預約<br>
             享優惠不需等待穩定用餐
         </div>
         
-        <div id="action-container" style="display: none; text-align: center;">
+        <div id="action-container" style="text-align: center;">
             <a href="https://liff.line.me/2011657436-rGVj5SoG" id="order-link" class="order-btn">開始點餐</a>
         </div>
 
@@ -125,7 +148,6 @@
     </div>
 
     <script>
-        
         function setStatus(type, text) {
             const container = document.getElementById('status-container');
             const badge = document.getElementById('status-text');
@@ -137,28 +159,16 @@
             if(type === 'connecting') container.classList.add('connecting');
             if(type === 'offline') container.classList.add('offline');
             
-            
             badge.innerText = text;
             
             const actionContainer = document.getElementById('action-container');
             const noticeEl = document.querySelector('.notice-text');
             
             if (actionContainer) {
-                if (type === 'connecting') {
-                    actionContainer.style.display = 'none';
+                if (type === 'connecting' || type === 'closed' || type === 'offline') {
+                    actionContainer.style.display = (type === 'connecting') ? 'none' : 'none';
                 } else {
                     actionContainer.style.display = 'block';
-                    const btn = document.getElementById('order-link');
-                    if (btn && !btn.dataset.autoClickScheduled) {
-                        btn.dataset.autoClickScheduled = "true";
-                        const autoClickTimer = setTimeout(() => {
-                            window.location.href = btn.href;
-                        }, 1500);
-                        
-                        btn.addEventListener('click', () => {
-                            clearTimeout(autoClickTimer);
-                        });
-                    }
                 }
             }
             
@@ -169,9 +179,8 @@
                     noticeEl.innerHTML = '訂單請於3小時前預約<br>享優惠不需等待穩定用餐';
                 }
             }
-
             
-            if (text.length > 10) {
+            if (text && text.length > 10) {
                 badge.style.fontSize = "20px";
                 badge.style.padding = "15px 25px";
             } else {
@@ -192,36 +201,75 @@
             }
         }
 
-        async function loadStatus() {
-            try {
-                const configRes = await fetch('/config.json?t=' + new Date().getTime());
-                const configData = await configRes.json();
-                const lineUrl = configData.line_url;
-                if (!lineUrl) return;
+        let autoTimer = null;
+        let timerReady = false;
+        let apiResult = null;
+        let userHandled = false;
 
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超時設定
-                
-                const response = await fetch(lineUrl + '/api/status', { signal: controller.signal });
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) throw new Error('API Error');
-                
-                const data = await response.json();
-                
-                // 如果成功，設定狀態
-                setStatus(data.type, data.text);
-            } catch (err) {
-                console.error("連線異常", err);
-                // 錯誤時直接改為斷線狀態
-                setStatus('offline', '斷線中');
-            }
+        function doRedirect() {
+            if (userHandled) return;
+            userHandled = true;
+            window.location.href = ORDER_URL;
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            setStatus('connecting', '連線中');
-            loadStatus();
+        // 綁定手動點擊
+        const btn = document.getElementById('order-link');
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                clearTimeout(autoTimer);
+                userHandled = true;
+            });
+        }
+
+        // 1. 立即讀取快取秒顯狀態（預設「接單中」）
+        let initialType = 'open';
+        let initialText = '接單中';
+        try {
+            const cached = localStorage.getItem('last_store_status');
+            if (cached) {
+                const s = JSON.parse(cached);
+                if (s && s.type && s.text) {
+                    initialType = s.type;
+                    initialText = s.text;
+                }
+            }
+        } catch(e) {}
+        
+        setStatus(initialType, initialText);
+
+        // 2. 僅在初始狀態為 open 時啟動 1.5 秒延遲計時
+        if (initialType === 'open') {
+            autoTimer = setTimeout(() => {
+                timerReady = true;
+                // 若 API 已經回傳且確認為 open，立即跳轉
+                if (apiResult && apiResult.type === 'open') {
+                    doRedirect();
+                }
+            }, 1500);
+        }
+
+        // 3. 處理背景早已發出的 API 請求
+        statusFetch.then(data => {
+            apiResult = data;
+            if (data && data.type) {
+                try {
+                    localStorage.setItem('last_store_status', JSON.stringify(data));
+                } catch(e) {}
+                
+                setStatus(data.type, data.text);
+
+                // 若非接單中，立即取消跳轉，防止誤進
+                if (data.type !== 'open') {
+                    if (autoTimer) clearTimeout(autoTimer);
+                    return;
+                }
+
+                // 若為接單中，且 1.5 秒閱讀延遲已經結束，立即執行跳轉
+                if (timerReady) {
+                    doRedirect();
+                }
+            }
         });
-</script>
+    </script>
 </body>
 </html>
