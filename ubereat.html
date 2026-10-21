@@ -6828,7 +6828,7 @@ async function _sendOrderToLine(forceSubmit = false) {
               isASAPCheckout = true; // 3小時內的預約單視同即時單標準
           }
       }
-      let minOrderLimit = isASAPCheckout ? 199 : 169;
+      let minOrderLimit = 199;
 
       if (foodTotal < minOrderLimit) {
 
@@ -9962,7 +9962,7 @@ function normalizeAddress(addr) {
             isASAP = true; // 3小時內的預約單視同即時單標準
         }
     }
-    let binLimit = isASAP ? 199 : 170;
+    let binLimit = 199;
     
     let validSplit = true;
 
