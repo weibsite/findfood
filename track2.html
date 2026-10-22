@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <title>訂單追蹤</title>
+    <!-- 開源地圖 Leaflet.js -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { touch-action: manipulation; box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; text-align: center; color: #333; }
+        .card { background: white; padding: 25px 20px; border-radius: 14px; margin: 20px auto; max-width: 440px; width: 95%; box-shadow: 0 4px 16px rgba(0,0,0,0.06); transition: max-width 0.3s ease; }
+        .card.delivered-mode { max-width: 520px; }
+        h2 { margin-top: 0; color: #111; font-size: 22px; }
+        .status-area { margin: 20px 0; }
+        .order-text { white-space: pre-wrap; background: #f8f9fa; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 14px; text-align: left; margin-top: 20px; color: #555; border: 1px solid #eee; }
+        .btn { display: block; background: #06c167; color: white; border: none; padding: 16px; border-radius: 8px; font-size: 16px; text-decoration: none; font-weight: bold; margin-top: 20px; transition: opacity 0.2s; }
+        .btn:active { opacity: 0.8; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #06c167; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 地圖脈衝標記動畫 */
+        @keyframes pulseRing {
+            0% { transform: scale(0.8); opacity: 0.8; }
+            50% { transform: scale(1.4); opacity: 0.2; }
+            100% { transform: scale(1.8); opacity: 0; }
+        }
+        .custom-map-icon { background: transparent; border: none; }
+
+        /* 多單外送進度橫向滑動與分頁 (Multi-order Sliders & Tabs) */
+        .split-slider {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            gap: 14px;
+            padding-bottom: 12px;
+            margin-bottom: 14px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        .split-slider::-webkit-scrollbar {
+            height: 5px;
+        }
+        .split-slider::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        .split-slide-card {
+            min-width: 88%;
+            max-width: 88%;
+            flex-shrink: 0;
+            scroll-snap-align: center;
+            box-sizing: border-box;
+        }
+        .split-tab-btn {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+            color: #555;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            outline: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .split-tab-btn:hover {
+            background: #eef2f6;
+        }
+        .split-tab-btn.active {
+            background: #2e7d32 !important;
+            color: #fff !important;
+            border-color: #2e7d32 !important;
+            box-shadow: 0 2px 6px rgba(46,125,50,0.3);
+        }
+        .split-tab-btn.canceled-tab {
+            border-color: #ef9a9a;
+            color: #c62828;
+            background: #fff5f5;
+        }
+        .split-tab-btn.canceled-tab.active {
+            background: #d32f2f !important;
+            color: #fff !important;
+            border-color: #d32f2f !important;
+            box-shadow: 0 2px 6px rgba(211,47,47,0.3);
+        }
+        .split-tab-btn.scheduled-tab {
+            border-color: #b39ddb;
+            color: #4527a0;
+            background: #ede7f6;
+        }
+        .split-tab-btn.scheduled-tab.active {
+            background: #5c6bc0 !important;
+            color: #fff !important;
+            border-color: #5c6bc0 !important;
+            box-shadow: 0 2px 6px rgba(92,107,192,0.3);
+        }
+
+        /* 留置照片點擊放大 (Lightbox Zoom Modal) */
+        .zoom-modal {
+            display: none;
+            position: fixed;
+            z-index: 999999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        .zoom-modal.show { display: flex; }
+        .zoom-modal-content {
+            position: relative;
+            max-width: 95vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .zoom-modal-img {
+            max-width: 100%;
+            max-height: 82vh;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        .zoom-close-btn {
+            position: absolute;
+            top: -42px;
+            right: 0;
+            background: rgba(255, 255, 255, 0.25);
+            color: white;
+            border: none;
+            font-size: 26px;
+            font-weight: bold;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .zoom-close-btn:hover { background: rgba(255, 255, 255, 0.45); }
+        .zoom-hint {
+            color: #eee;
+            font-size: 13px;
+            margin-top: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 4px 14px;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>📦 訂單追蹤</h2>
+        <div id="trackStatusArea" class="status-area">
+            <div class="loader"></div>
+            <h3 style="color: #666; font-size: 18px;">正在查詢您的訂單...</h3>
+        </div>
+        <div id="trackOrderText" class="order-text" style="display: none;"></div>
+    </div>
+
+    <!-- 留置照片點擊放大燈箱 (Lightbox Modal) -->
+    <div id="zoomModal" class="zoom-modal" onclick="closeZoom()">
+        <div class="zoom-modal-content" onclick="event.stopPropagation()">
+            <button type="button" class="zoom-close-btn" onclick="closeZoom()">&times;</button>
+            <img id="zoomModalImg" class="zoom-modal-img" src="" alt="外送現場留置照片全圖">
+            <div class="zoom-hint">點擊背景或右上角按鈕即可關閉</div>
+        </div>
+    </div>
+
+    <script>
+        // 留置照片放大燈箱控制
+        function zoomPhoto(imgUrl) {
+            const modal = document.getElementById('zoomModal');
+            const modalImg = document.getElementById('zoomModalImg');
+            if (modal && modalImg && imgUrl) {
+                modalImg.src = imgUrl;
+                modal.classList.add('show');
+            }
+        }
+
+        function closeZoom() {
+            const modal = document.getElementById('zoomModal');
+            if (modal) {
+                modal.classList.remove('show');
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeZoom();
+        });
+
+        // 從網址或字串中解析 36 位 UUID
+        function extractOrderUuid(urlOrStr) {
+            if (!urlOrStr) return null;
+            const regex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+            let match = String(urlOrStr).match(regex);
+            if (!match) {
+                try {
+                    const decoded = decodeURIComponent(decodeURIComponent(urlOrStr));
+                    match = decoded.match(regex);
+                } catch(e) {}
+            }
+            return match ? match[0].toLowerCase() : null;
+        }
+
+        // 向後端查詢已完成送達訂單資料
+        async function fetchTerminatedOrder(uuid, rawUrl, trackApiBase) {
+            const endpoints = [];
+            if (trackApiBase) endpoints.push(`${trackApiBase}/api/getTerminatedOrder`);
+            endpoints.push('/api/getTerminatedOrder');
+            endpoints.push('http://127.0.0.1:5000/api/getTerminatedOrder');
+            endpoints.push('http://localhost:5000/api/getTerminatedOrder');
+            
+            const uniqueEndpoints = [...new Set(endpoints)];
+            
+            for (const ep of uniqueEndpoints) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderUuid: uuid,
+                            url: rawUrl
+                        })
+                    });
+                    if (res.ok) {
+                        const json = await res.json();
+                        return json;
+                    } else {
+                        try {
+                            const errJson = await res.json();
+                            return errJson;
+                        } catch(e) {
+                            return { status: 'error', message: `HTTP ${res.status}` };
+                        }
+                    }
+                } catch(err) {
+                    console.warn(`查詢送達狀態端點失敗 (${ep}):`, err);
+                }
+            }
+            return { status: 'error', message: '連線伺服器失敗' };
+        }
+
+        // 向後端查詢進行中外送訂單資料 (即時 GPS、外送員位置、ETA、PIN 碼)
+        async function fetchActiveOrder(uuid, rawUrl, trackApiBase) {
+            const endpoints = [];
+            if (trackApiBase) endpoints.push(`${trackApiBase}/api/getActiveOrder`);
+            endpoints.push('/api/getActiveOrder');
+            endpoints.push('http://127.0.0.1:5000/api/getActiveOrder');
+            endpoints.push('http://localhost:5000/api/getActiveOrder');
+
+            const uniqueEndpoints = [...new Set(endpoints)];
+
+            for (const ep of uniqueEndpoints) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderUuid: uuid,
+                            url: rawUrl
+                        })
+                    });
+                    if (res.ok) {
+                        const json = await res.json();
+                        return json;
+                    }
+                } catch(err) {
+                    console.warn(`查詢進行中狀態端點失敗 (${ep}):`, err);
+                }
+            }
+            return { status: 'error', message: '連線伺服器失敗' };
+        }
+
+        // 發送訊息給外送員
+        async function sendCourierMessage(uuid, message, trackApiBase) {
+            const endpoints = [];
+            if (trackApiBase) endpoints.push(`${trackApiBase}/api/sendCourierMessage`);
+            endpoints.push('/api/sendCourierMessage');
+            endpoints.push('http://127.0.0.1:5000/api/sendCourierMessage');
+            endpoints.push('http://localhost:5000/api/sendCourierMessage');
+
+            const uniqueEndpoints = [...new Set(endpoints)];
+
+            for (const ep of uniqueEndpoints) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderUuid: uuid,
+                            message: message
+                        })
+                    });
+                    if (res.ok) {
+                        return await res.json();
+                    }
+                } catch(err) {
+                    console.warn(`發送訊息失敗 (${ep}):`, err);
+                }
+            }
+            return { status: 'error', message: '發送訊息連線失敗' };
+        }
+
+        let liveMapInstance = null;
+        let courierMarker = null;
+        let storeMarker = null;
+        let destMarker = null;
+        let routeLine = null;
+        let liveTrajectoryLine = null;
+        let liveAccumulatedPath = [];
+        let lastLiveNavCoords = { cLat: null, cLng: null, sLat: null, sLng: null, dLat: null, dLng: null, lastTime: 0 };
+        let liveTrackingInterval = null;
+
+        function calcGeoDist(lat1, lon1, lat2, lon2) {
+            if (!lat1 || !lon1 || !lat2 || !lon2) return 999999;
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function updateCourierLiveTrajectory(courier) {
+            if (!liveTrajectoryLine || !courier || !courier.latitude || !courier.longitude) return;
+            const pts = courier.pathPoints || [];
+            const cur = [courier.latitude, courier.longitude];
+            if (pts.length > 0) {
+                const sorted = [...pts].sort((a, b) => (a.epoch || 0) - (b.epoch || 0));
+                liveAccumulatedPath = sorted.map(p => [p.latitude, p.longitude]);
+            }
+            if (liveAccumulatedPath.length === 0) {
+                liveAccumulatedPath.push(cur);
+            } else {
+                const last = liveAccumulatedPath[liveAccumulatedPath.length - 1];
+                if (calcGeoDist(last[0], last[1], cur[0], cur[1]) > 2) {
+                    liveAccumulatedPath.push(cur);
+                }
+            }
+            liveTrajectoryLine.setLatLngs(liveAccumulatedPath);
+        }
+
+        // 渲染外送進行中階段 UI (含開源 Leaflet 地圖、外送員即時定位與傳訊室)
+        function renderActiveDeliveryStage(activeData, parsedData, data, primaryUrl) {
+            const cardEl = document.querySelector('.card');
+            if (cardEl) cardEl.classList.add('delivered-mode');
+
+            const mainHeader = document.querySelector('.card h2');
+            if (mainHeader) {
+                mainHeader.innerHTML = '🛵 餐點外送中 (即時地圖追蹤)';
+                mainHeader.style.color = '#06c167';
+            }
+
+            const orderUuid = activeData.orderUuid || window.currentActiveOrderUuid || '';
+            window.currentActiveOrderUuid = orderUuid;
+            const eta = activeData.eta || '外送途中';
+            const statusTitle = activeData.orderStatus || '外送員正在前往您的目的地';
+            const courier = activeData.courier || {};
+            const courierName = courier.name || '合作外送夥伴';
+            const vehicle = courier.vehicle || '外送機車';
+            const phone = courier.phone || '';
+            const pin = activeData.pinCode || courier.pinCode || '';
+            const store = activeData.store || {};
+            const storeName = store.name || parsedData.store || '外送合作店家';
+            const dest = activeData.destination || {};
+            const destAddr = dest.address || parsedData.address || '指定外送地址';
+
+            let activeHtml = `
+                <div style="text-align: left; margin-bottom: 20px;">
+                    <!-- 頂部外送動態橫幅 -->
+                    <div style="background: #e8f5e9; border: 1.5px solid #81c784; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="background: #06c167; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">🛵 運送中 (LIVE)</span>
+                            <span id="liveEtaText" style="color: #1b5e20; font-size: 15px; font-weight: 800;">預計抵達：${eta}</span>
+                        </div>
+                        <div id="liveStatusTitle" style="font-size: 17px; font-weight: 800; color: #111; margin-bottom: 6px;">${statusTitle}</div>
+                        <div style="font-size: 13.5px; color: #333; line-height: 1.5; margin-bottom: 4px;">
+                            📍 <strong>外送地址:</strong> <span style="color: #111; font-weight: 600;">${destAddr}</span>
+                        </div>
+                        <div style="font-size: 13.5px; color: #444; line-height: 1.4;">
+                            🏪 <strong>取餐店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
+                        </div>
+                        ${pin ? `
+                        <div style="margin-top: 10px; background: #fff; border: 1.5px dashed #f59e0b; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+                            <span style="font-size: 13px; font-weight: bold; color: #b45309;">🔑 取餐 PIN 碼 (請提供給外送員)：</span>
+                            <span style="font-size: 20px; font-weight: 900; color: #d97706; font-family: monospace; letter-spacing: 2px;">${pin}</span>
+                        </div>` : ''}
+                    </div>
+
+                    <!-- 即時開源 Leaflet 地圖區塊 -->
+                    <div style="position: relative; margin-bottom: 14px;">
+                        <div id="liveDeliveryMap" style="height: 300px; width: 100%; border-radius: 12px; border: 1.5px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.06); background: #f8fafc;"></div>
+                        <div id="mapStatusOverlay" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.7); color: #fff; font-size: 11px; padding: 4px 8px; border-radius: 6px; z-index: 1000; pointer-events: none;">
+                            🛵 即時 GPS 追蹤中 (每3秒自動同步)
+                        </div>
+                    </div>
+
+                    <!-- 外送夥伴資訊卡 -->
+                    <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 44px; height: 44px; border-radius: 50%; background: #ecfdf5; color: #059669; display: flex; align-items: center; justify-content: center; font-size: 22px; border: 2px solid #a7f3d0;">
+                                🛵
+                            </div>
+                            <div>
+                                <div style="font-size: 11px; color: #64748b; font-weight: bold;">合作外送夥伴</div>
+                                <div style="font-size: 15px; font-weight: 800; color: #0f172a;">${courierName}</div>
+                                <div style="font-size: 12px; color: #64748b;">${vehicle}</div>
+                            </div>
+                        </div>
+                        ${phone ? `
+                        <a href="tel:${phone}" style="display: inline-flex; align-items: center; gap: 4px; background: #06c167; color: white; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: bold; box-shadow: 0 2px 4px rgba(6,193,103,0.3);">
+                            📞 致電
+                        </a>` : ''}
+                    </div>
+
+                    <!-- 外送員即時對話視窗 (Messenger Box) -->
+                    <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.04);">
+                        <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
+                            <span style="font-size: 13px; font-weight: 800; color: #334155;">💬 與外送員即時對話</span>
+                            <span style="font-size: 11px; color: #16a34a; font-weight: bold; background: #dcfce7; padding: 2px 6px; border-radius: 4px;">● 連線中</span>
+                        </div>
+                        
+                        <!-- 對話內容顯示區 -->
+                        <div id="liveChatMessagesArea" style="height: 160px; overflow-y: auto; padding: 12px; background: #f8fafc; font-size: 13px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="text-align: center; color: #94a3b8; font-size: 11.5px; margin: 4px 0;">已與外送夥伴建立專屬通訊連線</div>
+                        </div>
+
+                        <!-- 快捷回覆標籤 -->
+                        <div style="padding: 6px 10px; background: #fff; border-top: 1px solid #f1f5f9; display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                            <button type="button" onclick="sendQuickMessage('餐點請幫我放在門口即可，謝謝您辛苦了！')" style="white-space: nowrap; font-size: 11px; padding: 4px 8px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; cursor: pointer;">🚪 放門口即可</button>
+                            <button type="button" onclick="sendQuickMessage('抵達後請幫我按一下電鈴，謝謝！')" style="white-space: nowrap; font-size: 11px; padding: 4px 8px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; cursor: pointer;">🔔 到了請按鈴</button>
+                            <button type="button" onclick="sendQuickMessage('抵達後請撥打電話給我，謝謝！')" style="white-space: nowrap; font-size: 11px; padding: 4px 8px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; cursor: pointer;">📞 到了請打電話</button>
+                            <button type="button" onclick="sendQuickMessage('沒問題，請慢慢騎注意行車安全！')" style="white-space: nowrap; font-size: 11px; padding: 4px 8px; border-radius: 12px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; cursor: pointer;">🛵 請注意安全</button>
+                        </div>
+
+                        <!-- 輸入框與發送按鈕 -->
+                        <div style="padding: 8px 10px; background: #fff; border-top: 1px solid #e2e8f0; display: flex; gap: 8px;">
+                            <input type="text" id="liveChatInput" placeholder="輸入訊息回覆外送員..." style="flex: 1; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none;" onkeydown="if(event.key==='Enter') triggerSendLiveMessage();" />
+                            <button type="button" id="liveChatSendBtn" onclick="triggerSendLiveMessage()" style="background: #06c167; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">發送</button>
+                        </div>
+                    </div>
+
+                    <!-- 原始 Uber Eats 連結 -->
+                    ${primaryUrl ? `
+                    <div style="text-align: center; margin-top: 10px;">
+                        <a href="${primaryUrl}" target="_blank" style="display: inline-block; color: #64748b; font-size: 12px; font-weight: bold; text-decoration: none; padding: 6px 14px; border: 1px solid #cbd5e1; border-radius: 20px; background: #f8fafc;">
+                            🔗 開啟 Uber Eats 原網頁 ↗
+                        </a>
+                    </div>` : ''}
+                </div>
+            `;
+
+            const statusArea = document.getElementById('trackStatusArea');
+            if (statusArea) statusArea.innerHTML = activeHtml;
+
+            const orderTextArea = document.getElementById('trackOrderText');
+            if (orderTextArea) {
+                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', [primaryUrl], [{ status: 'tracking' }], data.ext_order_ids);
+                orderTextArea.style.display = 'block';
+            }
+
+            // 初始化 Leaflet 地圖與 Marker、路線
+            setTimeout(() => {
+                initLiveDeliveryMap(activeData);
+            }, 50);
+
+            // 啟動 3 秒即時輪詢
+            startLiveTrackingPolling(orderUuid, primaryUrl, parsedData, data);
+        }
+
+        // 初始化 Leaflet 地圖
+        function initLiveDeliveryMap(activeData) {
+            if (typeof L === 'undefined') {
+                console.warn('Leaflet 未載入');
+                return;
+            }
+            const mapContainer = document.getElementById('liveDeliveryMap');
+            if (!mapContainer) return;
+
+            if (liveMapInstance) {
+                try { liveMapInstance.remove(); } catch(e) {}
+                liveMapInstance = null;
+            }
+
+            const courier = activeData.courier || {};
+            const store = activeData.store || {};
+            const dest = activeData.destination || {};
+
+            const courierLat = courier.latitude;
+            const courierLng = courier.longitude;
+            const storeLat = store.latitude;
+            const storeLng = store.longitude;
+            const destLat = dest.latitude;
+            const destLng = dest.longitude;
+
+            const centerLat = courierLat || storeLat || destLat || 24.3;
+            const centerLng = courierLng || storeLng || destLng || 120.7;
+
+            liveMapInstance = L.map('liveDeliveryMap', {
+                zoomControl: true,
+                attributionControl: false
+            }).setView([centerLat, centerLng], 14);
+
+                                    // OpenStreetMap 官方標準圖磚 (https://www.openstreetmap.org/)
+            const liveOsmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                subdomains: 'abc',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(liveMapInstance);
+
+            // 自動容錯保護：在本地 file:/// 環境若被官方 403 阻擋，自動無縫備援，確保在本地與正式網頁皆可觀看
+            liveOsmLayer.on('tileerror', function(error, tile) {
+                if (tile && !tile._hasFallback) {
+                    tile._hasFallback = true;
+                    const coords = error.coords;
+                    if (coords) {
+                        tile.src = `https://a.tile.openstreetmap.fr/osmfr/${coords.z}/${coords.x}/${coords.y}.png`;
+                    }
+                }
+            });
+                
+                html += `<table style="width: 100%; border-collapse: collapse; font-size: 14px;">`;
+                html += `<tr><td style="padding: 4px 0;">總小計</td><td style="text-align: right;">$${allSubtotal}</td></tr>`;
+                html += `<tr><td style="padding: 4px 0; color: #d32f2f;">總各單優惠</td><td style="text-align: right; color: #d32f2f;">${allDiscount <= 0 ? '' : '-'}$${Math.abs(allDiscount)}</td></tr>`;
+                html += `<tr><td style="padding: 4px 0; color: #666;">總各式費用</td><td style="text-align: right; color: #666;">$${allFees}</td></tr>`;
+                if(parsed.globalDiscount) {
+                    let gdName = parsed.globalDiscount.includes(':') ? parsed.globalDiscount.split(':')[0] : '額外折扣';
+                    let gdVal = parsed.globalDiscount.includes(':') ? parsed.globalDiscount.split(':')[1] : parsed.globalDiscount;
+                    html += `<tr><td style="padding: 4px 0; color: #d32f2f;">${gdName}</td><td style="text-align: right; color: #d32f2f;">${gdVal}</td></tr>`;
+                }
+                if(parsed.globalTotal) {
+                    html += `<tr style="border-top: 2px solid #eee; font-weight: bold; font-size: 16px;">
+                             <td style="padding: 8px 0; color: #111;">💰 最終總結算金額</td>
+                             <td style="text-align: right; color: #d32f2f; font-size: 18px;">${parsed.globalTotal}</td></tr>`;
+                }
+                html += `</table>`;
+                html += `</div>`;
+                
+            } else {
+                // 單一訂單渲染 (舊有邏輯)
+                if (parsed.items.length > 0) {
+                    html += `<h4 style="margin: 0 0 8px 0; color: #444; border-bottom: 2px solid #eee; padding-bottom: 4px;">🍔 訂購餐點</h4>`;
+                    html += `<ul style="list-style: none; padding: 0; margin: 0 0 15px 0;">`;
+                    parsed.items.forEach(item => {
+                        let parts = item.text.split('=');
+                        let name = parts[0] ? parts[0].trim() : item.text;
+                        let price = parts[1] ? parts[1].trim() : '';
+                        html += `<li style="padding: 6px 0; border-bottom: 1px dashed #eee;">`;
+                        html += `<div style="display: flex; justify-content: space-between;"><span>${name}</span><strong style="color:#000;">${price}</strong></div>`;
+                        item.sub.forEach(sub => {
+                            html += `<div style="font-size: 12px; color: #888; margin-top: 2px; padding-left: 15px;">${sub}</div>`;
+                        });
+                        html += `</li>`;
+                    });
+                    html += `</ul>`;
+                }
+
+                html += `<h4 style="margin: 0 0 8px 0; color: #444; border-bottom: 2px solid #eee; padding-bottom: 4px;">🧾 費用明細</h4>`;
+                html += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 14px;">`;
+                if(parsed.subtotal) html += `<tr><td style="padding: 4px 0;">💵 小計</td><td style="text-align: right;">${parsed.subtotal}</td></tr>`;
+                if(parsed.discount) html += `<tr><td style="padding: 4px 0; color: #d32f2f;">🎉 優惠折抵</td><td style="text-align: right; color: #d32f2f;">${parsed.discount}</td></tr>`;
+                parsed.fees.forEach(fee => {
+                    html += `<tr><td style="padding: 4px 0; color: #666;">${fee.name}</td><td style="text-align: right; color: #666;">${fee.value}</td></tr>`;
+                });
+                if(parsed.globalTotal) {
+                    html += `<tr style="border-top: 2px solid #eee; font-weight: bold; font-size: 16px;">
+                             <td style="padding: 8px 0; color: #111;">💰 總計</td>
+                             <td style="text-align: right; color: #d32f2f; font-size: 18px;">${parsed.globalTotal}</td></tr>`;
+                }
+                html += `</table>`;
+            }
+
+            // 備註區塊 (共用)
+            if (parsed.foodNotes || parsed.deliveryNotes) {
+                html += `<div style="background: #fff3e0; padding: 12px; border-radius: 8px; font-size: 13px; border: 1px solid #ffe0b2;">`;
+                if (parsed.foodNotes) html += `<div style="margin-bottom: 6px; color: #e65100;">🍽️ <strong>餐點備註:</strong><br>${parsed.foodNotes}</div>`;
+                if (parsed.deliveryNotes) html += `<div style="color: #e65100;">📝 <strong>外送備註:</strong><br>${parsed.deliveryNotes}</div>`;
+                html += `</div>`;
+            }
+            
+            html += `</div>`;
+            return html;
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 從網址列取得 UUID (支援 LINE LIFF 轉址特性)
+            const urlParams = new URLSearchParams(window.location.search);
+            let orderId = urlParams.get('id');
+            
+            // 如果一般網址參數找不到，嘗試從 liff.state 解析 (LINE 會把參數藏在 liff.state 中)
+            if (!orderId && urlParams.has('liff.state')) {
+                const liffState = urlParams.get('liff.state');
+                const stateParams = new URLSearchParams(liffState.startsWith('?') ? liffState : '?' + liffState);
+                orderId = stateParams.get('id');
+            }
+            
+            // LIFF 初始化 (如果您將此網頁設定為 LIFF App)
+            try {
+                // 如果您使用 LIFF，通常需要在這裡 liff.init({ liffId: "..." })
+                // await liff.init({ liffId: "YOUR_LIFF_ID" });
+            } catch (err) {
+                console.error('LIFF init failed', err);
+            }
+
+            const statusArea = document.getElementById('trackStatusArea');
+            const orderTextArea = document.getElementById('trackOrderText');
+            
+            // 動態取得 API 連線位置 (與 ubereat.html 共用 config.json)
+            let trackApiBase = '';
+            try {
+                const configRes = await fetch('config.json?t=' + Date.now());
+                if (configRes.ok) {
+                    const configData = await configRes.json();
+                    // config.json 裡面使用的是 line_url (HTTP) 或 ws_url (WebSocket)
+                    const apiUrl = configData.line_url || configData.api_url;
+                    if (apiUrl) {
+                        trackApiBase = apiUrl.replace(/\/$/, "");
+                    }
+                }
+            } catch(e) {
+                console.log('無法讀取 config.json，嘗試使用相對路徑');
+            }
+
+            // 支援直接網址帶入 uuid 進行送達訂單查詢與展示 (支援多筆 uuid 逗號分隔，方便測試多單左右滑動)
+            const rawUuidParam = urlParams.get('uuid') || urlParams.get('orderUuid') || extractOrderUuid(urlParams.get('url'));
+            if (!orderId && rawUuidParam) {
+                const uuidList = rawUuidParam.split(',').map(s => s.trim()).filter(Boolean);
+                if (uuidList.length > 1) {
+                    statusArea.innerHTML = `
+                        <div class="loader"></div>
+                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在查詢多筆子訂單送達明細...</h3>
+                        <p style="color: #666; font-size: 13px;">共 ${uuidList.length} 筆訂單，正分別查詢送達資訊...</p>
+                    `;
+                    const multiTerm = await Promise.all(uuidList.map(async (u, idx) => {
+                        const res = await fetchTerminatedOrder(u, '', trackApiBase);
+                        return { ...res, url: `https://www.ubereats.com/tw/orders/${u}`, idx, orderUuid: u };
+                    }));
+                    const dummySplits = uuidList.map((u, i) => ({
+                        title: `【多單 ${i + 1}】`,
+                        store: multiTerm[i]?.storeName || `店家 ${i + 1}`,
+                        items: [],
+                        total: ''
+                    }));
+                    renderMultiDeliveredStage(multiTerm, { isSplit: true, splits: dummySplits, address: '測試多單地址' }, {}, uuidList.map(u => `https://www.ubereats.com/tw/orders/${u}`));
+                    return;
+                } else {
+                    const singleUuid = uuidList[0];
+                    statusArea.innerHTML = `
+                        <div class="loader"></div>
+                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在確認餐點即時外送位置與送達狀態...</h3>
+                    `;
+                    window.currentActiveOrderUuid = singleUuid;
+                    window.trackApiBase = trackApiBase;
+
+                    // 1. 優先檢查是否為進行中外送或已抵達送達
+                    const activeRes = await fetchActiveOrder(singleUuid, urlParams.get('url'), trackApiBase);
+                    if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
+                        console.log('🎉 訂單已送達！進入已送達完成展示階段');
+                        renderDeliveredStage(activeRes, { address: activeRes.destination?.address || '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
+                        return;
+                    }
+                    if (activeRes && activeRes.status === 'success') {
+                        console.log('✅ 訂單正在外送中！進入即時開源地圖與外送員對話視窗');
+                        renderActiveDeliveryStage(activeRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
+                        return;
+                    }
+
+                    // 2. 檢查已送達或已取消 (Terminated)
+                    const termRes = await fetchTerminatedOrder(singleUuid, urlParams.get('url'), trackApiBase);
+                    if (isOrderCanceled(termRes)) {
+                        renderCanceledStage(termRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
+                        return;
+                    }
+                    if (termRes && termRes.status === 'success') {
+                        renderDeliveredStage(termRes, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
+                        return;
+                    } else {
+                        statusArea.innerHTML = `
+                            <h3 style="color: #ff9800; font-size: 18px;">⚠️ 訂單尚未送達或查無已完成資料</h3>
+                            <p style="color: #666; font-size: 13px;">${termRes.message || 'Uber Eats 回傳狀態異常: failure'}</p>
+                            <a href="https://www.ubereats.com/tw/orders/${singleUuid}" class="btn" target="_blank">📍 前往 Uber Eats 查看</a>
+                        `;
+                        return;
+                    }
+                }
+            }
+
+            if (!orderId) {
+                statusArea.innerHTML = `<h3 style="color:red;">無效的追蹤連結</h3><p style="color:#666;">找不到訂單編號</p>`;
+                return;
+            }
+
+            let countdownTimer = null;
+            let countdownState = null; // { mode: 'waiting' | 'used', baseElapsedSec: 0, syncLocalMs: 0 }
+
+            function formatMMSS(sec) {
+                const m = Math.floor(sec / 60);
+                const s = sec % 60;
+                return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+            }
+
+            function extractHM(tsStr) {
+                if (!tsStr) return '';
+                const m = tsStr.match(/(\d{2}:\d{2})/);
+                return m ? m[1] : '';
+            }
+
+            function calcFallbackElapsedSec(tsStr) {
+                if (!tsStr) return 0;
+                const d = new Date(tsStr.replace(/-/g, '/'));
+                if (isNaN(d.getTime())) return 0;
+                return Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+            }
+
+            let urgeButtonStatus = 'idle'; // 'idle', 'sending', 'sent'
+
+            function getUrgeButtonHtml() {
+                if (urgeButtonStatus === 'sending') {
+                    return `<button type="button" disabled style="background:#ff9800; color:#fff; border:none; border-radius:18px; padding:3px 12px; font-size:13px; font-weight:bold; cursor:not-allowed; box-shadow:0 2px 4px rgba(0,0,0,0.15); vertical-align:middle;">⏳ 催單中...</button>`;
+                } else if (urgeButtonStatus === 'sent') {
+                    return `<button type="button" disabled style="background:#4caf50; color:#fff; border:none; border-radius:18px; padding:3px 12px; font-size:13px; font-weight:bold; cursor:default; box-shadow:0 2px 4px rgba(0,0,0,0.15); vertical-align:middle;">✓ 已催單</button>`;
+                } else {
+                    return `<button type="button" onclick="triggerUrgeOrder(event)" style="background:#e53935; color:#fff; border:none; border-radius:18px; padding:3px 14px; font-size:13px; font-weight:bold; cursor:pointer; box-shadow:0 2px 5px rgba(229,57,53,0.35); vertical-align:middle; transition:transform 0.1s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'">催單</button>`;
+                }
+            }
+
+            async function triggerUrgeOrder(event) {
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                if (urgeButtonStatus === 'sending' || urgeButtonStatus === 'sent') return;
+
+                urgeButtonStatus = 'sending';
+                renderCountdownBox();
+
+                let storeName = '';
+                let timingType = '即時單';
+
+                if (window.currentTrackParsedData) {
+                    const p = window.currentTrackParsedData;
+                    if (p.store) {
+                        storeName = p.store;
+                    } else if (p.splits && p.splits.length > 0) {
+                        const splitStores = [];
+                        p.splits.forEach(s => {
+                            if (s.store && !splitStores.includes(s.store)) splitStores.push(s.store);
+                        });
+                        storeName = splitStores.join('、');
+                    }
+                    
+                    const timeStr = p.time || '';
+                    if (timeStr && !['盡快', '即時', 'ASAP', 'asap', '馬上', '立刻'].some(k => timeStr.includes(k))) {
+                        timingType = '預約單';
+                    }
+                }
+                
+                if (!storeName && window.currentTrackOrderData && window.currentTrackOrderData.text) {
+                    const rawT = window.currentTrackOrderData.text;
+                    const mStores = rawT.match(/(?:🏪|📍\s*店家\s*[:：])\s*([^\n\r]+)/g);
+                    if (mStores) {
+                        storeName = mStores.map(s => s.replace(/(?:🏪|📍\s*店家\s*[:：])\s*/, '').replace(/\(.*?\)/, '').trim()).filter(Boolean).join('、');
+                    }
+                }
+
+                if (!storeName) storeName = 'UberEats訂單';
+
+                const barkTitle = '催單';
+                const barkBody = `${storeName}、${timingType}、在等待訂單完成`;
+
+                try {
+                    if (trackApiBase) {
+                        fetch(`${trackApiBase}/api/urge_order`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                id: orderId,
+                                store: storeName,
+                                type: timingType
+                            })
+                        }).catch(e => console.log('後端催單通報異常:', e));
+                    }
+
+                    await fetch('https://api.day.app/hS6bSRwJuYkkh9Mo9CX4LE', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: barkTitle,
+                            body: barkBody,
+                            group: 'UberEats催單',
+                            ttl: 600
+                        })
+                    });
+
+                    urgeButtonStatus = 'sent';
+                    renderCountdownBox();
+                    alert('已成功送出催單通知！代訂人員將盡快為您確認處理。');
+                } catch (err) {
+                    console.error('發送催單錯誤:', err);
+                    try {
+                        const directUrl = `https://api.day.app/hS6bSRwJuYkkh9Mo9CX4LE/${encodeURIComponent(barkTitle)}/${encodeURIComponent(barkBody)}?group=${encodeURIComponent('UberEats催單')}&ttl=600`;
+                        const img = new Image();
+                        img.src = directUrl;
+                    } catch(e) {}
+                    urgeButtonStatus = 'sent';
+                    renderCountdownBox();
+                    alert('已送出催單通知！');
+                }
+            }
+            window.triggerUrgeOrder = triggerUrgeOrder;
+
+            function renderCountdownBox() {
+                const box = document.getElementById('countdownBox');
+                if (!box || !countdownState) return;
+                const elapsed = countdownState.baseElapsedSec + Math.floor((Date.now() - countdownState.syncLocalMs) / 1000);
+                const remain = 600 - elapsed;
+
+                if (countdownState.mode === 'used') {
+                    if (remain > 0) {
+                        box.innerHTML = `
+                            <p style="color: #666; margin: 5px 0;">正在為您處理中，請稍候...</p>
+                            <p style="color: #007bff; font-weight: bold; font-size: 16px; margin: 4px 0;">⏳ 倒數 ${formatMMSS(remain)}</p>
+                        `;
+                    } else {
+                        box.innerHTML = `
+                            <div style="color: #d32f2f; margin: 8px 0; font-weight: bold; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px;">
+                                <span>目前已超過接單時間10分鐘 請向代訂確認網址</span>
+                                ${getUrgeButtonHtml()}
+                            </div>
+                        `;
+                    }
+                } else if (countdownState.mode === 'waiting') {
+                    if (remain > 0) {
+                        box.innerHTML = `
+                            <p style="color: #e65100; font-weight: bold; font-size: 16px; margin: 6px 0;">⏳ 倒數 ${formatMMSS(remain)}</p>
+                        `;
+                    } else {
+                        box.innerHTML = `
+                            <div style="color: #d32f2f; margin-top: 8px; font-weight: bold; line-height: 1.6; font-size: 15px;">
+                                <div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                                    <span>已超過10分鐘請催單</span>
+                                    ${getUrgeButtonHtml()}
+                                </div>
+                                <div style="color: #e65100; font-size: 14px;">如是預約單有可能較慢處理</div>
+                                <div style="color: #e65100; font-size: 14px;">如預約單超過1小時可提醒代訂</div>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            function startCountdownLoop() {
+                if (countdownTimer) clearInterval(countdownTimer);
+                renderCountdownBox();
+                countdownTimer = setInterval(renderCountdownBox, 1000);
+            }
+
+            // 查詢訂單進度
+            async function checkStatus() {
+                try {
+                    const res = await fetch(`${trackApiBase}/api/track_info?id=${orderId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            window.currentTrackOrderData = data;
+                            const parsedData = parseOrderText(data.text);
+                            window.currentTrackParsedData = parsedData;
+                            orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, data.tracking_urls, [], data.ext_order_ids);
+                            orderTextArea.style.backgroundColor = 'transparent';
+                            orderTextArea.style.border = 'none';
+                            orderTextArea.style.padding = '0';
+                            orderTextArea.style.display = 'block';
+                            
+                            let statusHtml = '';
+                            if (data.ext_order_id) {
+                                statusHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
+                            }
+                            
+                            const hasTracking = (data.tracking_urls && data.tracking_urls.length > 0) || Boolean(data.tracking_url);
+                            
+                            if (hasTracking) {
+                                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                                countdownState = null;
+
+                                const trackingUrls = (data.tracking_urls && data.tracking_urls.length > 0)
+                                    ? data.tracking_urls
+                                    : (data.tracking_url ? [data.tracking_url] : []);
+                                
+                                const isMulti = trackingUrls.length > 1 || parsedData.isSplit;
+
+                                if (isMulti) {
+                                    // 多單情況：分別向 API 取得每筆子訂單的送達資訊
+                                    statusArea.innerHTML = `
+                                        <div class="loader"></div>
+                                        <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在確認各筆子訂單送達狀態...</h3>
+                                        <p style="color: #666; font-size: 13px; margin-top: 5px;">共 ${trackingUrls.length} 筆子訂單，正在分別查詢留置照片與定位...</p>
+                                    `;
+
+                                    const termResults = await Promise.all(trackingUrls.map(async (url, idx) => {
+                                        const u = extractOrderUuid(url);
+                                        if (!u) return { status: 'error', message: '無有效 UUID', url, idx };
+                                        const res = await fetchTerminatedOrder(u, url, trackApiBase);
+                                        return { ...res, url, idx, orderUuid: u };
+                                    }));
+
+                                    console.log('✅ 多單送達狀態查詢完成:', termResults);
+                                    renderMultiDeliveredStage(termResults, parsedData, data, trackingUrls);
+                                    return;
+                                } else {
+                                    // 單一訂單情況
+                                    const primaryTrackUrl = trackingUrls[0];
+                                    const orderUuid = extractOrderUuid(primaryTrackUrl);
+
+                                    if (orderUuid) {
+                                        window.currentActiveOrderUuid = orderUuid;
+                                        window.trackApiBase = trackApiBase;
+                                        statusArea.innerHTML = `
+                                            <div class="loader"></div>
+                                            <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在確認餐點最新送達與即時位置...</h3>
+                                            <p style="color: #666; font-size: 13px; margin-top: 5px;">若外送中將在此直接展示即時地圖與外送員通訊</p>
+                                        `;
+
+                                        // 1. 優先檢查是否正在外送中或已抵達送達
+                                        const activeRes = await fetchActiveOrder(orderUuid, primaryTrackUrl, trackApiBase);
+                                        if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
+                                            console.log('🎉 訂單已送達！進入已送達完成展示階段');
+                                            renderDeliveredStage(activeRes, parsedData, data, primaryTrackUrl);
+                                            return;
+                                        }
+                                        if (activeRes && activeRes.status === 'success') {
+                                            console.log('✅ 訂單正在外送中！進入即時開源地圖與外送員對話視窗');
+                                            renderActiveDeliveryStage(activeRes, parsedData, data, primaryTrackUrl);
+                                            return;
+                                        }
+
+                                        // 2. 檢查是否已送達或已取消 (Terminated)
+                                        const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
+
+                                        // 檢查是否為已取消訂單
+                                        if (isOrderCanceled(termRes)) {
+                                            console.log('❌ 訂單已取消！停止轉址進入取消展示階段');
+                                            renderCanceledStage(termRes, parsedData, data, primaryTrackUrl);
+                                            return;
+                                        }
+
+                                        // 如果成功取得送達結果 (status === 'success')，停止轉址進入送達展示階段
+                                        if (termRes && termRes.status === 'success') {
+                                            console.log('✅ 訂單已送達！停止轉址進入送達展示階段');
+                                            renderDeliveredStage(termRes, parsedData, data, primaryTrackUrl);
+                                            return;
+                                        }
+
+                                        // 如果得到結果是狀態異常 (例如 Uber Eats 回傳狀態異常: failure)，代表訂單還沒抵達
+                                        console.log('⏳ 訂單尚未送達 (或回傳異常)');
+                                    }
+
+                                    // 檢查是否為預約排程單 (Scheduled Order)
+                                    const isSingleSched = isScheduledOrder(parsedData.time, null, data.text);
+                                    if (isSingleSched) {
+                                        console.log('📅 單筆訂單為預約排程單，進入預約展示階段');
+                                        renderScheduledStage(parsedData, data, primaryTrackUrl);
+                                        return;
+                                    }
+
+                                    let trackHtml = '';
+                                    if (data.ext_order_id) {
+                                        trackHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
+                                    }
+                                    trackHtml += `
+                                        <h3 style="color: #06c167; font-size: 20px; margin-top: 15px;">✅ 點我追蹤訂單狀態</h3>
+                                        <a href="${primaryTrackUrl}" class="btn">📍 如果沒有自動跳轉，請點此開啟</a>
+                                    `;
+                                    setTimeout(() => {
+                                        window.location.href = primaryTrackUrl;
+                                    }, 500);
+                                    statusArea.innerHTML = trackHtml;
+                                }
+                            } else if (data.order_status === 'used') {
+                                const accTimeStr = data.accepted_time_hm || extractHM(data.accepted_at) || extractHM(data.timestamp);
+                                const accElapsed = (typeof data.accept_elapsed_sec === 'number') ? data.accept_elapsed_sec : calcFallbackElapsedSec(data.accepted_at || data.timestamp);
+                                countdownState = { mode: 'used', baseElapsedSec: accElapsed, syncLocalMs: Date.now() };
+
+                                statusHtml += `
+                                    <h3 style="color: #007bff; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/LOADING.gif" style="width: 80px; vertical-align: middle; margin-right: 5px;"> 正在為您的訂單點餐...</h3>
+                                    ${accTimeStr ? `<p style="color: #333; font-weight: bold; font-size: 15px; margin: 6px 0;">接單時間為${accTimeStr}</p>` : ''}
+                                    <div id="countdownBox"></div>
+                                `;
+                                statusArea.innerHTML = statusHtml;
+                                startCountdownLoop();
+                                setTimeout(checkStatus, 5000);
+                            } else {
+                                const subTimeStr = data.submitted_time_hm || extractHM(data.submitted_at) || extractHM(data.timestamp);
+                                const waitElapsed = (typeof data.wait_elapsed_sec === 'number') ? data.wait_elapsed_sec : calcFallbackElapsedSec(data.submitted_at || data.timestamp);
+                                countdownState = { mode: 'waiting', baseElapsedSec: waitElapsed, syncLocalMs: Date.now() };
+
+                                statusHtml += `
+                                    <h3 style="color: #ff9800; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/sit.gif" style="width: 55px; vertical-align: middle; margin-right: 5px;"> 等待代訂接單</h3>
+                                    <p style="color: #007bff; font-weight: bold; font-size: 15px; margin: 6px 0;">${data.latest_activity_text || '等待代訂接單中目前代訂有空'}</p>
+                                    ${subTimeStr ? `<p style="color: #555; font-weight: bold; font-size: 15px; margin: 6px 0;">送單時間：${subTimeStr}</p>` : ''}
+                                    <div id="countdownBox"></div>
+                                `;
+                                statusArea.innerHTML = statusHtml;
+                                startCountdownLoop();
+                                setTimeout(checkStatus, 5000);
+                            }
+                        } else {
+                            statusArea.innerHTML = `<h3 style="color:red;">找不到此訂單</h3><p style="color:#666;">可能是系統處理中或連結錯誤</p>`;
+                        }
+                    } else {
+                        statusArea.innerHTML = `<h3 style="color:red;">伺服器回應錯誤</h3>`;
+                    }
+                } catch(e) {
+                    statusArea.innerHTML = `<h3 style="color:red;">無法連線到伺服器</h3><p style="color:#666;">請確認您的網路連線或稍後再試</p>`;
+                }
+            }
+            
+            // 初次執行
+            checkStatus();
+        });
+    </script>
+</body>
+</html>
