@@ -1736,6 +1736,7 @@
             ) && (!courier.latitude || !courier.longitude || statusStr.includes('準備') || statusStr.includes('領取訂單'));
 
             const isHeadingToStore = statusStr.includes('領取') || statusStr.includes('前往店家');
+            const hasCourier = (courier.name && courier.name !== '外送夥伴') || !!courier.latitude || !isPreparing;
 
             const mainHeader = document.querySelector('.card h2');
             if (mainHeader) {
@@ -1844,25 +1845,23 @@
                             </div>
                         </div>
                     </div>
-                    <a id="liveActiveCourierPhone" href="${courier.phone ? `tel:${courier.phone}` : '#'}" style="display: ${courier.phone ? 'inline-flex' : 'none'}; align-items: center; gap: 4px; background: #06c167; color: white; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: bold; box-shadow: 0 2px 4px rgba(6,193,103,0.3);">
-                        📞 致電
-                    </a>
+
                 </div>
 
-                <!-- 準備中時的溫馨提示卡片 (隱藏傳訊息框) -->
-                <div id="liveActiveChatPlaceholder" style="display: ${isPreparing ? 'block' : 'none'}; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; text-align: center; color: #64748b;">
+                <!-- 準備中且尚未指派外送員時的提示卡片 -->
+                <div id="liveActiveChatPlaceholder" style="display: ${hasCourier ? 'none' : 'block'}; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; text-align: center; color: #64748b;">
                     <div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: bold; color: #334155; font-size: 13.5px; margin-bottom: 4px;">
                         <span>💬 外送即時傳訊</span>
-                        <span style="font-size: 11px; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 10px;">尚未開啟</span>
+                        <span style="font-size: 11px; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 10px;">外送員配對中</span>
                     </div>
                     <div style="font-size: 12px; color: #64748b; line-height: 1.6;">
-                        目前餐點正在準備中（外送員尚未取餐啟程）。<br>
-                        待外送夥伴完成取餐出發後，系統將自動開啟專屬即時傳訊功能。
+                        目前店家正在製作餐點中。<br>
+                        外送夥伴接單後，將自動開啟專屬即時傳訊功能。
                     </div>
                 </div>
 
-                <!-- 與外送員即時傳訊框 (配送途中時開啟) -->
-                <div id="liveActiveChatSection" style="display: ${isPreparing ? 'none' : 'block'}; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 14px; text-align: left;">
+                <!-- 與外送員即時傳訊框 (外送員接單/前往取餐/配送中全面開啟) -->
+                <div id="liveActiveChatSection" style="display: ${hasCourier ? 'block' : 'none'}; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 14px; text-align: left;">
                     <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; font-weight: bold; font-size: 13px;">
                         <span>💬 與外送員即時傳訊</span>
                         <span id="liveActiveChatBadge" style="font-size: 11px; color: #16a34a; background: #dcfce7; padding: 2px 6px; border-radius: 4px; transition: all 0.3s;">配送中</span>
@@ -1871,7 +1870,7 @@
                         <div style="text-align: center; color: #94a3b8; font-size: 11px; margin: 2px 0;">已與外送夥伴建立專屬通訊連線</div>
                     </div>
                     <div style="padding: 6px 8px; background: #ffffff; border-top: 1px solid #f1f5f9; display: flex; gap: 5px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-                        <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('餐點請幫我放在門口即可，謝謝您！')">🚪 放門口</button>
+                        <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('路上小心，慢慢來！')">🛵 路上小心慢慢來</button>
                         <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('抵達後請幫我按一下電鈴，謝謝！')">🔔 到了請按鈴</button>
                         <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('抵達後請撥打電話給我，謝謝！')">📞 到了請打電話</button>
                         <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('沒問題，請慢慢騎注意行車安全！')">🛵 請注意安全</button>
@@ -2217,16 +2216,17 @@
                             step3Text.style.color = !curIsPreparing ? '#059669' : '#94a3b8';
                         }
 
-                        // 動態切換傳訊框
+                        // 動態切換傳訊框 (外送員接單即開放傳訊)
                         const chatPlaceholder = document.getElementById('liveActiveChatPlaceholder');
                         const chatSection = document.getElementById('liveActiveChatSection');
+                        const curHasCourier = (curCourier.name && curCourier.name !== '外送夥伴') || !!curCourier.latitude || !curIsPreparing;
                         if (chatPlaceholder && chatSection) {
-                            if (curIsPreparing) {
-                                chatPlaceholder.style.display = 'block';
-                                chatSection.style.display = 'none';
-                            } else {
+                            if (curHasCourier) {
                                 chatPlaceholder.style.display = 'none';
                                 chatSection.style.display = 'block';
+                            } else {
+                                chatPlaceholder.style.display = 'block';
+                                chatSection.style.display = 'none';
                             }
                         }
 
@@ -2307,6 +2307,13 @@
                     let sender = (typeof item === 'object' && item.sender) ? item.sender : 'courier';
                     const trimmed = text.trim();
                     if (!trimmed) return;
+
+                    // 過濾掉聊天室頂部外送員名片資訊 (如姓名、車牌、Uber Motorbike 等)，避免誤當作訊息氣泡
+                    const courierNameEl = document.getElementById('liveActiveCourierName');
+                    const cName = courierNameEl ? courierNameEl.innerText.trim() : '';
+                    if (trimmed === cName || trimmed.includes('Motorbike') || trimmed.includes('•') || trimmed.includes('NDR-') || trimmed.includes('Uber')) {
+                        return;
+                    }
 
                     // 若本機剛發送過此訊息，辨識為 user
                     if (window.renderedChatMessagesSet.has(`user:${trimmed}`)) {
