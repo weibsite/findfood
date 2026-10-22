@@ -4,12 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <!-- Leaflet 開源即時地圖 (jsDelivr 高速 CDN + cdnjs 雙重容錯) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+    <!-- OpenLayers 9.2.4 開源即時地圖 (與 deliverymap 相同之高清晰 OpenStreetMap 核心) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css" />
+    <script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
     <script>
-        if (typeof L === 'undefined') {
-            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>');
+        if (typeof ol === 'undefined') {
+            document.write('<script src="https://unpkg.com/ol@v9.2.4/dist/ol.js"><\/script>');
         }
     </script>
     <title>訂單追蹤</title>
@@ -25,6 +25,52 @@
         .btn:active { opacity: 0.8; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #06c167; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 🛵 即時外送地圖與動態脈衝光環 (比照 deliverymap OpenStreetMap 核心) */
+        @keyframes pulseRing {
+            0% { transform: scale(0.85); opacity: 0.75; }
+            50% { transform: scale(1.3); opacity: 0.25; }
+            100% { transform: scale(1.6); opacity: 0; }
+        }
+        #liveDeliveryMap {
+            touch-action: auto !important;
+        }
+        .ol-zoom {
+            top: 8px !important;
+            left: 8px !important;
+        }
+        .ol-zoom button {
+            background-color: rgba(255, 255, 255, 0.95) !important;
+            color: #1e293b !important;
+            font-size: 16px !important;
+            font-weight: 700 !important;
+            width: 28px !important;
+            height: 28px !important;
+            border: 1px solid #cbd5e1 !important;
+            border-radius: 6px !important;
+            margin-bottom: 4px !important;
+            cursor: pointer !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+            outline: none !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        .ol-zoom button:hover {
+            background-color: #f1f5f9 !important;
+        }
+        .ol-attribution {
+            bottom: 4px !important;
+            right: 4px !important;
+            background: rgba(255, 255, 255, 0.8) !important;
+            padding: 2px 6px !important;
+            border-radius: 4px !important;
+            font-size: 10px !important;
+        }
+        .ol-attribution a {
+            color: #475569 !important;
+            text-decoration: none !important;
+        }
 
         /* 多單外送進度橫向滑動與分頁 (Multi-order Sliders & Tabs) */
         .split-slider {
@@ -1599,6 +1645,8 @@
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
+            window.renderActiveDeliveryStage = renderActiveDeliveryStage;
+            window.initActiveDeliveryMap = initActiveDeliveryMap;
             // 從網址列取得 UUID (支援 LINE LIFF 轉址特性)
             const urlParams = new URLSearchParams(window.location.search);
             let orderId = urlParams.get('id');
@@ -1754,55 +1802,117 @@
             // 查詢訂單進度
             
         // ============================================================
-        // 🛵 自製外送追蹤畫面 (Live Courier Tracking & Chat) - 絕不轉外部網址
+        // 🛵 自製外送追蹤畫面 (Live Courier Tracking & Chat) - 採用 deliverymap 同款 OpenLayers + OpenStreetMap
         // ============================================================
-        let liveMap = null;
-        let liveCourierMarker = null;
-        let liveStoreMarker = null;
-        let liveDestMarker = null;
-        let liveTrajectoryLine = null;
-        let liveNavigationLine = null;
-        let liveAccumulatedPath = [];
-        let liveLastNavCoords = { cLat: null, cLng: null, lastTime: 0 };
-        let liveActivePollTimer = null;
+        var liveMap = null;
+        var liveCourierMarker = null;
+        var liveStoreMarker = null;
+        var liveDestMarker = null;
+        var liveTrajectorySource = null;
+        var liveTrajectoryLine = null;
+        var liveNavigationSource = null;
+        var liveNavigationLine = null;
+        var livePopupOverlay = null;
+        var liveAccumulatedPath = [];
+        var liveLastNavCoords = { cLat: null, cLng: null, lastTime: 0 };
+        var liveActivePollTimer = null;
 
-        function createEmojiMapIcon(emoji, bg, border) {
-            return L.divIcon({
-                className: 'custom-map-icon',
-                html: `
-                    <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bg}; border: 2px solid ${border}; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
-                        ${emoji}
+        function createCourierOverlayElement(name, vehicle, course) {
+            const el = document.createElement('div');
+            el.className = 'custom-map-icon courier-marker-wrap';
+            el.innerHTML = `
+                <div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                    <div style="position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #10b981; opacity: 0.35; animation: pulseRing 1.8s ease-out infinite;"></div>
+                    <div class="courier-icon-inner" style="width: 34px; height: 34px; border-radius: 50%; background: #ecfdf5; border: 2px solid #059669; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); transform: rotate(${course || 0}deg); transition: transform 0.3s ease;">
+                        🛵
                     </div>
-                `,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-            });
+                </div>
+            `;
+            return el;
         }
 
-        function createCourierMapIcon(course = 0) {
-            return L.divIcon({
-                className: 'custom-map-icon',
-                html: `
-                    <div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                        <div style="position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #10b981; opacity: 0.3; animation: pulseRing 1.8s ease-out infinite;"></div>
-                        <div style="width: 34px; height: 34px; border-radius: 50%; background: #ecfdf5; border: 2px solid #059669; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); transform: rotate(${course || 0}deg); transition: transform 0.3s ease;">
-                            🛵
-                        </div>
-                    </div>
-                `,
-                iconSize: [40, 40],
-                iconAnchor: [20, 20]
-            });
+        function createStoreOverlayElement(name) {
+            const el = document.createElement('div');
+            el.className = 'custom-map-icon store-marker-wrap';
+            el.innerHTML = `
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: #fef3c7; border: 2px solid #f59e0b; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); cursor: pointer;">
+                    🏪
+                </div>
+            `;
+            return el;
+        }
+
+        function createDestOverlayElement(address) {
+            const el = document.createElement('div');
+            el.className = 'custom-map-icon dest-marker-wrap';
+            el.innerHTML = `
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: #fee2e2; border: 2px solid #ef4444; display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); cursor: pointer;">
+                    📍
+                </div>
+            `;
+            return el;
+        }
+
+        var liveEtaCountdownTimer = null;
+        var currentEtaTimestamp = null;
+        var currentEtaClock = null;
+
+        function formatEtaText(activeData) {
+            if (!activeData) return '計算中...';
+            if (activeData.etaMinutes !== undefined && activeData.etaMinutes !== null) {
+                const mins = Number(activeData.etaMinutes);
+                if (mins <= 1) {
+                    return `⚡ 即將送達 (約 1 分鐘)${activeData.etaClock ? ' · ' + activeData.etaClock : ''}`;
+                }
+                return `約 ${mins} 分鐘後抵達${activeData.etaClock ? ' (' + activeData.etaClock + ')' : ''}`;
+            }
+            if (activeData.eta) {
+                const s = String(activeData.eta);
+                return (s.includes('抵達') || s.includes('預計') || s.includes('分鐘')) ? s : `預計抵達：${s}`;
+            }
+            return '計算中...';
+        }
+
+        function updateEtaCountdownDisplay() {
+            const etaEl = document.getElementById('liveActiveEta');
+            if (!etaEl || !currentEtaTimestamp) return;
+            const now = Math.floor(Date.now() / 1000);
+            const diffSec = currentEtaTimestamp - now;
+            let text = '';
+            if (diffSec <= 60) {
+                text = `⚡ 即將送達 (約 1 分鐘)${currentEtaClock ? ' · ' + currentEtaClock : ''}`;
+            } else {
+                const mins = Math.max(1, Math.round(diffSec / 60));
+                text = `約 ${mins} 分鐘後抵達${currentEtaClock ? ' (' + currentEtaClock + ')' : ''}`;
+            }
+            etaEl.innerText = text;
+        }
+
+        function syncEtaState(activeData) {
+            if (!activeData) return;
+            if (activeData.etaTimestamp) {
+                currentEtaTimestamp = Number(activeData.etaTimestamp);
+                currentEtaClock = activeData.etaClock || '';
+                updateEtaCountdownDisplay();
+                if (!liveEtaCountdownTimer) {
+                    liveEtaCountdownTimer = setInterval(updateEtaCountdownDisplay, 10000);
+                }
+            } else {
+                const etaEl = document.getElementById('liveActiveEta');
+                if (etaEl) etaEl.innerText = formatEtaText(activeData);
+            }
         }
 
         function renderActiveDeliveryStage(activeData, parsedData, data, orderUuid) {
+            window.renderActiveDeliveryStage = renderActiveDeliveryStage;
+            window.initActiveDeliveryMap = initActiveDeliveryMap;
             const cardEl = document.querySelector('.card');
             if (cardEl) cardEl.classList.add('delivered-mode');
 
             const courier = activeData.courier || {};
             const store = activeData.store || {};
             const dest = activeData.destination || {};
-            const eta = activeData.eta || '計算中...';
+            const eta = formatEtaText(activeData);
             const orderStatus = activeData.orderStatus || '外送配送中';
             const pinCode = activeData.pinCode || '';
 
@@ -1891,9 +2001,14 @@
                     </div>
                 </div>
 
-                <!-- 自製 Leaflet 開源地圖 (OpenStreetMap) -->
+                <!-- 自製 OpenLayers 開源地圖 (與 deliverymap 相同之 OpenStreetMap 官方清晰核心) -->
                 <div style="position: relative; margin-bottom: 14px;">
-                    <div id="liveDeliveryMap" style="height: 320px; width: 100%; border-radius: 12px; border: 1.5px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.06); background: #f8fafc;"></div>
+                    <div id="liveDeliveryMap" style="height: 320px; width: 100%; border-radius: 12px; border: 1.5px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.06); background: #f8fafc; overflow: hidden; position: relative;"></div>
+                    <!-- 地圖標記點擊彈出氣泡 (Popup) -->
+                    <div id="liveDeliveryMapPopup" style="display: none; position: absolute; background: white; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); font-size: 13px; color: #1e293b; min-width: 140px; max-width: 260px; text-align: left; transform: translate(-50%, -100%); margin-top: -12px; z-index: 1001; pointer-events: auto;">
+                        <div id="liveDeliveryMapPopupContent"></div>
+                        <div style="position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid white;"></div>
+                    </div>
                     <div style="position: absolute; bottom: 12px; left: 8px; background: rgba(15, 23, 42, 0.85); color: #fff; font-size: 11px; padding: 5px 8px; border-radius: 6px; z-index: 1000; pointer-events: none; backdrop-filter: blur(4px); display: flex; flex-direction: column; gap: 3px; text-align: left;">
                         <div style="display: flex; align-items: center; gap: 5px;">
                             <div style="width: 14px; height: 3px; background: #2563eb; border-radius: 2px;"></div>
@@ -1968,120 +2083,251 @@
                 </div>
             `;
 
-            // 初始化自製 Leaflet 地圖
+            // 初始化自製 OpenLayers 開源地圖 (deliverymap 同款 OSM 核心)
             initActiveDeliveryMap(activeData, parsedData);
 
             // 立即從本地還原對話歷史 (重新整理訊息 0 秒保留，不消耗後端資源)
             restoreChatMessagesFromLocal(orderUuid);
 
+            // 同步與啟動即時 ETA 倒數
+            syncEtaState(activeData);
+
             // 啟動定時輪詢 (純 HTTP GraphQL 查詢座標與狀態，絕不啟動瀏覽器)
             startActiveOrderLivePolling(orderUuid, parsedData, data);
         }
 
-        function initActiveDeliveryMap(activeData, parsedData) {
-            try {
-            if (typeof L === 'undefined') {
-                console.warn('Leaflet 尚未加載完成，500ms 後重試...');
-                setTimeout(() => {
-                    if (typeof L !== 'undefined') initActiveDeliveryMap(activeData, parsedData);
-                }, 500);
+        function setupLiveMapPopup() {
+            const popupEl = document.getElementById('liveDeliveryMapPopup');
+            if (!popupEl || !liveMap) return;
+            livePopupOverlay = new ol.Overlay({
+                element: popupEl,
+                positioning: 'bottom-center',
+                stopEvent: true,
+                offset: [0, -10]
+            });
+            liveMap.addOverlay(livePopupOverlay);
+
+            liveMap.on('click', function() {
+                if (livePopupOverlay) livePopupOverlay.setPosition(undefined);
+            });
+        }
+
+        function showLiveMapPopup(coord, htmlContent) {
+            if (!livePopupOverlay) return;
+            const contentEl = document.getElementById('liveDeliveryMapPopupContent');
+            const popupEl = document.getElementById('liveDeliveryMapPopup');
+            if (contentEl && popupEl) {
+                contentEl.innerHTML = htmlContent;
+                popupEl.style.display = 'block';
+                livePopupOverlay.setPosition(coord);
+            }
+        }
+
+        function fitDeliveryMapExtent(points) {
+            if (!liveMap || !points || points.length === 0) return;
+            if (points.length === 1) {
+                liveMap.getView().setCenter(ol.proj.fromLonLat([Number(points[0][0]), Number(points[0][1])]));
+                liveMap.getView().setZoom(15);
                 return;
             }
-            const container = document.getElementById('liveDeliveryMap');
-            if (!container) return;
-
-            if (liveMap) {
-                try { liveMap.remove(); } catch(e) {}
-                liveMap = null;
-            }
-
-            const c = activeData.courier || {};
-            const s = activeData.store || {};
-            const d = activeData.destination || {};
-
-            const cLat = c.latitude;
-            const cLng = c.longitude;
-            const sLat = s.latitude;
-            const sLng = s.longitude;
-            const dLat = d.latitude;
-            const dLng = d.longitude;
-
-            const centerLat = cLat || sLat || dLat || 22.736;
-            const centerLng = cLng || sLng || dLng || 120.33;
-
-            liveMap = L.map('liveDeliveryMap', {
-                zoomControl: true,
-                attributionControl: false
-            }).setView([centerLat, centerLng], 14);
-
-            // CartoDB Voyager 高速圖磚 (附帶 OpenStreetMap 官方標準圖磚雙重容錯)
-            const osmLayer = L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_4rjx_1_2dc376e91234454a5297b6ba', {
-                maxZoom: 19,
-                subdomains: 'abcd',
-                attribution: '&copy; CartoDB &copy; OpenStreetMap'
-            }).addTo(liveMap);
-
-            osmLayer.on('tileerror', function(error, tile) {
-                if (tile && !tile._hasFallback) {
-                    tile._hasFallback = true;
-                    const coords = error.coords;
-                    if (coords) tile.src = `https://a.tile.openstreetmap.fr/osmfr/${coords.z}/${coords.x}/${coords.y}.png`;
-                }
+            const extent = ol.extent.createEmpty();
+            points.forEach(pt => {
+                const p = ol.proj.fromLonLat([Number(pt[0]), Number(pt[1])]);
+                ol.extent.extend(extent, [p[0], p[1], p[0], p[1]]);
             });
+            liveMap.getView().fit(extent, {
+                padding: [50, 50, 50, 50],
+                maxZoom: 16,
+                duration: 300
+            });
+        }
 
-            // 初始化外送員行駛真實軌跡線 (藍色高光實線，100% 本地即時繪製)
-            liveTrajectoryLine = L.polyline([], {
-                color: '#2563eb',
-                weight: 5,
-                opacity: 0.9,
-                lineCap: 'round',
-                lineJoin: 'round'
-            }).addTo(liveMap);
-
-            const bounds = [];
-
-            // 目的地
-            if (dLat && dLng) {
-                liveDestMarker = L.marker([dLat, dLng], {
-                    icon: createEmojiMapIcon('📍', '#fee2e2', '#ef4444')
-                }).addTo(liveMap).bindPopup(`<b>📍 送達地點</b><br>${d.address || parsedData.address || ''}`);
-                bounds.push([dLat, dLng]);
-            }
-
-            // 店家
-            if (sLat && sLng) {
-                liveStoreMarker = L.marker([sLat, sLng], {
-                    icon: createEmojiMapIcon('🏪', '#fef3c7', '#f59e0b')
-                }).addTo(liveMap).bindPopup(`<b>🏪 ${s.name || parsedData.store || '店家'}</b>`);
-                bounds.push([sLat, sLng]);
-            }
-
-            // 外送員
-            if (cLat && cLng) {
-                liveCourierMarker = L.marker([cLat, cLng], {
-                    icon: createCourierMapIcon(c.course || 0)
-                }).addTo(liveMap).bindPopup(`<b>🛵 外送員：${c.name || '外送夥伴'}</b><br>${c.vehicle || ''}`);
-                bounds.push([cLat, cLng]);
-                updateLiveTrajectoryPoints(c);
-            }
-
-            if (bounds.length > 1) {
-                liveMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-            }
-
-            drawLiveNavigationRoute(cLat, cLng, sLat, sLng, dLat, dLng);
-
-            setTimeout(() => {
-                if (liveMap) {
-                    try {
-                        liveMap.invalidateSize();
-                        if (bounds.length > 1) {
-                            liveMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-                        }
-                    } catch(e) {}
+        function initActiveDeliveryMap(activeData, parsedData) {
+            try {
+                if (typeof ol === 'undefined') {
+                    console.warn('OpenLayers 尚未加載完成，500ms 後重試...');
+                    setTimeout(() => {
+                        if (typeof ol !== 'undefined') initActiveDeliveryMap(activeData, parsedData);
+                    }, 500);
+                    return;
                 }
-            }, 300);
-        
+                const container = document.getElementById('liveDeliveryMap');
+                if (!container) return;
+
+                if (liveMap) {
+                    try { liveMap.setTarget(null); } catch(e) {}
+                    liveMap = null;
+                }
+                container.innerHTML = '';
+
+                const c = activeData.courier || {};
+                const s = activeData.store || {};
+                const d = activeData.destination || {};
+
+                const cLat = Number(c.latitude) || null;
+                const cLng = Number(c.longitude) || null;
+                const sLat = Number(s.latitude) || null;
+                const sLng = Number(s.longitude) || null;
+                const dLat = Number(d.latitude) || null;
+                const dLng = Number(d.longitude) || null;
+
+                const centerLat = cLat || sLat || dLat || 22.736;
+                const centerLng = cLng || sLng || dLng || 120.33;
+
+                // 1. OSM 官方標準圖磚 (與 deliverymap 相同，清晰道路編號與全台繁中標注，中心優先載入)
+                const osmSource = new ol.source.OSM({
+                    crossOrigin: 'anonymous',
+                    attributions: '地圖資料 © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+                    tileLoadFunction: (tile, src) => {
+                        const img = tile.getImage();
+                        if (img instanceof HTMLImageElement) {
+                            img.crossOrigin = 'anonymous';
+                            img.onerror = () => {
+                                if (!tile._hasTriedFallback) {
+                                    tile._hasTriedFallback = true;
+                                    img.src = src.replace('tile.openstreetmap.org', 'a.tile.openstreetmap.fr/osmfr');
+                                }
+                            };
+                            img.src = src;
+                        }
+                    },
+                    tilePriorityFunction: (tile, source, tileCenter, tileResolution) => {
+                        if (!liveMap) return Infinity;
+                        const viewCenter = liveMap.getView().getCenter();
+                        if (!viewCenter) return Infinity;
+                        return Math.sqrt(
+                            Math.pow(tileCenter[0] - viewCenter[0], 2) +
+                            Math.pow(tileCenter[1] - viewCenter[1], 2)
+                        );
+                    }
+                });
+
+                const osmLayer = new ol.layer.Tile({
+                    source: osmSource,
+                    zIndex: 1
+                });
+
+                // 2. 外送員真實行駛軌跡圖層 (藍色高光實線，100% 本地即時繪製)
+                liveTrajectorySource = new ol.source.Vector();
+                liveTrajectoryLine = new ol.layer.Vector({
+                    source: liveTrajectorySource,
+                    style: new ol.style.Style({
+                        stroke: new ol.style.Stroke({
+                            color: '#2563eb',
+                            width: 5,
+                            lineCap: 'round',
+                            lineJoin: 'round'
+                        })
+                    }),
+                    zIndex: 10
+                });
+
+                // 3. 預估道路導航路線 (綠色虛線)
+                liveNavigationSource = new ol.source.Vector();
+                liveNavigationLine = new ol.layer.Vector({
+                    source: liveNavigationSource,
+                    style: new ol.style.Style({
+                        stroke: new ol.style.Stroke({
+                            color: '#06c167',
+                            width: 5,
+                            lineDash: [6, 8],
+                            lineCap: 'round',
+                            lineJoin: 'round'
+                        })
+                    }),
+                    zIndex: 8
+                });
+
+                // 4. 建立 OpenLayers 地圖實例
+                liveMap = new ol.Map({
+                    target: 'liveDeliveryMap',
+                    layers: [osmLayer, liveNavigationLine, liveTrajectoryLine],
+                    view: new ol.View({
+                        center: ol.proj.fromLonLat([centerLng, centerLat]),
+                        zoom: 15,
+                        minZoom: 8,
+                        maxZoom: 19,
+                        enableRotation: false
+                    }),
+                    controls: [
+                        new ol.control.Zoom(),
+                        new ol.control.Attribution({ collapsible: true })
+                    ]
+                });
+
+                window.liveMap = liveMap;
+                // 初始化 Popup 氣泡
+                setupLiveMapPopup();
+
+                const extentPoints = [];
+
+                // 目的地
+                if (dLat && dLng) {
+                    const destCoord = ol.proj.fromLonLat([dLng, dLat]);
+                    const destEl = createDestOverlayElement(d.address || parsedData.address);
+                    destEl.onclick = function(e) {
+                        e.stopPropagation();
+                        showLiveMapPopup(destCoord, `<b>📍 送達地點</b><br><span style="font-size:12px;color:#475569;">${d.address || parsedData.address || ''}</span>`);
+                    };
+                    liveDestMarker = new ol.Overlay({
+                        element: destEl,
+                        position: destCoord,
+                        positioning: 'center-center',
+                        stopEvent: false
+                    });
+                    liveMap.addOverlay(liveDestMarker);
+                    extentPoints.push([dLng, dLat]);
+                }
+
+                // 店家
+                if (sLat && sLng) {
+                    const storeCoord = ol.proj.fromLonLat([sLng, sLat]);
+                    const storeEl = createStoreOverlayElement(s.name || parsedData.store);
+                    storeEl.onclick = function(e) {
+                        e.stopPropagation();
+                        showLiveMapPopup(storeCoord, `<b>🏪 ${s.name || parsedData.store || '合作店家'}</b>`);
+                    };
+                    liveStoreMarker = new ol.Overlay({
+                        element: storeEl,
+                        position: storeCoord,
+                        positioning: 'center-center',
+                        stopEvent: false
+                    });
+                    liveMap.addOverlay(liveStoreMarker);
+                    extentPoints.push([sLng, sLat]);
+                }
+
+                // 外送員
+                if (cLat && cLng) {
+                    const courierCoord = ol.proj.fromLonLat([cLng, cLat]);
+                    const courierEl = createCourierOverlayElement(c.name, c.vehicle, c.course);
+                    courierEl.onclick = function(e) {
+                        e.stopPropagation();
+                        showLiveMapPopup(courierCoord, `<b>🛵 外送員：${c.name || '外送夥伴'}</b><br><span style="font-size:12px;color:#475569;">${c.vehicle || '機車配送中'}</span>`);
+                    };
+                    liveCourierMarker = new ol.Overlay({
+                        element: courierEl,
+                        position: courierCoord,
+                        positioning: 'center-center',
+                        stopEvent: false
+                    });
+                    liveMap.addOverlay(liveCourierMarker);
+                    extentPoints.push([cLng, cLat]);
+                    updateLiveTrajectoryPoints(c);
+                }
+
+                fitDeliveryMapExtent(extentPoints);
+                drawLiveNavigationRoute(cLat, cLng, sLat, sLng, dLat, dLng);
+
+                setTimeout(() => {
+                    if (liveMap) {
+                        try {
+                            liveMap.updateSize();
+                            fitDeliveryMapExtent(extentPoints);
+                        } catch(e) {}
+                    }
+                }, 350);
+
             } catch(mapErr) {
                 console.error("initActiveDeliveryMap 渲染異常 (已安全防護):", mapErr);
             }
@@ -2102,23 +2348,31 @@
 
         function updateLiveTrajectoryPoints(courier) {
             try {
-            if (!liveTrajectoryLine || !courier || !courier.latitude || !courier.longitude) return;
-            const pts = courier.pathPoints || [];
-            const cur = [courier.latitude, courier.longitude];
-            if (pts.length > 0) {
-                const sorted = [...pts].sort((a, b) => (a.epoch || 0) - (b.epoch || 0));
-                liveAccumulatedPath = sorted.map(p => [p.latitude, p.longitude]);
-            }
-            if (liveAccumulatedPath.length === 0) {
-                liveAccumulatedPath.push(cur);
-            } else {
-                const last = liveAccumulatedPath[liveAccumulatedPath.length - 1];
-                if (calcGeoDist(last[0], last[1], cur[0], cur[1]) > 2) {
-                    liveAccumulatedPath.push(cur);
+                if (!courier || !courier.latitude || !courier.longitude) return;
+                if (!liveAccumulatedPath) liveAccumulatedPath = [];
+                const pts = courier.pathPoints || [];
+                const cur = [Number(courier.latitude), Number(courier.longitude)];
+                if (pts.length > 0) {
+                    const sorted = [...pts].sort((a, b) => (a.epoch || 0) - (b.epoch || 0));
+                    liveAccumulatedPath = sorted.map(p => [Number(p.latitude), Number(p.longitude)]);
                 }
-            }
-            liveTrajectoryLine.setLatLngs(liveAccumulatedPath);
-        
+                if (liveAccumulatedPath.length === 0) {
+                    liveAccumulatedPath.push(cur);
+                } else {
+                    const last = liveAccumulatedPath[liveAccumulatedPath.length - 1];
+                    if (calcGeoDist(last[0], last[1], cur[0], cur[1]) > 2) {
+                        liveAccumulatedPath.push(cur);
+                    }
+                }
+                if (liveTrajectorySource) {
+                    liveTrajectorySource.clear();
+                    if (liveAccumulatedPath.length > 1) {
+                        const olCoords = liveAccumulatedPath.map(p => ol.proj.fromLonLat([p[1], p[0]]));
+                        liveTrajectorySource.addFeature(new ol.Feature({
+                            geometry: new ol.geom.LineString(olCoords)
+                        }));
+                    }
+                }
             } catch(trErr) {
                 console.warn("updateLiveTrajectoryPoints 異常 (已安全防護):", trErr);
             }
@@ -2126,22 +2380,23 @@
 
         async function drawLiveNavigationRoute(cLat, cLng, sLat, sLng, dLat, dLng) {
             if (!liveMap || !cLat || !cLng) return;
+            if (!liveLastNavCoords) liveLastNavCoords = { cLat: null, cLng: null, lastTime: 0 };
             const points = [`${cLng},${cLat}`];
-            const coordsList = [[cLat, cLng]];
+            const coordsList = [[Number(cLat), Number(cLng)]];
 
             if (sLng && sLat) {
                 points.push(`${sLng},${sLat}`);
-                coordsList.push([sLat, sLng]);
+                coordsList.push([Number(sLat), Number(sLng)]);
             }
             if (dLng && dLat) {
                 points.push(`${dLng},${dLat}`);
-                coordsList.push([dLat, dLng]);
+                coordsList.push([Number(dLat), Number(dLng)]);
             }
             if (points.length < 2) return;
 
             const now = Date.now();
             const dist = calcGeoDist(cLat, cLng, liveLastNavCoords.cLat, liveLastNavCoords.cLng);
-            if (liveLastNavCoords.lastTime && (now - liveLastNavCoords.lastTime < 12000) && dist < 35 && liveNavigationLine) {
+            if (liveLastNavCoords.lastTime && (now - liveLastNavCoords.lastTime < 12000) && dist < 35 && liveNavigationSource && liveNavigationSource.getFeatures().length > 0) {
                 return;
             }
             liveLastNavCoords = { cLat, cLng, lastTime: now };
@@ -2155,37 +2410,26 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.routes && data.routes.length > 0) {
-                        if (liveNavigationLine) {
-                            try { liveMap.removeLayer(liveNavigationLine); } catch(e) {}
-                        }
-                        liveNavigationLine = L.geoJSON(data.routes[0].geometry, {
-                            style: {
-                                color: '#06c167',
-                                weight: 5,
-                                opacity: 0.85,
-                                dashArray: '6, 8',
-                                lineCap: 'round',
-                                lineJoin: 'round'
-                            }
-                        }).addTo(liveMap);
+                    if (data.routes && data.routes.length > 0 && liveNavigationSource) {
+                        const geoJsonFormat = new ol.format.GeoJSON();
+                        const geom = geoJsonFormat.readGeometry(data.routes[0].geometry, {
+                            dataProjection: 'EPSG:4326',
+                            featureProjection: 'EPSG:3857'
+                        });
+                        liveNavigationSource.clear();
+                        liveNavigationSource.addFeature(new ol.Feature({ geometry: geom }));
                         return;
                     }
                 }
             } catch(e) {}
 
-            // 平滑虛線備援
-            if (!liveNavigationLine) {
-                liveNavigationLine = L.polyline(coordsList, {
-                    color: '#06c167',
-                    weight: 5,
-                    opacity: 0.85,
-                    dashArray: '8, 8',
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                }).addTo(liveMap);
-            } else {
-                liveNavigationLine.setLatLngs(coordsList);
+            // 平滑虛線備援 (直線連接)
+            if (liveNavigationSource) {
+                const lineCoords = coordsList.map(pt => ol.proj.fromLonLat([pt[1], pt[0]]));
+                liveNavigationSource.clear();
+                liveNavigationSource.addFeature(new ol.Feature({
+                    geometry: new ol.geom.LineString(lineCoords)
+                }));
             }
         }
 
@@ -2199,6 +2443,7 @@
                     // 1. 檢測是否取消
                     if (isOrderCanceled(activeRes)) {
                         clearInterval(liveActivePollTimer);
+                        if (liveEtaCountdownTimer) clearInterval(liveEtaCountdownTimer);
                         renderCanceledStage(activeRes, parsedData, data, '');
                         return;
                     }
@@ -2206,6 +2451,7 @@
                     // 2. 檢測是否送達
                     if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
                         clearInterval(liveActivePollTimer);
+                        if (liveEtaCountdownTimer) clearInterval(liveEtaCountdownTimer);
                         const termRes = await fetchTerminatedOrder(orderUuid, '', window.trackApiBase);
                         const finalDeliveredData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
                         renderDeliveredStage(finalDeliveredData, parsedData, data, '');
@@ -2247,9 +2493,9 @@
                             bannerBox.style.borderColor = curIsPreparing ? '#fde68a' : '#86efac';
                         }
 
+                        syncEtaState(activeRes);
                         const etaEl = document.getElementById('liveActiveEta');
-                        if (etaEl && activeRes.eta) {
-                            etaEl.innerText = `預計抵達：${activeRes.eta}`;
+                        if (etaEl) {
                             etaEl.style.color = curIsPreparing ? '#92400e' : '#166534';
                         }
 
@@ -2352,15 +2598,31 @@
                             if (courierVehicleEl) courierVehicleEl.innerText = curCourier.vehicle || '機車配送中';
                         }
 
-                        // 更新外送員 GPS 與地圖軌跡
+                        // 更新外送員 GPS 與地圖軌跡 (OpenLayers 平滑更新)
                         if (curCourier.latitude && curCourier.longitude) {
+                            const curLat = Number(curCourier.latitude);
+                            const curLng = Number(curCourier.longitude);
+                            const curCoord = ol.proj.fromLonLat([curLng, curLat]);
+
                             if (liveCourierMarker) {
-                                liveCourierMarker.setLatLng([curCourier.latitude, curCourier.longitude]);
-                                liveCourierMarker.setIcon(createCourierMapIcon(curCourier.course || 0));
+                                liveCourierMarker.setPosition(curCoord);
+                                const inner = liveCourierMarker.getElement() ? liveCourierMarker.getElement().querySelector('.courier-icon-inner') : null;
+                                if (inner) {
+                                    inner.style.transform = `rotate(${curCourier.course || 0}deg)`;
+                                }
                             } else if (liveMap) {
-                                liveCourierMarker = L.marker([curCourier.latitude, curCourier.longitude], {
-                                    icon: createCourierMapIcon(curCourier.course || 0)
-                                }).addTo(liveMap).bindPopup(`<b>🛵 外送員：${curCourier.name || '外送夥伴'}</b><br>${curCourier.vehicle || ''}`);
+                                const courierEl = createCourierOverlayElement(curCourier.name, curCourier.vehicle, curCourier.course);
+                                courierEl.onclick = function(e) {
+                                    e.stopPropagation();
+                                    showLiveMapPopup(curCoord, `<b>🛵 外送員：${curCourier.name || '外送夥伴'}</b><br><span style="font-size:12px;color:#475569;">${curCourier.vehicle || '機車配送中'}</span>`);
+                                };
+                                liveCourierMarker = new ol.Overlay({
+                                    element: courierEl,
+                                    position: curCoord,
+                                    positioning: 'center-center',
+                                    stopEvent: false
+                                });
+                                liveMap.addOverlay(liveCourierMarker);
                             }
                             updateLiveTrajectoryPoints(curCourier);
                             const s = activeRes.store || {};
