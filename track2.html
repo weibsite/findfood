@@ -124,6 +124,9 @@
             flex-shrink: 0;
             scroll-snap-align: center;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
         .split-tab-btn {
             padding: 6px 14px;
@@ -997,6 +1000,17 @@
         }
         window.escapeHtml = escapeHtml;
 
+        // 當店家名字過長時，保留前後文字，中間以「...」縮寫，讓畫面維持固定單行不折行
+        function formatStoreMiddle(name, maxLen = 13, frontLen = 4, backLen = 5) {
+            if (!name) return '';
+            const s = String(name).trim();
+            if (s.length <= maxLen) return s;
+            const f = s.slice(0, frontLen).trimEnd();
+            const b = s.slice(-backLen).trimStart();
+            return `${f}...${b}`;
+        }
+        window.formatStoreMiddle = formatStoreMiddle;
+
         function markSliderInteraction() {
             window.isUserTouchingSlider = true;
             if (window.sliderTouchTimer) clearTimeout(window.sliderTouchTimer);
@@ -1332,35 +1346,39 @@
                 let cardBorderColor = concise.step === 0 ? '#ef5350' : (concise.step === 4 ? '#81c784' : '#60a5fa');
 
                 html += `
-                    <div class="split-slide-card" style="background: #fff; border: 1.5px solid ${cardBorderColor}; border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: left;">
-                        <!-- 卡片頂部 -->
+                    <div class="split-slide-card" style="background: #fff; border: 1.5px solid ${cardBorderColor}; border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: left; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+                        <!-- 卡片頂部 (固定單行顯示，中間以...省略，保證各卡片標題高度一致) -->
                         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 10px;">
-                            <div>
+                            <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 8px;">
                                 <span style="font-weight: 800; font-size: 13.5px; color: #1e293b;">【子訂單 ${idx + 1}】</span>
-                                <div style="font-weight: bold; color: #0f172a; font-size: 15px; margin-top: 2px;">🏪 ${store}</div>
+                                <div style="font-weight: bold; color: #0f172a; font-size: 15px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(store)}">🏪 ${formatStoreMiddle(store)}</div>
                             </div>
-                            <span style="background: ${concise.badgeBg}; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 6px;">
+                            <span style="background: ${concise.badgeBg}; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 6px; flex-shrink: 0;">
                                 ${concise.badge}
                             </span>
                         </div>
                 `;
 
                 if (concise.step === 0) {
-                    // 已取消
+                    // 已取消 (統一 160px 高度區塊與底部對齊)
                     const cancelInfo = getCancelInfo(term);
                     html += `
-                        <div style="background: #ffebee; border: 1px dashed #ef9a9a; border-radius: 8px; padding: 12px; margin-bottom: 10px; text-align: center;">
-                            <div style="font-size: 22px; margin-bottom: 4px;">🚫</div>
-                            <div style="font-weight: bold; color: #c62828; font-size: 13.5px; margin-bottom: 4px;">${cancelInfo.cancelTitle}</div>
-                            <div style="font-size: 12px; color: #444; line-height: 1.4;">${cancelInfo.cancelReason}</div>
+                        <div style="background: #ffebee; border: 1px dashed #ef9a9a; border-radius: 8px; padding: 14px 12px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; box-sizing: border-box;">
+                            <div style="font-size: 32px; line-height: 1;">🚫</div>
+                            <div style="font-weight: bold; color: #c62828; font-size: 13.5px;">${cancelInfo.cancelTitle}</div>
+                            <div style="font-size: 12px; color: #555; line-height: 1.4; max-height: 55px; overflow-y: auto;">${cancelInfo.cancelReason}</div>
                         </div>
-                        <a href="${url}" target="_blank" style="display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; color: #64748b; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc;">
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>🛵 外送夥伴: <strong>無派單</strong></span>
+                            <span style="color: #dc2626; font-weight: bold; flex-shrink: 0;">✕ 訂單取消</span>
+                        </div>
+                        <a href="${url}" target="_blank" style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; color: #64748b; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc;">
                             <span>🔗 開啟 Uber Eats 查看狀態</span>
                             <span style="font-size: 13px;">↗</span>
                         </a>
                     `;
                 } else if (concise.step === 4) {
-                    // 已送達
+                    // 已送達 (留置照片與親自點交統一 160px 高度區塊，使所有卡片左右對齊、按鈕高度一致)
                     const imgUrl = term.imgUrl || '';
                     if (imgUrl && isDropoffPhoto(imgUrl)) {
                         html += `
@@ -1376,18 +1394,19 @@
                         `;
                     } else {
                         html += `
-                            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
-                                <div style="font-size: 20px;">🤝</div>
-                                <div style="font-size: 12.5px; color: #166534; font-weight: bold;">外送夥伴已親自點交送達目的地</div>
+                            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 12px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; box-sizing: border-box;">
+                                <div style="font-size: 36px; line-height: 1;">🤝</div>
+                                <div style="font-size: 13.5px; color: #166534; font-weight: bold;">外送夥伴已親自點交送達</div>
+                                <div style="font-size: 11.5px; color: #15803d; line-height: 1.4;">餐點由外送夥伴當面交付<br>（現場無留置拍照記錄）</div>
                             </div>
                         `;
                     }
                     html += `
-                        <div style="font-size: 12px; color: #475569; margin-bottom: 10px; display: flex; justify-content: space-between;">
-                            <span>🛵 外送夥伴: <strong>${courierName}</strong></span>
-                            <span style="color: #16a34a; font-weight: bold;">✓ 配送完成</span>
+                        <div style="font-size: 12px; color: #475569; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px;">🛵 外送夥伴: <strong>${courierName}</strong></span>
+                            <span style="color: #16a34a; font-weight: bold; flex-shrink: 0;">✓ 配送完成</span>
                         </div>
-                        <a href="${url}" target="_blank" style="display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; color: #16a34a; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 12px; border: 1px solid #bbf7d0; border-radius: 8px; background: #f0fdf4;">
+                        <a href="${url}" target="_blank" style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; color: #16a34a; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 12px; border: 1px solid #bbf7d0; border-radius: 8px; background: #f0fdf4;">
                             <span>🔗 開啟 Uber Eats 查看狀態</span>
                             <span style="font-size: 13px;">↗</span>
                         </a>
@@ -1395,7 +1414,7 @@
                 } else {
                     // 未抵達：精簡顯示「前往店家取餐中、已取餐正在趕過來、預計抵達時間、即將抵達」＋開啟訊息系統按鈕
                     html += `
-                        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
+                        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                                 <span style="font-size: 22px;">${concise.emoji}</span>
                                 <span style="font-size: 16px; font-weight: 800; color: #0f172a;">${concise.title}</span>
@@ -1410,13 +1429,13 @@
                                 <strong style="font-family: monospace; font-size: 16px; color: #d97706; letter-spacing: 1px;">${pinCode}</strong>
                             </div>` : ''}
                             ${courierName && courierName !== '外送夥伴' ? `
-                            <div style="margin-top: 6px; font-size: 12px; color: #64748b;">
+                            <div style="margin-top: 6px; font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                 🛵 外送夥伴：<strong>${courierName}</strong> ${courierVehicle ? '(' + courierVehicle + ')' : ''}
                             </div>` : ''}
                         </div>
 
-                        <!-- 下方一鍵開啟訊息系統按鈕 -->
-                        <button type="button" onclick="openMultiOrderChatModal('${subUuid}', '${escapeHtml(store)}', '${escapeHtml(courierName)}', '${escapeHtml(courierVehicle)}')" style="width: 100%; background: #06c167; color: white; border: none; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 6px rgba(6,193,103,0.22); transition: opacity 0.2s;">
+                        <!-- 下方一鍵開啟訊息系統按鈕 (margin-top: auto 確保與其它卡片底部對齊) -->
+                        <button type="button" onclick="openMultiOrderChatModal('${subUuid}', '${escapeHtml(store)}', '${escapeHtml(courierName)}', '${escapeHtml(courierVehicle)}')" style="margin-top: auto; width: 100%; box-sizing: border-box; background: #06c167; color: white; border: none; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 6px rgba(6,193,103,0.22); transition: opacity 0.2s;">
                             💬 開啟此單外送員對話
                         </button>
                     `;
@@ -1834,7 +1853,7 @@
                     }
                     html += `</div>`;
 
-                    if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 4px; font-size: 14px;">🏪 ${split.store}</div>`;
+                    if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 4px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(split.store)}">🏪 ${formatStoreMiddle(split.store)}</div>`;
                     if (split.time) html += `<div style="font-size: 12px; color: #4527a0; font-weight: bold; margin-bottom: 6px;">🕒 時間: ${split.time}</div>`;
 
                     if (isCancel) {
