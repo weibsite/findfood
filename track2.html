@@ -1934,7 +1934,9 @@
                     // 2. 檢測是否送達
                     if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
                         clearInterval(liveActivePollTimer);
-                        renderDeliveredStage(activeRes, parsedData, data, '');
+                        const termRes = await fetchTerminatedOrder(orderUuid, '', window.trackApiBase);
+                        const finalDeliveredData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                        renderDeliveredStage(finalDeliveredData, parsedData, data, '');
                         return;
                     }
 
@@ -2105,8 +2107,10 @@
 
                                         // 檢查是否已送達
                                         if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
-                                            console.log('🎉 檢測到外送夥伴已抵達送達！切換至已送達階段');
-                                            renderDeliveredStage(activeRes, parsedData, data, primaryTrackUrl);
+                                            console.log('🎉 檢測到外送夥伴已抵達送達！進一步獲取留置拍照與送達明細...');
+                                            const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
+                                            const finalDeliveredData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                                            renderDeliveredStage(finalDeliveredData, parsedData, data, primaryTrackUrl);
                                             return;
                                         }
 
