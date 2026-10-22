@@ -1813,7 +1813,7 @@
                     let splitTitle = split.title || `【多單 ${idx + 1}】`;
                     const subExtId = (extOrderIds && extOrderIds[idx]) ? extOrderIds[idx] : '';
                     if (subExtId && !splitTitle.includes('代訂編號')) {
-                        splitTitle = `${splitTitle} (代訂編號: ${subExtId})`;
+                        splitTitle = `${splitTitle} ( ${subExtId})`;
                     }
 
                     html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 14px; box-sizing: border-box;">`;
@@ -1822,9 +1822,9 @@
                     html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
                     html += `<span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : (isSched ? '#3949ab' : '#1565c0')};">${splitTitle}</span>`;
                     if (isCancel) {
-                        html += `<span style="background: #d32f2f; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">❌ 此單已取消</span>`;
+                        html += `<span style="background: #d32f2f; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">❌ 已取消</span>`;
                     } else if (isDeliv) {
-                        html += `<span style="background: #2e7d32; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">✓ 此單已送達</span>`;
+                        html += `<span style="background: #2e7d32; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">✓ 已送達</span>`;
                     } else if (isSched) {
                         html += `<span style="background: #5c6bc0; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">📅 預約排程</span>`;
                     } else if (tracking_urls.length > idx) {
