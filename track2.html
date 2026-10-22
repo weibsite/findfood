@@ -2131,15 +2131,6 @@
 
             // 支援直接網址帶入 uuid 進行外送訂單查詢與展示 (支援多筆 uuid 逗號分隔，例如 liff.state=?id=uuid1,uuid2)
             const rawUuidParam = urlParams.get('uuid') || urlParams.get('orderUuid') || extractOrderUuid(urlParams.get('url'));
-            const potentialMultiStr = orderId || rawUuidParam || '';
-            const potentialMultiList = potentialMultiStr.split(',').map(s => s.trim()).filter(Boolean);
-            const isDirectMultiUuid = potentialMultiList.length > 1 && potentialMultiList.every(u => /^[0-9a-fA-F-]{36}$/.test(u));
-
-            if (isDirectMultiUuid) {
-                console.log('🚀 檢測到網址包含多筆 Uber 訂單 UUID，直接啟動多單即時追蹤:', potentialMultiList);
-                loadAndRenderMultiOrders(potentialMultiList, null, null, false);
-                return;
-            }
 
             if (!orderId && rawUuidParam) {
                 const uuidList = rawUuidParam.split(',').map(s => s.trim()).filter(Boolean);
@@ -3305,7 +3296,7 @@
         }
 
         async function checkStatus(isBackgroundRefresh = false) {
-                if (window.isMultiOrderMode && window.currentMultiUuidList) {
+                if (!orderId && window.isMultiOrderMode && window.currentMultiUuidList) {
                     await loadAndRenderMultiOrders(window.currentMultiUuidList, window.lastParsedData, window.lastTrackData, isBackgroundRefresh);
                     return;
                 }
