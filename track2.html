@@ -217,6 +217,69 @@
         }
 
         // 向後端查詢已完成送達訂單資料
+        
+        // 向後端獲取進行中外送員即時定位與動態狀態
+        async function fetchActiveOrder(uuid, rawUrl, trackApiBase) {
+            const endpoints = [];
+            if (trackApiBase) endpoints.push(`${trackApiBase}/api/getActiveOrder`);
+            endpoints.push('/api/getActiveOrder');
+            endpoints.push('https://api.9ysong.shop/api/getActiveOrder');
+            endpoints.push('http://127.0.0.1:5000/api/getActiveOrder');
+            endpoints.push('http://localhost:5000/api/getActiveOrder');
+
+            const uniqueEndpoints = [...new Set(endpoints)];
+
+            for (const ep of uniqueEndpoints) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderUuid: uuid,
+                            url: rawUrl
+                        })
+                    });
+                    if (res.ok) {
+                        return await res.json();
+                    }
+                } catch(err) {
+                    console.warn(`查詢進行中端點異常 (${ep}):`, err);
+                }
+            }
+            return { status: 'error', message: '無法連接任何進行中追蹤端點' };
+        }
+
+        // 向外送員發送即時訊息
+        async function sendCourierMessage(uuid, message, trackApiBase) {
+            const endpoints = [];
+            if (trackApiBase) endpoints.push(`${trackApiBase}/api/sendCourierMessage`);
+            endpoints.push('/api/sendCourierMessage');
+            endpoints.push('https://api.9ysong.shop/api/sendCourierMessage');
+            endpoints.push('http://127.0.0.1:5000/api/sendCourierMessage');
+            endpoints.push('http://localhost:5000/api/sendCourierMessage');
+
+            const uniqueEndpoints = [...new Set(endpoints)];
+
+            for (const ep of uniqueEndpoints) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderUuid: uuid,
+                            message: message
+                        })
+                    });
+                    if (res.ok) {
+                        return await res.json();
+                    }
+                } catch(err) {
+                    console.warn(`發送訊息端點異常 (${ep}):`, err);
+                }
+            }
+            return { status: 'error', message: '發送訊息連線失敗' };
+        }
+
         async function fetchTerminatedOrder(uuid, rawUrl, trackApiBase) {
             const endpoints = [];
             if (trackApiBase) endpoints.push(`${trackApiBase}/api/getTerminatedOrder`);
@@ -2118,6 +2181,7 @@
                         statusArea.innerHTML = `<h3 style="color:red;">伺服器回應錯誤</h3>`;
                     }
                 } catch(e) {
+                    console.error('checkStatus 執行異常:', e);
                     statusArea.innerHTML = `<h3 style="color:red;">無法連線到伺服器</h3><p style="color:#666;">請確認您的網路連線或稍後再試</p>`;
                 }
             }
