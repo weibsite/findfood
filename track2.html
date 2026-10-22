@@ -124,9 +124,21 @@
             flex-shrink: 0;
             scroll-snap-align: center;
             box-sizing: border-box;
+        }
+        #deliveryStatusSlider {
+            align-items: stretch;
+        }
+        #deliveryStatusSlider .split-slide-card {
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+        }
+        #splitsDetailSlider {
+            align-items: flex-start;
+        }
+        #splitsDetailSlider .split-slide-card {
+            display: block !important;
+            height: auto !important;
         }
         .split-tab-btn {
             padding: 6px 14px;
@@ -1837,7 +1849,7 @@
                         splitTitle = `${splitTitle} ( ${subExtId})`;
                     }
 
-                    html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 14px; box-sizing: border-box;">`;
+                    html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 14px; box-sizing: border-box; display: block; height: auto;">`;
                     
                     // 標題與此單送達狀態 Pill
                     html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
