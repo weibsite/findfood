@@ -636,7 +636,7 @@
             const coordsStr = (lat && lng) ? `${lat}, ${lng}` : '無座標資訊';
             const googleMapUrl = (lat && lng) ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}` : '';
             const fallbackMapTile = (lat && lng) 
-                ? `https://a.basemaps.cartocdn.com/rastertiles/voyager/15/${Math.floor((Number(lng)+180)/360*32768)}/${Math.floor((1-Math.log(Math.tan(Number(lat)*Math.PI/180)+1/Math.cos(Number(lat)*Math.PI/180))/Math.PI)/2*32768)}.png` 
+                ? `https://a.basemaps.cartocdn.com/rastertiles/voyager/15/${Math.floor((Number(lng)+180)/360*32768)}/${Math.floor((1-Math.log(Math.tan(Number(lat)*Math.PI/180)+1/Math.cos(Number(lat)*Math.PI/180))/Math.PI)/2*32768)}.png?key=cb1_4rjx_1_2dc376e91234454a5297b6ba` 
                 : '';
 
             let deliveredHtml = `
@@ -1895,7 +1895,7 @@
             }).setView([centerLat, centerLng], 14);
 
             // CartoDB Voyager 高速圖磚 (附帶 OpenStreetMap 官方標準圖磚雙重容錯)
-            const osmLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            const osmLayer = L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_4rjx_1_2dc376e91234454a5297b6ba', {
                 maxZoom: 19,
                 subdomains: 'abcd',
                 attribution: '&copy; CartoDB &copy; OpenStreetMap'
