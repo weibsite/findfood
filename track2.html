@@ -257,6 +257,10 @@
         // 判斷訂單是否已被取消 (支援後端 isCanceled 標記、Uber Eats ILLUSTRATION_HEADER_CARD、以及「外送員為空」等特徵)
         function isOrderCanceled(term) {
             if (!term) return false;
+            if (term.isCanceled === true || term.status === 'canceled' || term.orderPhase === 'CANCELED') return true;
+            const fullTitle = (term.title || term.orderStatus || term.cancelTitle || '').trim();
+            if (fullTitle.includes('取消') || fullTitle.toLowerCase().includes('cancel')) return true;
+            if (!term) return false;
             if (term.isCanceled === true) return true;
             
             const title = (term.title || '').trim();
