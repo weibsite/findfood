@@ -5904,8 +5904,20 @@ function updatePlanButtons() {
 window.selectedPlan = 'A';
 window.selectPlan = function(p) {};
 
-window.submitSelectedPlan = function() {
+window.submitSelectedPlan = async function() {
     if (window.isGroceryStore) {
+        if (window._groceryDisabled) {
+            showToast('⚠️ 目前雜貨已售完 請等待補貨');
+            return;
+        }
+        if (typeof checkGroceryStatus === 'function') {
+            const isDisabled = await checkGroceryStatus();
+            if (isDisabled) {
+                if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI();
+                showToast('⚠️ 目前雜貨已售完 請等待補貨');
+                return;
+            }
+        }
         sendOrderToLine();
         return;
     }
@@ -6486,7 +6498,7 @@ function openGroceryCheckoutSummary() {
 
       
 
-      <div style="margin-top:20px; font-size:14px; color:#666;">
+      <div id="groceryCheckoutNotice" style="margin-top:20px; font-size:14px; color:#666;">
 
         ⚠️ <b>注意：</b>此為生鮮雜貨代訂。我們不需要您在此點選詳細商品，請直接送出訂單後，代訂會提供網址，直接選購商品即可。
 
@@ -6498,11 +6510,16 @@ function openGroceryCheckoutSummary() {
 
     </div>
 
+
+
   `;
 
 
 
   document.getElementById('checkoutContent').innerHTML = html;
+  if (typeof checkAndApplyGroceryDisabledUI === 'function') {
+      checkAndApplyGroceryDisabledUI();
+  }
 
 
 
@@ -6547,6 +6564,13 @@ function openGroceryCheckoutSummary() {
 function backToStoreFromGroceryCheckout() {
 
     document.getElementById('checkoutView').style.display = 'none';
+    const submitBtn = document.getElementById('checkoutSubmitBtn');
+    if (submitBtn) {
+        submitBtn.innerText = '送出訂單';
+        submitBtn.style.background = '#f43f5e';
+        submitBtn.style.cursor = 'pointer';
+        submitBtn.onclick = submitSelectedPlan;
+    }
 
     
 
@@ -7377,6 +7401,11 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
 async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUuid, titleEnc, descEnc, basePrice, imgUrl, hasCustomizations) {
 
   if (window.isGroceryStore) {
+
+      if (window._groceryDisabled) {
+          showToast('⚠️ 目前雜貨已售完 請等待補貨');
+          return;
+      }
 
       openGroceryCheckoutSummary();
 
@@ -12057,6 +12086,51 @@ window.setDeliveryMethod = function(method) {
 // ============================================================
 let groceryPollTimer = null;
 let groceryPollAttempts = 0;
+window._groceryDisabled = false;
+
+async function checkGroceryStatus() {
+    try {
+        const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+        const res = await fetch(`${apiBase}/api/grocery/status?t=${Date.now()}`);
+        if (res.ok) {
+            const data = await res.json();
+            window._groceryDisabled = (data.enabled === false || data.status === 'disabled');
+            return window._groceryDisabled;
+        }
+    } catch (e) {
+        console.warn('checkGroceryStatus error:', e);
+    }
+    return false;
+}
+
+function applyGroceryDisabledUI() {
+    window._groceryDisabled = true;
+    const noticeEl = document.getElementById('groceryCheckoutNotice');
+    if (noticeEl) {
+        noticeEl.innerHTML = `
+          <div style="background:#FEE2E2; border:1px solid #EF4444; color:#B91C1C; padding:14px; border-radius:10px; font-weight:bold; font-size:15px; text-align:center; box-shadow:0 2px 6px rgba(239,68,68,0.15);">
+            ⚠️ 目前雜貨已售完 請等待補貨<br>
+            <span style="font-size:13px; font-weight:normal; color:#7F1D1D; margin-top:4px; display:inline-block;">生鮮雜貨 225 優惠券目前暫停發券，補貨後將重新開放</span>
+          </div>
+        `;
+    }
+    const submitBtn = document.getElementById('checkoutSubmitBtn');
+    if (submitBtn) {
+        submitBtn.innerText = '🚫 目前雜貨已售完 請等待補貨';
+        submitBtn.style.background = '#94A3B8';
+        submitBtn.style.cursor = 'not-allowed';
+        submitBtn.onclick = function() {
+            showToast('⚠️ 目前雜貨已售完 請等待補貨');
+        };
+    }
+}
+
+async function checkAndApplyGroceryDisabledUI() {
+    const isDisabled = await checkGroceryStatus();
+    if (isDisabled) {
+        applyGroceryDisabledUI();
+    }
+}
 
 async function getLiffUserId() {
     let uid = '';
@@ -12125,6 +12199,16 @@ function closeGroceryWaitingOverlay() {
 
 async function handleGroceryOrderSubmit(msgText) {
     const storeName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : '生鮮雜貨門市';
+    const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+
+    // 送出前再次檢查開關狀態，若已售完則直接攔截
+    const isDisabled = await checkGroceryStatus();
+    if (isDisabled) {
+        showGroceryWaitingOverlay(storeName);
+        onGroceryUrlDisabled('目前雜貨已售完 請等待補貨');
+        return;
+    }
+
     showGroceryWaitingOverlay(storeName);
 
     // 取得 LINE User ID
@@ -12145,7 +12229,6 @@ async function handleGroceryOrderSubmit(msgText) {
     // 啟動輪詢取得專屬網址
     groceryPollAttempts = 0;
     const maxAttempts = 30; // 30 次 * 1.5 秒 = 45 秒
-    const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
 
     groceryPollTimer = setInterval(async () => {
         groceryPollAttempts++;
@@ -12158,6 +12241,11 @@ async function handleGroceryOrderSubmit(msgText) {
                     clearInterval(groceryPollTimer);
                     groceryPollTimer = null;
                     onGroceryUrlSuccess(data.join_url, data.store_name || storeName);
+                    return;
+                } else if (data.status === 'disabled' || data.status === 'sold_out' || (data.message && (data.message.includes('已售完') || data.message.includes('手動關閉')))) {
+                    clearInterval(groceryPollTimer);
+                    groceryPollTimer = null;
+                    onGroceryUrlDisabled(data.message || '目前雜貨已售完 請等待補貨');
                     return;
                 } else if (data.status === 'manual') {
                     clearInterval(groceryPollTimer);
@@ -12214,6 +12302,37 @@ function onGroceryUrlTimeout() {
     document.getElementById('gwActions').innerHTML = `
       <button onclick="closeGroceryWaitingOverlay()" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">返回 LINE 聊天室</button>
     `;
+}
+
+function onGroceryUrlDisabled(msg) {
+    const titleEl = document.getElementById('gwTitle');
+    if (titleEl) {
+        titleEl.innerText = '⚠️ 目前雜貨已售完';
+        titleEl.style.color = '#EF4444';
+    }
+    const emojiEl = document.getElementById('gwEmoji');
+    if (emojiEl) emojiEl.innerText = '🚫';
+    const spinnerEl = document.getElementById('gwSpinner');
+    if (spinnerEl) spinnerEl.style.display = 'none';
+    const contentEl = document.getElementById('gwContent');
+    if (contentEl) {
+        contentEl.innerHTML = `
+          <div style="line-height:1.6; text-align:center; font-size:16px; color:#1E293B; font-weight:bold; padding:12px 0;">
+            ${msg || '目前雜貨已售完 請等待補貨'}
+          </div>
+          <div style="line-height:1.5; text-align:center; font-size:13px; color:#64748B;">
+            生鮮雜貨 225 優惠券目前暫停發券，補貨完成後將重新開放，敬請見諒！
+          </div>
+        `;
+    }
+    const tipEl = document.getElementById('gwTip');
+    if (tipEl) tipEl.innerText = '';
+    const actionsEl = document.getElementById('gwActions');
+    if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button onclick="closeGroceryWaitingOverlay()" style="width:100%; padding:14px; background:#EF4444; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 4px 12px rgba(239,68,68,0.25);">返回 LINE 聊天室</button>
+        `;
+    }
 }
 
 function onGroceryUrlManual() {
