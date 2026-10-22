@@ -135,10 +135,12 @@
         }
         #splitsDetailSlider {
             align-items: flex-start;
+            white-space: normal !important;
         }
         #splitsDetailSlider .split-slide-card {
             display: block !important;
             height: auto !important;
+            white-space: normal !important;
         }
         .split-tab-btn {
             padding: 6px 14px;
@@ -1813,7 +1815,7 @@
                 return `<pre style="white-space: pre-wrap; margin:0; font-family: monospace;">${rawText}</pre>`;
             }
 
-            let html = `<div style="text-align: left; font-family: -apple-system, sans-serif; font-size: 14px; color: #333; overflow:hidden;">`;
+            let html = `<div style="text-align: left; font-family: -apple-system, sans-serif; font-size: 14px; color: #333; overflow:hidden; white-space: normal;">`;
             
             // 頂部資訊 (共用)
             html += `<div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #c8e6c9;">`;
@@ -1849,7 +1851,7 @@
                         splitTitle = `${splitTitle} ( ${subExtId})`;
                     }
 
-                    html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 14px; box-sizing: border-box; display: block; height: auto;">`;
+                    html += `<div class="split-slide-card" style="background: #fafafa; border: 1.5px solid ${cardBorder}; border-radius: 12px; padding: 14px; box-sizing: border-box; display: block; height: auto; white-space: normal;">`;
                     
                     // 標題與此單送達狀態 Pill
                     html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
@@ -1870,24 +1872,14 @@
 
                     if (isCancel) {
                         const cancelInfo = getCancelInfo(term);
-                        html += `
-                            <div style="background: #ffebee; border: 1px solid #ffcdd2; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; font-size: 12px; color: #c62828;">
-                                <strong>⚠️ 店家無法接單（已取消）：</strong>${cancelInfo.cancelReason || '此單已被店家取消'}
-                            </div>
-                        `;
+                        html += `<div style="background: #ffebee; border: 1px solid #ffcdd2; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; font-size: 12px; color: #c62828;"><strong>⚠️ 店家無法接單（已取消）：</strong>${cancelInfo.cancelReason || '此單已被店家取消'}</div>`;
                     }
 
                     let currentTrackUrl = (tracking_urls.length > idx) ? tracking_urls[idx] : null;
                     if (isCancel && currentTrackUrl) {
                         html += `<a href="${currentTrackUrl}" target="_blank" style="color: #666; background: #eee; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">⚠️ 查看取消紀錄 ${idx + 1}</a>`;
                     } else if (isDeliv && term.imgUrl && isDropoffPhoto(term.imgUrl)) {
-                        html += `
-                            <div style="display: flex; align-items: center; gap: 8px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;">
-                                <span style="font-size: 16px;">📸</span>
-                                <span style="font-size: 12px; color: #2e7d32; font-weight: bold; flex: 1;">已拍照送達現場</span>
-                                <button type="button" onclick="zoomPhoto('${term.imgUrl}')" style="background: #2e7d32; color: #fff; border: none; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: bold; cursor: pointer;">看照片</button>
-                            </div>
-                        `;
+                        html += `<div style="display: flex; align-items: center; gap: 8px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;"><span style="font-size: 16px;">📸</span><span style="font-size: 12px; color: #2e7d32; font-weight: bold; flex: 1;">已拍照送達現場</span><button type="button" onclick="zoomPhoto('${term.imgUrl}')" style="background: #2e7d32; color: #fff; border: none; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: bold; cursor: pointer;">看照片</button></div>`;
                     } else if (isSched && currentTrackUrl) {
                         html += `<a href="${currentTrackUrl}" target="_blank" style="color: #fff; background: #5c6bc0; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">📅 查看預約單 ${idx + 1}</a>`;
                     } else if (currentTrackUrl) {
