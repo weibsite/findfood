@@ -643,16 +643,9 @@
         // 判斷訂單是否已被取消 (支援後端 isCanceled 標記、Uber Eats ILLUSTRATION_HEADER_CARD、以及「外送員為空」等特徵)
         function isOrderCanceled(term) {
             if (!term) return false;
-            if (term.isCanceled === true || term.status === 'canceled' || term.orderPhase === 'CANCELED') return true;
-            const fullTitle = (term.title || term.orderStatus || term.cancelTitle || '').trim();
-            if (fullTitle.includes('取消') || fullTitle.toLowerCase().includes('cancel')) return true;
-            if (!term) return false;
-            if (term.isCanceled === true) return true;
-            
-            const title = (term.title || '').trim();
-            if (title.includes('取消') || title.toLowerCase().includes('cancel')) {
-                return true;
-            }
+            if (term.isCanceled === true || term.status === 'canceled' || term.status === 'deleted' || term.order_status === 'canceled' || term.order_status === 'deleted' || term.orderPhase === 'CANCELED' || term.isUntracked === true) return true;
+            const fullTitle = (term.title || term.orderStatus || term.cancelTitle || term.cancelReason || '').trim();
+            if (fullTitle.includes('取消') || fullTitle.toLowerCase().includes('cancel') || fullTitle.includes('未綁定')) return true;
 
             const rawData = term.raw?.data;
             if (rawData) {
@@ -683,7 +676,7 @@
 
             // 特徵判斷：外送員為空或無相關外送資訊，且說明含有無法處理/取消
             const sub = (term.subtitle || '') + (term.message || '');
-            if (sub.includes('取消') || sub.includes('無法處理') || sub.toLowerCase().includes('cancel')) {
+            if (sub.includes('取消') || sub.includes('無法處理') || sub.toLowerCase().includes('cancel') || sub.includes('未綁定')) {
                 return true;
             }
 
@@ -695,6 +688,13 @@
             let cancelTitle = term?.cancelTitle || '';
             let cancelReason = term?.cancelReason || '';
             let cancelImage = term?.cancelImage || '';
+
+            if (term?.isUntracked) {
+                cancelTitle = cancelTitle || '未綁定追蹤網址 (已取消)';
+                cancelReason = cancelReason || '此訂單尚未綁定 Uber 即時追蹤網址，視為取消訂單。';
+                cancelImage = cancelImage || 'https://duyt4h9nfnj50.cloudfront.net/ontrip/merchant_centric_cancelation_1x.png';
+                return { cancelTitle, cancelReason, cancelImage };
+            }
 
             const rawData = term?.raw?.data;
             if (rawData) {
@@ -1215,14 +1215,28 @@
         window.formatEtaText = formatEtaText;
 
         function getSubOrderConciseStatus(sub) {
-            if (sub.isCanceled || isOrderCanceled(sub)) {
-                return { emoji: '❌', title: '店家已取消', badge: '已取消', badgeBg: '#d32f2f', isDone: true, step: 0 };
+            if (!sub) return { emoji: '❓', title: '狀態未知', badge: '未知', badgeBg: '#64748b', isDone: false, step: 1 };
+
+            if (sub.isUntracked || sub.isCanceled || isOrderCanceled(sub) || sub.status === 'canceled' || sub.status === 'deleted') {
+                return { 
+                    emoji: '❌', 
+                    title: sub.isUntracked ? '未綁定追蹤 (已取消)' : (sub.cancelTitle || '店家已取消'), 
+                    badge: '已取消', 
+                    badgeBg: '#d32f2f', 
+                    isDone: true, 
+                    step: 0 
+                };
             }
             if (sub.isDelivered || sub.status === 'concluded' || sub.orderPhase === 'COMPLETED') {
                 return { emoji: '🎉', title: '已送達目的地', badge: '已送達', badgeBg: '#2e7d32', isDone: true, step: 4 };
             }
             if (sub.isScheduled || sub.orderPhase === 'SCHEDULED' || sub.status === 'scheduled') {
                 return { emoji: '📅', title: '預約排程中', badge: '預約單', badgeBg: '#5c6bc0', isDone: false, step: 1 };
+            }
+
+            // 若既非取消、亦非送達、亦非預約，且 API 回傳 error 或 unknown
+            if (sub.status === 'error' || sub.status === 'unknown') {
+                return { emoji: '❓', title: '外送狀態更新中', badge: '更新中', badgeBg: '#64748b', isDone: false, step: 1 };
             }
 
             const curStatus = String(sub.orderStatus || '').toLowerCase();
@@ -1246,12 +1260,28 @@
                 return { emoji: '🍳', title: '前往店家取餐中', badge: '備餐取餐中', badgeBg: '#ea580c', isDone: false, step: 1 };
             }
 
-            // 3. 已取餐正在趕過來
-            return { emoji: '🛵', title: '已取餐正在趕過來', badge: '趕來中', badgeBg: '#059669', isDone: false, step: 2 };
+            // 3. 已取餐正在趕過來 (只有在明確進行中或有 GPS 座標時)
+            if (sub.isLiveActive || (courier.latitude && courier.longitude) || curStatus.includes('外送') || curStatus.includes('趕') || curStatus.includes('路上') || curStatus.includes('送餐')) {
+                return { emoji: '🛵', title: '已取餐正在趕過來', badge: '趕來中', badgeBg: '#059669', isDone: false, step: 2 };
+            }
+
+            return { emoji: '🛵', title: '外送處理中', badge: '處理中', badgeBg: '#0284c7', isDone: false, step: 1 };
         }
 
         async function getSubOrderStatus(uuid, url, trackApiBase) {
-            if (!uuid) return { status: 'error', message: '無有效 UUID', url };
+            // 若無有效 UUID 或網址為空/無效，視為未綁定追蹤網址 (已取消)
+            if (!uuid || !url || url === 'https://www.ubereats.com/tw/orders/' || url === 'https://www.ubereats.com/tw/orders') {
+                return {
+                    status: 'canceled',
+                    orderUuid: '',
+                    url: '',
+                    isCanceled: true,
+                    isUntracked: true,
+                    cancelTitle: '未綁定追蹤網址 (已取消)',
+                    cancelReason: '此訂單尚未綁定 Uber 即時追蹤網址，視為取消訂單。',
+                    isLiveActive: false
+                };
+            }
             try {
                 // 1. 優先查詢進行中狀態 (即時 GPS、ETA、備餐/取餐/外送中狀態、PIN碼、外送員)
                 const activeRes = await fetchActiveOrder(uuid, url, trackApiBase);
@@ -1432,6 +1462,7 @@
             const deliveredCount = subStatuses.filter(s => s.step === 4).length;
             const inTransitCount = subStatuses.filter(s => s.step >= 1 && s.step <= 3).length;
             const scheduledCount = subStatuses.filter(s => s.badge === '預約單').length;
+            const isAllCompleted = (deliveredCount + canceledCount === totalOrders);
 
             // 1. 卡片主標題
             const mainHeader = document.querySelector('.card h2');
@@ -1448,6 +1479,9 @@
                 } else if (scheduledCount > 0) {
                     mainHeader.innerHTML = '📅 預約單已排定配送';
                     mainHeader.style.color = '#5c6bc0';
+                } else if (isAllCompleted) {
+                    mainHeader.innerHTML = `🏁 訂單配送完成（${deliveredCount} 筆送達，${canceledCount} 筆取消）`;
+                    mainHeader.style.color = '#2e7d32';
                 } else {
                     mainHeader.innerHTML = '📦 多單外送即時進度';
                     mainHeader.style.color = '#0f172a';
@@ -1456,11 +1490,11 @@
 
             const address = parsedData.address || '指定外送地址';
 
-            let bannerBg = inTransitCount > 0 ? '#f0fdf4' : (deliveredCount === totalOrders ? '#e8f5e9' : '#fff8e1');
-            let bannerBorder = inTransitCount > 0 ? '#86efac' : (deliveredCount === totalOrders ? '#81c784' : '#ffe082');
-            let bannerBadgeBg = inTransitCount > 0 ? '#16a34a' : (deliveredCount === totalOrders ? '#2e7d32' : '#e65100');
-            let bannerBadgeText = inTransitCount > 0 ? `${inTransitCount} 單外送中` : (deliveredCount === totalOrders ? '✓ 全部送達' : '訂單處理中');
-            let bannerTitle = inTransitCount > 0 ? '🛵 外送員正在為您配送餐點中' : (deliveredCount === totalOrders ? '🎉 所有餐點已順利送達指定地點' : '📦 各單配送即時進度追蹤');
+            let bannerBg = inTransitCount > 0 ? '#f0fdf4' : (deliveredCount === totalOrders ? '#e8f5e9' : (isAllCompleted ? '#f8fafc' : '#fff8e1'));
+            let bannerBorder = inTransitCount > 0 ? '#86efac' : (deliveredCount === totalOrders ? '#81c784' : (isAllCompleted ? '#cbd5e1' : '#ffe082'));
+            let bannerBadgeBg = inTransitCount > 0 ? '#16a34a' : (deliveredCount === totalOrders ? '#2e7d32' : (isAllCompleted ? '#475569' : '#e65100'));
+            let bannerBadgeText = inTransitCount > 0 ? `${inTransitCount} 單外送中` : (deliveredCount === totalOrders ? '✓ 全部送達' : (isAllCompleted ? `✓ 配送完成 (${deliveredCount} 送達 / ${canceledCount} 取消)` : '訂單處理中'));
+            let bannerTitle = inTransitCount > 0 ? '🛵 外送員正在為您配送餐點中' : (deliveredCount === totalOrders ? '🎉 所有餐點已順利送達指定地點' : (isAllCompleted ? `🏁 訂單已全數結單（${deliveredCount} 筆送達，${canceledCount} 筆取消）` : '📦 各單配送即時進度追蹤'));
 
             let html = `
                 <div style="text-align: left; margin-bottom: 15px;">
@@ -1550,10 +1584,16 @@
                             <span>🛵 外送夥伴: <strong>無派單</strong></span>
                             <span style="color: #dc2626; font-weight: bold; flex-shrink: 0;">✕ 訂單取消</span>
                         </div>
+                        ${(url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders') ? `
                         <a href="${url}" target="_blank" style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; color: #64748b; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc;">
                             <span>🔗 開啟 Uber Eats 查看狀態</span>
                             <span style="font-size: 13px;">↗</span>
                         </a>
+                        ` : `
+                        <div style="margin-top: auto; display: flex; justify-content: center; align-items: center; width: 100%; box-sizing: border-box; text-align: center; color: #94a3b8; font-size: 12.5px; font-weight: bold; padding: 8px 12px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #f8fafc;">
+                            <span>🚫 此訂單無 Uber 即時追蹤網址</span>
+                        </div>
+                        `}
                     `;
                 } else if (concise.step === 4) {
                     // 已送達 (留置照片與親自點交統一 160px 高度區塊，使所有卡片左右對齊、按鈕高度一致)
@@ -1743,8 +1783,10 @@
             window.currentMultiUuidList = uuidList;
 
             const trackingUrls = uuidList.map(u => {
-                if (u.startsWith('http')) return u;
-                return `https://www.ubereats.com/tw/orders/${u}`;
+                if (!u || !String(u).trim()) return '';
+                if (String(u).startsWith('http')) return String(u).trim();
+                const cleanU = extractOrderUuid(u) || String(u).trim();
+                return cleanU ? `https://www.ubereats.com/tw/orders/${cleanU}` : '';
             });
 
             // 僅在非背景更新且目前畫面上還沒有多單卡片時，顯示 Loading 畫面
@@ -1759,10 +1801,11 @@
 
             // 同步獲取各單最新狀態 (進行中 active 優先、送達與取消自動辨識)
             const subResults = await Promise.all(uuidList.map(async (item, idx) => {
-                const u = extractOrderUuid(item) || item;
-                const url = item.startsWith('http') ? item : `https://www.ubereats.com/tw/orders/${u}`;
+                const rawItem = (item || '').trim();
+                const u = extractOrderUuid(rawItem) || (rawItem.startsWith('http') ? '' : rawItem);
+                const url = (!rawItem) ? '' : (rawItem.startsWith('http') ? rawItem : (u ? `https://www.ubereats.com/tw/orders/${u}` : ''));
                 const res = await getSubOrderStatus(u, url, window.trackApiBase);
-                return { ...res, url, idx, orderUuid: u };
+                return { ...res, url, idx, orderUuid: u || '' };
             }));
 
             // 產生狀態特徵簽章 (Signature) 用於比對 (Diffing)
@@ -2026,7 +2069,7 @@
                         html += `<span style="background: #2e7d32; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">✓ 已送達</span>`;
                     } else if (isSched) {
                         html += `<span style="background: #5c6bc0; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">📅 預約排程</span>`;
-                    } else if (tracking_urls.length > idx) {
+                    } else if (tracking_urls.length > idx && tracking_urls[idx] && tracking_urls[idx].trim()) {
                         html += `<span style="background: #e65100; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">🛵 運送中</span>`;
                     }
                     html += `</div>`;
@@ -2039,9 +2082,11 @@
                         html += `<div style="background: #ffebee; border: 1px solid #ffcdd2; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px; font-size: 12px; color: #c62828;"><strong>⚠️ 店家無法接單（已取消）：</strong>${cancelInfo.cancelReason || '此單已被店家取消'}</div>`;
                     }
 
-                    let currentTrackUrl = (tracking_urls.length > idx) ? tracking_urls[idx] : null;
-                    if (isCancel && currentTrackUrl) {
+                    let currentTrackUrl = (tracking_urls.length > idx && tracking_urls[idx] && tracking_urls[idx].trim() !== 'https://www.ubereats.com/tw/orders/' && tracking_urls[idx].trim() !== 'https://www.ubereats.com/tw/orders') ? tracking_urls[idx].trim() : null;
+                    if (isCancel && currentTrackUrl && !term?.isUntracked) {
                         html += `<a href="${currentTrackUrl}" target="_blank" style="color: #666; background: #eee; text-decoration: none; font-size: 12px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 4px 10px; border-radius: 20px;">⚠️ 查看取消紀錄 ${idx + 1}</a>`;
+                    } else if (isCancel) {
+                        html += `<span style="color: #94a3b8; background: #f1f5f9; font-size: 11.5px; font-weight: bold; display:inline-block; margin-bottom: 8px; padding: 3px 8px; border-radius: 20px;">🚫 無即時追蹤網址</span>`;
                     } else if (isDeliv && term.imgUrl && isDropoffPhoto(term.imgUrl)) {
                         html += `<div style="display: flex; align-items: center; gap: 8px; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 6px; padding: 6px 10px; margin-bottom: 8px;"><span style="font-size: 16px;">📸</span><span style="font-size: 12px; color: #2e7d32; font-weight: bold; flex: 1;">已拍照送達現場</span><button type="button" onclick="zoomPhoto('${term.imgUrl}')" style="background: #2e7d32; color: #fff; border: none; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: bold; cursor: pointer;">看照片</button></div>`;
                     } else if (isSched && currentTrackUrl) {
@@ -3507,7 +3552,31 @@
                         const parsedData = parseOrderText(data.text);
                         const orderTextSignature = `${data.text || ''}__${JSON.stringify(data.ext_order_ids || [])}`;
                         
-                        const hasTracking = (data.tracking_urls && data.tracking_urls.length > 0) || Boolean(data.tracking_url);
+                        const rawTrackUrls = (data.tracking_urls && data.tracking_urls.length > 0)
+                            ? data.tracking_urls
+                            : (data.tracking_url ? [data.tracking_url] : []);
+                        const validTrackUrls = rawTrackUrls.filter(u => u && u.trim() && u.trim() !== 'https://www.ubereats.com/tw/orders/' && u.trim() !== 'https://www.ubereats.com/tw/orders');
+                        const hasTracking = validTrackUrls.length > 0;
+                        const isMulti = rawTrackUrls.length > 1 || parsedData.isSplit;
+
+                        // 若整筆訂單已被取消或刪除，或單筆且無追蹤網址被標記為取消
+                        if (data.order_status === 'canceled' || data.order_status === 'deleted' || isOrderCanceled(data)) {
+                            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                            countdownState = null;
+                            if (isMulti) {
+                                await loadAndRenderMultiOrders(rawTrackUrls, parsedData, data, isBackgroundRefresh);
+                                return;
+                            } else {
+                                const cancelRes = {
+                                    isCanceled: true,
+                                    cancelTitle: '未綁定追蹤網址 (已取消)',
+                                    cancelReason: '此訂單尚未綁定 Uber 即時追蹤網址，視為取消訂單。',
+                                    storeName: parsedData.store || '合作店家'
+                                };
+                                renderCanceledStage(cancelRes, parsedData, data, validTrackUrls[0] || '');
+                                return;
+                            }
+                        }
 
                         // 僅在非 tracking 模式 (等待中/點餐中) 且內容發生實質變更時才重寫 orderTextArea
                         if (!hasTracking && window._lastRenderedOrderTextSig !== orderTextSignature) {
@@ -3524,15 +3593,11 @@
                             statusHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
                         }
                         
-                        if (hasTracking) {
+                        if (hasTracking || isMulti) {
                             if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
                             countdownState = null;
 
-                            const trackingUrls = (data.tracking_urls && data.tracking_urls.length > 0)
-                                ? data.tracking_urls
-                                : (data.tracking_url ? [data.tracking_url] : []);
-                            
-                            const isMulti = trackingUrls.length > 1 || parsedData.isSplit;
+                            const trackingUrls = rawTrackUrls;
 
                             if (isMulti) {
                                 await loadAndRenderMultiOrders(trackingUrls, parsedData, data, isBackgroundRefresh);
