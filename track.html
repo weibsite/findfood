@@ -2539,30 +2539,31 @@
 
 
         async function getSubOrderStatus(uuid, url, trackApiBase) {
-
-            // 若無有效 UUID 或網址為空/無效，視為未綁定追蹤網址 (已取消)
-
             if (!uuid || !url || url === 'https://www.ubereats.com/tw/orders/' || url === 'https://www.ubereats.com/tw/orders') {
-
+                const isParentActive = window.lastTrackData && ['new', 'used'].includes(window.lastTrackData.order_status);
+                if (isParentActive) {
+                    return {
+                        status: 'waiting',
+                        orderUuid: '',
+                        url: '',
+                        isCanceled: false,
+                        isUntracked: false,
+                        title: '待代訂下單中',
+                        badge: '點餐中',
+                        isLiveActive: false
+                    };
+                }
                 return {
-
                     status: 'canceled',
-
                     orderUuid: '',
-
                     url: '',
-
                     isCanceled: true,
-
                     isUntracked: true,
-
                     cancelTitle: '未綁定追蹤網址 (已取消)',
-
-                    cancelReason: '此訂單尚未綁定 Uber 即時追蹤網址，視為取消訂單。',
-
+                    cancelReason: '訂單未綁定 Uber 即時追蹤網址，視為取消訂單。',
                     isLiveActive: false
-
                 };
+            }
 
             }
 
@@ -2936,7 +2937,7 @@
 
             if (mainHeader) {
 
-                if (canceledCount === totalOrders) {
+                if (totalOrders > 0 && canceledCount === totalOrders) {
 
                     mainHeader.innerHTML = '❌ 所有訂單皆已取消';
 
@@ -7134,7 +7135,7 @@
 
                             countdownState = null;
 
-                            if (isMulti) {
+                            if (isMulti && hasTracking) {
 
                                 await loadAndRenderMultiOrders(rawTrackUrls, parsedData, data, isBackgroundRefresh);
 
@@ -7194,7 +7195,7 @@
 
                         
 
-                        if (hasTracking || isMulti) {
+                        if (hasTracking) {
 
                             if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
 
@@ -7511,6 +7512,10 @@
                             if (!isSameWaiting) {
 
                                 window.currentRenderedStage = 'waiting';
+                                const mainH2 = document.querySelector('.card h2');
+                                if (mainH2) { mainH2.innerHTML = '📦 外送訂單追蹤'; mainH2.style.color = ''; }
+                                const cardBox = document.querySelector('.card');
+                                if (cardBox) cardBox.classList.remove('delivered-mode');
 
                                 window.hasRenderedOrderOnce = true;
 
