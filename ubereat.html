@@ -12450,7 +12450,7 @@ function onOrderProgressSuccess(progressUrl, storeName) {
     const tipEl = document.getElementById('owTip');
     if (tipEl) tipEl.innerText = '若未自動前往，請點擊下方按鈕：';
     // 附帶 autoclose=3 參數：讓換頁過去只停留 3 秒自動關閉視窗，顧客後續在聊天室單獨點開則不受影響！
-    const targetUrl = progressUrl.includes('?') ? `${progressUrl}&autoclose=3` : `${progressUrl}?autoclose=3`;
+    const targetUrl = progressUrl.includes('?') ? `${progressUrl}&autoclose=10` : `${progressUrl}?autoclose=10`;
     const actionsEl = document.getElementById('owActions');
     if (actionsEl) {
         actionsEl.innerHTML = `

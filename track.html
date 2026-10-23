@@ -4438,7 +4438,8 @@
 
             // 檢查是否帶有 autoclose 參數 (僅在剛下單轉址過來時附帶，聊天室單獨點開不帶此參數)
             const rawAutoClose = urlParams.get('autoclose') || (stateParams ? stateParams.get('autoclose') : null);
-            const autoCloseSec = parseInt(rawAutoClose, 10);
+            let autoCloseSec = parseInt(rawAutoClose, 10);
+            if (autoCloseSec === 3) autoCloseSec = 10;
             if (autoCloseSec > 0 && typeof initAutoCloseCountdown === 'function') {
                 initAutoCloseCountdown(autoCloseSec);
             }
@@ -7675,8 +7676,9 @@
 
     
     // --- 點餐後自動轉址 3 秒自動關閉提示與計時器 (不影響聊天室單獨開啟) ---
-    function initAutoCloseCountdown(seconds) {
-        let remain = seconds;
+    function initAutoCloseCountdown(seconds = 10) {
+        let remain = (seconds && seconds > 0) ? seconds : 10;
+        if (remain === 3) remain = 10;
         const banner = document.createElement('div');
         banner.id = 'autoCloseBanner';
         banner.style.cssText = 'position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:999999; background:rgba(15,23,42,0.94); color:#ffffff; padding:9px 16px; border-radius:30px; font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; box-shadow:0 10px 25px rgba(0,0,0,0.35); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); max-width:92%; white-space:nowrap; animation:gwPop 0.3s ease-out;';
