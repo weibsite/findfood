@@ -5095,7 +5095,8 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             device_fp: getGroupBuyDeviceFp(),
 
-            storeDeliveryFee: typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0,
+            storeCanPickup: typeof window.currentStoreCanPickup !== 'undefined' ? window.currentStoreCanPickup : false,
+      storeDeliveryFee: typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0,
       originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
 
           };
@@ -6678,7 +6679,17 @@ async function _sendOrderToLine(forceSubmit = false) {
           return;
       }
 
-      const priceKeyText = (window.lastMatchedPrice && window.lastMatchedPrice > 0) ? `🗝️${window.lastMatchedPrice}` : '';
+            // 判斷此訂單店家是否支援外帶自取 (Pickup)
+      const isStoreCanPickup = Boolean(
+          window.currentStoreCanPickup ||
+          (cart.length > 0 && cart.some(it => it.storeCanPickup)) ||
+          isStorePickupAvailable(window.currentStoreRawData)
+      );
+
+      const pickupTag = isStoreCanPickup ? '🏷️' : '';
+      const priceKeyText = (window.lastMatchedPrice && window.lastMatchedPrice > 0) 
+          ? `🗝️${window.lastMatchedPrice}${pickupTag}` 
+          : (isStoreCanPickup ? '🏷️' : '');
 
   let msgText = '';
 
@@ -8040,6 +8051,7 @@ const note = document.getElementById('modalNote').value.trim();
 
       device_fp: getGroupBuyDeviceFp(),
 
+      storeCanPickup: typeof window.currentStoreCanPickup !== 'undefined' ? window.currentStoreCanPickup : false,
       storeDeliveryFee: typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0,
       originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
 
@@ -8232,6 +8244,24 @@ function isOpeningWithin30Minutes(badgeTime) {
     const diffMinutes = (target.getTime() - now.getTime()) / (60 * 1000);
     return diffMinutes >= -15 && diffMinutes <= 30;
 }
+
+
+function isStorePickupAvailable(storeRawData) {
+    if (!storeRawData) return false;
+    try {
+        const suppModes = storeRawData.supportedDiningModes || [];
+        const hasPickupMode = Array.isArray(suppModes) && suppModes.some(m => m.mode === 'PICKUP');
+        const modalityOptions = (storeRawData.modalityInfo && Array.isArray(storeRawData.modalityInfo.modalityOptions)) 
+            ? storeRawData.modalityInfo.modalityOptions 
+            : [];
+        const pickupOpt = modalityOptions.find(opt => opt.diningMode === 'PICKUP');
+        const isPickupDisabled = pickupOpt ? pickupOpt.isDisabled === true : false;
+        return Boolean(hasPickupMode || (pickupOpt && !isPickupDisabled));
+    } catch(e) {
+        return false;
+    }
+}
+window.isStorePickupAvailable = isStorePickupAvailable;
 
 async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, diningMode = 'DELIVERY', badgeTime = '') {
     window.customizationRetries = {};
@@ -8453,6 +8483,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const d = json.data;
 
       window.currentStoreRawData = d;
+      window.currentStoreCanPickup = isStorePickupAvailable(d);
 
       // 檢查取得後的官方店家標題是否在黑名單中
       if (d && d.title && typeof isStoreBlacklisted === 'function' && isStoreBlacklisted(d.title)) {
