@@ -918,23 +918,33 @@
 
         // 向後端獲取進行中外送員即時定位與動態狀態
 
+                // 統一解析 API 端點位址 (自動區分 localhost、9ysong.shop 靜態端、api.9ysong.shop 後端閘道)
+        function resolveApiEndpoints(path, trackApiBase) {
+            const endpoints = [];
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const isGithubPages = window.location.hostname === '9ysong.shop';
+
+            if (trackApiBase && (!isGithubPages || trackApiBase !== window.location.origin)) {
+                endpoints.push(`${trackApiBase}${path}`);
+            }
+
+            if (isLocal) {
+                endpoints.push(path);
+                endpoints.push(`http://127.0.0.1:5000${path}`);
+                endpoints.push(`https://api.9ysong.shop${path}`);
+            } else if (isGithubPages) {
+                // 9ysong.shop 為 GitHub Pages 靜態託管無後端，絕對不可呼叫相對路徑 /api/ 與本機 5000 port，直接使用正式 API 閘道
+                endpoints.push(`https://api.9ysong.shop${path}`);
+            } else {
+                endpoints.push(path);
+                endpoints.push(`https://api.9ysong.shop${path}`);
+            }
+            return [...new Set(endpoints)];
+        }
+
         async function fetchActiveOrder(uuid, rawUrl, trackApiBase) {
 
-            const endpoints = [];
-
-            if (trackApiBase) endpoints.push(`${trackApiBase}/api/getActiveOrder`);
-
-            if (window.location.protocol !== 'file:') { endpoints.push('/api/getActiveOrder'); }
-
-            endpoints.push('https://api.9ysong.shop/api/getActiveOrder');
-
-            endpoints.push('http://127.0.0.1:5000/api/getActiveOrder');
-
-            endpoints.push('http://localhost:5000/api/getActiveOrder');
-
-
-
-            const uniqueEndpoints = [...new Set(endpoints)];
+            const uniqueEndpoints = resolveApiEndpoints('/api/getActiveOrder', trackApiBase);
 
 
 
@@ -982,17 +992,11 @@
 
         async function fetchOrderCookie(uuid, serial, index, trackApiBase) {
 
-            const endpoints = [];
-
-            if (trackApiBase) endpoints.push(`${trackApiBase}/api/get_order_cookie`);
-
-            endpoints.push('/api/get_order_cookie');
-
-            endpoints.push('https://api.9ysong.shop/api/get_order_cookie');
-
+            const endpoints = resolveApiEndpoints('/api/get_order_cookie', trackApiBase);
             endpoints.push('https://api.9ysong.shop/api/cookie_db/get');
-
-            endpoints.push('http://localhost:8765/api/cookie_db/get');
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                endpoints.push('http://localhost:8765/api/cookie_db/get');
+            }
 
 
 
@@ -1026,21 +1030,7 @@
 
         async function sendCourierMessage(uuid, message, trackApiBase) {
 
-            const endpoints = [];
-
-            if (trackApiBase) endpoints.push(`${trackApiBase}/api/sendCourierMessage`);
-
-            if (window.location.protocol !== 'file:') { endpoints.push('/api/sendCourierMessage'); }
-
-            endpoints.push('https://api.9ysong.shop/api/sendCourierMessage');
-
-            endpoints.push('http://127.0.0.1:5000/api/sendCourierMessage');
-
-            endpoints.push('http://localhost:5000/api/sendCourierMessage');
-
-
-
-            const uniqueEndpoints = [...new Set(endpoints)];
+            const uniqueEndpoints = resolveApiEndpoints('/api/sendCourierMessage', trackApiBase);
 
 
 
@@ -1096,19 +1086,7 @@
 
             window._chatSessionWarmed = true;
 
-            const endpoints = [];
-
-            if (trackApiBase) endpoints.push(`${trackApiBase}/api/warmCourierChat`);
-
-            endpoints.push('/api/warmCourierChat');
-
-            endpoints.push('https://api.9ysong.shop/api/warmCourierChat');
-
-            endpoints.push('http://127.0.0.1:5000/api/warmCourierChat');
-
-            endpoints.push('http://localhost:5000/api/warmCourierChat');
-
-            const uniqueEndpoints = [...new Set(endpoints)];
+            const uniqueEndpoints = resolveApiEndpoints('/api/warmCourierChat', trackApiBase);
 
             for (const ep of uniqueEndpoints) {
 
@@ -1148,21 +1126,7 @@
 
             if (!uuid) return null;
 
-            const endpoints = [];
-
-            if (trackApiBase) endpoints.push(`${trackApiBase}/api/getCourierMessages`);
-
-            if (window.location.protocol !== 'file:') { endpoints.push('/api/getCourierMessages'); }
-
-            endpoints.push('https://api.9ysong.shop/api/getCourierMessages');
-
-            endpoints.push('http://127.0.0.1:5000/api/getCourierMessages');
-
-            endpoints.push('http://localhost:5000/api/getCourierMessages');
-
-
-
-            const uniqueEndpoints = [...new Set(endpoints)];
+            const uniqueEndpoints = resolveApiEndpoints('/api/getCourierMessages', trackApiBase);
 
             for (const ep of uniqueEndpoints) {
 
@@ -1208,21 +1172,7 @@
 
         async function fetchTerminatedOrder(uuid, rawUrl, trackApiBase) {
 
-            const endpoints = [];
-
-            if (trackApiBase) endpoints.push(`${trackApiBase}/api/getTerminatedOrder`);
-
-            endpoints.push('/api/getTerminatedOrder');
-
-            endpoints.push('https://api.9ysong.shop/api/getTerminatedOrder');
-
-            endpoints.push('http://127.0.0.1:5000/api/getTerminatedOrder');
-
-            endpoints.push('http://localhost:5000/api/getTerminatedOrder');
-
-            
-
-            const uniqueEndpoints = [...new Set(endpoints)];
+            const uniqueEndpoints = resolveApiEndpoints('/api/getTerminatedOrder', trackApiBase);
 
             
 
@@ -1282,88 +1232,66 @@
 
 
 
-        // 判斷訂單是否已被取消 (支援後端 isCanceled 標記、Uber Eats ILLUSTRATION_HEADER_CARD、以及「外送員為空」等特徵)
-
+                // 判斷訂單是否已被取消 (支援後端 isCanceled 標記、Uber Eats ILLUSTRATION_HEADER_CARD、以及「外送員為空」等特徵)
         function isOrderCanceled(term) {
-
             if (!term) return false;
 
-            if (term.isCanceled === true || term.status === 'canceled' || term.status === 'deleted' || term.order_status === 'canceled' || term.order_status === 'deleted' || term.orderPhase === 'CANCELED' || term.isUntracked === true) return true;
+            // 若 API 回傳 error 但非明確的 Uber 取消標記，絕不可誤判為取消 (例如查無進行中外送資料)
+            if (term.status === 'error' && term.isCanceled !== true) return false;
 
-            const fullTitle = (term.title || term.orderStatus || term.cancelTitle || term.cancelReason || '').trim();
+            // 明確取消標誌
+            if (term.isCanceled === true || term.status === 'canceled' || term.status === 'deleted' ||
+                term.order_status === 'canceled' || term.order_status === 'deleted' ||
+                term.orderPhase === 'CANCELED' || term.isUntracked === true) {
+                return true;
+            }
 
-            if (fullTitle.includes('取消') || fullTitle.toLowerCase().includes('cancel') || fullTitle.includes('未綁定')) return true;
+            // 明確取消原因或標題
+            const fullTitle = (term.cancelTitle || term.cancelReason || '').trim();
+            if (fullTitle.includes('取消') || fullTitle.toLowerCase().includes('cancel')) return true;
 
-
+            const orderTitle = (term.title || term.orderStatus || '').trim();
+            if (orderTitle && (orderTitle.includes('訂單已取消') || orderTitle.includes('行程已取消') ||
+                orderTitle.includes('外送已取消') || orderTitle.includes('店家無法接單') || orderTitle.includes('無法處理此訂單'))) {
+                return true;
+            }
 
             const rawData = term.raw?.data;
-
             if (rawData) {
-
                 const feedItems = rawData.feed?.feedItems || [];
-
                 // 檢查是否有 ILLUSTRATION_HEADER_CARD (通常為取消提示卡)
-
                 for (const it of feedItems) {
-
                     if (it.type === 'ILLUSTRATION_HEADER_CARD') {
-
                         const ill = it.illustrationHeader || {};
-
                         const illTitle = ill.title || '';
-
                         const illSub = ill.subtitle || '';
-
                         const illImg = ill.imageUrl || '';
-
                         if (illTitle.includes('取消') || illTitle.toLowerCase().includes('cancel') ||
-
                             illSub.includes('無法處理') || illImg.toLowerCase().includes('cancel')) {
-
                             return true;
-
                         }
-
                     }
-
                 }
-
-
 
                 // 特徵判斷：Uber Eats 訂單被店家取消時，「外送員是空的」
-
                 // (無 TERMINATED_ORDER_HEADER_CARD 送達卡，亦無 ACTIONABLE_MESSAGE_ROW 外送員列，且存在 ILLUSTRATION_HEADER_CARD)
-
                 const hasTermHeader = feedItems.some(it => it.type === 'TERMINATED_ORDER_HEADER_CARD');
-
                 const hasDriverRow = feedItems.some(it => it.type === 'ACTIONABLE_MESSAGE_ROW');
-
                 const hasIllustration = feedItems.some(it => it.type === 'ILLUSTRATION_HEADER_CARD');
-
                 if (!hasTermHeader && !hasDriverRow && hasIllustration) {
-
                     return true;
-
                 }
-
             }
 
-
-
-            // 特徵判斷：外送員為空或無相關外送資訊，且說明含有無法處理/取消
-
-            const sub = (term.subtitle || '') + (term.message || '');
-
-            if (sub.includes('取消') || sub.includes('無法處理') || sub.toLowerCase().includes('cancel') || sub.includes('未綁定')) {
-
-                return true;
-
+            // 特徵判斷：說明欄含有明確取消詞彙 (僅在 term.status === 'success' 或明確業務欄位中)
+            if (term.status === 'success') {
+                const sub = (term.subtitle || '');
+                if (sub.includes('訂單已取消') || sub.includes('店家已取消') || sub.includes('無法處理此訂單')) {
+                    return true;
+                }
             }
-
-
 
             return false;
-
         }
 
 
@@ -4419,9 +4347,8 @@
 
             window.initActiveDeliveryMap = initActiveDeliveryMap;
 
-            window.currentRenderedStage = 'active';
-
-            window.hasRenderedOrderOnce = true;
+            window.currentRenderedStage = null;
+            window.hasRenderedOrderOnce = false;
 
             // 從網址列取得 UUID (支援 LINE LIFF 轉址特性)
 
@@ -7031,45 +6958,25 @@
         // 向後端查詢訂單 track_info 基礎資料 (支援多端點容錯備援)
 
         async function fetchTrackInfo(id, trackApiBase) {
-
-            const endpoints = [];
-
-            if (trackApiBase) endpoints.push(`${trackApiBase}/api/track_info?id=${encodeURIComponent(id)}`);
-
-            endpoints.push(`/api/track_info?id=${encodeURIComponent(id)}`);
-
-            endpoints.push(`https://api.9ysong.shop/api/track_info?id=${encodeURIComponent(id)}`);
-
-            endpoints.push(`http://127.0.0.1:5000/api/track_info?id=${encodeURIComponent(id)}`);
-
-            endpoints.push(`http://localhost:5000/api/track_info?id=${encodeURIComponent(id)}`);
-
-
-
-            const uniqueEndpoints = [...new Set(endpoints)];
+            const uniqueEndpoints = resolveApiEndpoints(`/api/track_info?id=${encodeURIComponent(id)}`, trackApiBase);
 
             for (const ep of uniqueEndpoints) {
-
                 try {
-
                     const res = await fetch(ep);
-
                     if (res.ok) {
-
                         return await res.json();
-
                     }
-
+                    if (res.status === 404 || res.status === 400) {
+                        try {
+                            const errJson = await res.json();
+                            if (errJson && errJson.status) return errJson;
+                        } catch(e) {}
+                    }
                 } catch(e) {
-
                     console.warn(`[fetchTrackInfo] 端點連線失敗 (${ep}):`, e.message);
-
                 }
-
             }
-
             return null;
-
         }
 
 
@@ -7143,12 +7050,9 @@
                             } else {
 
                                 const cancelRes = {
-
                                     isCanceled: true,
-
-                                    cancelTitle: '未綁定追蹤網址 (已取消)',
-
-                                    cancelReason: '此訂單尚未綁定 Uber 即時追蹤網址，視為取消訂單。',
+                                    cancelTitle: data.cancel_reason || '訂單已取消',
+                                    cancelReason: data.cancel_reason || '此訂單已被取消或店家無法接單。',
 
                                     storeName: parsedData.store || '合作店家'
 
@@ -7601,9 +7505,15 @@
                         }
 
                         if (!window.hasRenderedOrderOnce) {
-
-                            statusArea.innerHTML = `<h3 style="color:red;">找不到此訂單</h3><p style="color:#666;">可能是系統處理中或連結錯誤 (將於 6 秒後自動重新檢查...)</p>`;
-
+                            statusArea.innerHTML = `
+                                <div style="text-align:center; padding: 30px 15px;">
+                                    <div style="font-size: 48px; margin-bottom: 12px;">🔍</div>
+                                    <h3 style="color:#d9534f; font-size:20px; font-weight:bold; margin-bottom:8px;">找不到此訂單資訊</h3>
+                                    <p style="color:#666; font-size:14px; line-height:1.6; margin-bottom:12px;">
+                                        請確認訂單連結是否正確，或訂單尚未建立完成。<br>系統將每 6 秒自動重新檢查...
+                                    </p>
+                                </div>
+                            `;
                         } else {
 
                             window._lastUberSyncStatus = 'error';
