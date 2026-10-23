@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 21.2</title>
+<title>點餐系統 21.3</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -444,7 +444,7 @@
           <div id="triggerTimeText" style="font-size:17px; font-weight:700; color:#f43f5e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🚀 即時訂單</div>
           <select id="scheduleTime" style="display:none;"></select>
         </div>
-        <span id="asapPromoTag" style="color:#02C874; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折20元</span>
+        <span id="asapPromoTag" style="color:#01B468; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折20元</span>
         <svg aria-hidden="true" fill="none" height="20" stroke="#78716c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" viewBox="0 0 24 24" width="20" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"></path></svg>
       </div>
     </div>
@@ -7322,15 +7322,22 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
       }
   }
 
+  const currentUserId = (typeof getLiffUserId === 'function') ? (await getLiffUserId()) : '';
+  let submittedOrderId = '';
   try {
-      await fetch(API_BASE_URL + '/api/store_v3', {
+      const res = await fetch(API_BASE_URL + '/api/store_v3', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ action: 'submit_order', order_text: msgText })
+          body: JSON.stringify({ action: 'submit_order', order_text: msgText, user_id: currentUserId })
       });
+      if (res.ok) {
+          const d = await res.json();
+          if (d && d.order_id) submittedOrderId = d.order_id;
+      }
   } catch(e) {
       console.error("Upload order failed", e);
   }
+  window.lastSubmittedOrderId = submittedOrderId;
 
   if (isDesktopDevice || (typeof liff !== 'undefined' && !liff.isInClient())) {
     if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
@@ -7341,9 +7348,7 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
     const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 20px;">無法自動為您送出訂單</div><button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息</button>`;
 
     showModal('偵測到非手機登入', '', true, copyBtnHtml, true);
-
     return;
-
   }
 
   // --- 若為生鮮雜貨訂單，在手機 LINE (LIFF) 環境下，進入等待配對讀取畫面並自動轉址 ---
@@ -7352,49 +7357,9 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
       return;
   }
 
-
-
-  try {
-
-      await liff.sendMessages([
-
-        {
-
-          type: "text",
-
-          text: msgText
-
-        }
-
-      ]);
-
-      if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
-        await markGroupBuySubmitted(msgText);
-      }
-
-      clearCart();
-      window._orderSent = true;
-
-
-
-      const successHtml = `
-
-        <div style="text-align:center; margin-top:20px;">
-
-          <button onclick="liff.closeWindow();" style="width:100%; padding:12px; background:#f43f5e; color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:16px; cursor:pointer;">關閉視窗</button>
-
-        </div>
-
-      `;
-
-      showModal('訂單已送出', '您的訂單明細已成功傳送至聊天室！', false, successHtml, true);
-
-
-
-  } catch (err) {
-      console.error("sendMessages error:", err);
-      showPermissionFailModal(msgText, err ? err.message : '');
-  }
+  // --- 一般餐點訂單，使用等待配對與進度網址轉址邏輯 ---
+  await handleFoodOrderSubmit(msgText);
+  return;
 
 }
 
@@ -12295,13 +12260,16 @@ function onGroceryUrlTimeout() {
     document.getElementById('gwContent').innerHTML = `
       <div style="line-height:1.6; text-align:left; font-size:13px; color:#475569;">
         目前訂購人數較多，代訂人員正在為您安排專屬購物帳號。<br><br>
-        專屬購物網址稍後將由 <b>LINE 官方帳號</b> 發送給您，請回聊天室等候通知！
+        專屬購物網址稍後將由 <b>LINE 官方帳號</b> 發送給您，即將為您關閉頁面返回聊天室！
       </div>
     `;
     document.getElementById('gwTip').innerText = '';
     document.getElementById('gwActions').innerHTML = `
       <button onclick="closeGroceryWaitingOverlay()" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">返回 LINE 聊天室</button>
     `;
+    setTimeout(() => {
+        closeGroceryWaitingOverlay();
+    }, 2200);
 }
 
 function onGroceryUrlDisabled(msg) {
@@ -12349,6 +12317,216 @@ function onGroceryUrlManual() {
     document.getElementById('gwActions').innerHTML = `
       <button onclick="closeGroceryWaitingOverlay()" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">返回 LINE 聊天室</button>
     `;
+}
+
+
+// ============================================================
+// 一般餐點訂單進度等待與自動轉址邏輯
+// ============================================================
+let orderPollTimer = null;
+let orderPollAttempts = 0;
+
+function showOrderWaitingOverlay(storeName) {
+    const el = document.getElementById('orderWaitingOverlay');
+    if (!el) return;
+    document.getElementById('owTitle').innerText = '正在傳送訂單...';
+    document.getElementById('owTitle').style.color = '#1E293B';
+    document.getElementById('owStore').innerText = '🏪 ' + (storeName || '線上餐點門市');
+    document.getElementById('owEmoji').innerText = '🍽️';
+    document.getElementById('owSpinner').style.display = 'block';
+    document.getElementById('owSpinner').style.borderTopColor = '#f43f5e';
+    document.getElementById('owContent').style.display = 'block';
+    document.getElementById('owContent').innerHTML = `
+      <div id="owStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span><span>訂單明細已送達聊天室</span></div>
+      <div id="owStep2" style="display:flex; align-items:center; gap:6px; color:#f43f5e; font-weight:bold; margin-top:4px;"><span>⏳</span><span>系統正在建立即時訂單進度...</span></div>
+      <div id="owStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span><span>完成後將自動開啟「查看訂單進度」</span></div>
+    `;
+    document.getElementById('owTip').innerText = '💡 取得訂單進度後將自動為您開啟頁面';
+    document.getElementById('owActions').innerHTML = `
+      <button onclick="closeOrderWaitingOverlay()" style="background:transparent; border:none; color:#64748B; font-size:13px; cursor:pointer; padding:6px; text-decoration:underline;">回到聊天室等候</button>
+    `;
+    el.style.display = 'flex';
+}
+
+function hideOrderWaitingOverlay() {
+    const el = document.getElementById('orderWaitingOverlay');
+    if (el) el.style.display = 'none';
+    if (orderPollTimer) {
+        clearInterval(orderPollTimer);
+        orderPollTimer = null;
+    }
+}
+
+function closeOrderWaitingOverlay() {
+    hideOrderWaitingOverlay();
+    if (typeof liff !== 'undefined' && liff.closeWindow) {
+        try { liff.closeWindow(); } catch(e) {}
+    }
+}
+
+async function handleFoodOrderSubmit(msgText) {
+    const storeName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : (document.getElementById('storeNameTitle') ? document.getElementById('storeNameTitle').innerText.trim() : '線上餐點門市');
+    const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+
+    showOrderWaitingOverlay(storeName);
+
+    const userId = await getLiffUserId();
+    let submittedOrderId = window.lastSubmittedOrderId || '';
+
+    // 送出訊息至 LINE 聊天室
+    try {
+        await liff.sendMessages([{ type: "text", text: msgText }]);
+        if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
+            await markGroupBuySubmitted(msgText);
+        }
+        clearCart();
+        window._orderSent = true;
+    } catch (err) {
+        console.error("sendMessages error:", err);
+        hideOrderWaitingOverlay();
+        showPermissionFailModal(msgText, err ? err.message : '');
+        return;
+    }
+
+    // 啟動輪詢取得查看訂單進度網址
+    orderPollAttempts = 0;
+    const maxAttempts = 15; // 15 次 * 1.2 秒 = 18 秒
+
+    if (orderPollTimer) {
+        clearInterval(orderPollTimer);
+        orderPollTimer = null;
+    }
+
+    orderPollTimer = setInterval(async () => {
+        orderPollAttempts++;
+        try {
+            const checkUrl = `${apiBase}/api/order/check_progress_url?user_id=${encodeURIComponent(userId || '')}&order_id=${encodeURIComponent(submittedOrderId || '')}&t=${Date.now()}`;
+            const res = await fetch(checkUrl);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'success' && data.progress_url) {
+                    clearInterval(orderPollTimer);
+                    orderPollTimer = null;
+                    onOrderProgressSuccess(data.progress_url, data.store_name || storeName);
+                    return;
+                } else if (data.status === 'error' || data.status === 'cancelled') {
+                    clearInterval(orderPollTimer);
+                    orderPollTimer = null;
+                    onOrderProgressError(data.message || '訂單未能成功送出');
+                    return;
+                }
+            }
+        } catch (e) {
+            console.log('Poll order check_progress_url error:', e);
+        }
+
+        if (orderPollAttempts >= maxAttempts) {
+            clearInterval(orderPollTimer);
+            orderPollTimer = null;
+            onOrderProgressTimeout();
+        }
+    }, 1200);
+}
+
+function onOrderProgressSuccess(progressUrl, storeName) {
+    const titleEl = document.getElementById('owTitle');
+    if (titleEl) {
+        titleEl.innerText = '🎉 訂單已建立！';
+        titleEl.style.color = '#059669';
+    }
+    const emojiEl = document.getElementById('owEmoji');
+    if (emojiEl) emojiEl.innerText = '🛵';
+    const spinnerEl = document.getElementById('owSpinner');
+    if (spinnerEl) spinnerEl.style.display = 'none';
+    const contentEl = document.getElementById('owContent');
+    if (contentEl) {
+        contentEl.innerHTML = `
+          <div style="text-align:center; padding:6px 0;">
+            <div style="font-weight:bold; color:#059669; font-size:15px; margin-bottom:4px;">即將自動開啟「查看訂單進度」！</div>
+            <div style="color:#64748B; font-size:12px;">（即時外送進度與明細已為您準備好）</div>
+          </div>
+        `;
+    }
+    const tipEl = document.getElementById('owTip');
+    if (tipEl) tipEl.innerText = '若未自動前往，請點擊下方按鈕：';
+    const actionsEl = document.getElementById('owActions');
+    if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button onclick="window.location.href='${progressUrl}'" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🔍 立即查看訂單進度</button>
+        `;
+    }
+    setTimeout(() => {
+        window.location.href = progressUrl;
+    }, 700);
+}
+
+function onOrderProgressTimeout() {
+    const titleEl = document.getElementById('owTitle');
+    if (titleEl) {
+        titleEl.innerText = '✅ 訂單已送出至聊天室';
+        titleEl.style.color = '#1E293B';
+    }
+    const emojiEl = document.getElementById('owEmoji');
+    if (emojiEl) emojiEl.innerText = '💬';
+    const spinnerEl = document.getElementById('owSpinner');
+    if (spinnerEl) spinnerEl.style.display = 'none';
+    const contentEl = document.getElementById('owContent');
+    if (contentEl) {
+        contentEl.innerHTML = `
+          <div style="line-height:1.6; text-align:center; font-size:14px; color:#475569;">
+            系統已收到您的點餐訊息！<br>
+            已將進度通知發送至 <b>LINE 聊天室</b>。<br><br>
+            <span style="color:#f43f5e; font-weight:bold; font-size:13px;">即將自動關閉視窗返回聊天室...</span>
+          </div>
+        `;
+    }
+    const tipEl = document.getElementById('owTip');
+    if (tipEl) tipEl.innerText = '';
+    const actionsEl = document.getElementById('owActions');
+    if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button onclick="closeOrderWaitingOverlay()" style="width:100%; padding:13px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer;">返回 LINE 聊天室</button>
+        `;
+    }
+    // 超時自動關閉視窗，不保持在網頁中
+    setTimeout(() => {
+        closeOrderWaitingOverlay();
+    }, 1800);
+}
+
+function onOrderProgressError(errMsg) {
+    const titleEl = document.getElementById('owTitle');
+    if (titleEl) {
+        titleEl.innerText = '⚠️ 訂單處理提醒';
+        titleEl.style.color = '#EF4444';
+    }
+    const emojiEl = document.getElementById('owEmoji');
+    if (emojiEl) emojiEl.innerText = '⚠️';
+    const spinnerEl = document.getElementById('owSpinner');
+    if (spinnerEl) spinnerEl.style.display = 'none';
+    const contentEl = document.getElementById('owContent');
+    if (contentEl) {
+        contentEl.innerHTML = `
+          <div style="line-height:1.6; text-align:center; font-size:14px; color:#1E293B; font-weight:bold; padding:8px 0;">
+            ${errMsg || '訂單未能成功送出'}
+          </div>
+          <div style="line-height:1.5; text-align:center; font-size:12px; color:#64748B;">
+            請返回 LINE 聊天室確認訊息，即將自動關閉視窗...
+          </div>
+        `;
+    }
+    const tipEl = document.getElementById('owTip');
+    if (tipEl) tipEl.innerText = '';
+    const actionsEl = document.getElementById('owActions');
+    if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button onclick="closeOrderWaitingOverlay()" style="width:100%; padding:13px; background:#EF4444; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:15px; cursor:pointer;">關閉視窗返回聊天室</button>
+        `;
+    }
+    // 得到錯誤回覆自動關閉視窗，不保持在網頁中
+    setTimeout(() => {
+        closeOrderWaitingOverlay();
+    }, 2200);
 }
 
 
@@ -12502,6 +12680,39 @@ function getSlotDiscountInfo(tw, isGrocery) {
 
 </script>
 
+
+<!-- 一般餐點訂單進度網址等待與跳轉遮罩 -->
+<div id="orderWaitingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.78); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); z-index:999999; align-items:center; justify-content:center; box-sizing:border-box; padding:20px;">
+  <div style="background:#fff; border-radius:24px; padding:30px 24px; max-width:340px; width:100%; text-align:center; box-shadow:0 20px 40px rgba(0,0,0,0.3); animation:gwPop 0.3s ease-out; position:relative;">
+    
+    <!-- 動態圖示區 -->
+    <div id="owIconContainer" style="margin-bottom:15px; position:relative; display:inline-block;">
+      <div id="owSpinner" style="width:72px; height:72px; border:4px solid #E2E8F0; border-top:4px solid #f43f5e; border-radius:50%; animation:gwSpin 1s linear infinite; margin:0 auto;"></div>
+      <div id="owEmoji" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:32px;">🍽️</div>
+    </div>
+    
+    <!-- 標題與店家 -->
+    <h3 id="owTitle" style="margin:0 0 6px 0; font-size:18px; color:#1E293B; font-weight:800;">正在建立訂單進度...</h3>
+    <div id="owStore" style="font-size:14px; font-weight:bold; color:#f43f5e; margin-bottom:15px; word-break:break-all;"></div>
+    
+    <!-- 進度內容區 -->
+    <div id="owContent" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px; font-size:13px; color:#475569; text-align:left; line-height:1.7; margin-bottom:15px;">
+      <div id="owStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span><span>訂單明細已送達聊天室</span></div>
+      <div id="owStep2" style="display:flex; align-items:center; gap:6px; color:#f43f5e; font-weight:bold; margin-top:4px;"><span>⏳</span><span>系統正在建立即時訂單進度...</span></div>
+      <div id="owStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span><span>完成後將自動開啟「查看訂單進度」</span></div>
+    </div>
+    
+    <!-- 提示小字 -->
+    <div id="owTip" style="font-size:12px; color:#94A3B8; line-height:1.5; margin-bottom:15px;">
+      💡 取得訂單進度後將自動為您開啟頁面
+    </div>
+    
+    <!-- 按鈕區 -->
+    <div id="owActions" style="display:flex; flex-direction:column; gap:8px;">
+      <button id="owCancelBtn" onclick="closeOrderWaitingOverlay()" style="background:transparent; border:none; color:#64748B; font-size:13px; cursor:pointer; padding:6px; text-decoration:underline;">回到聊天室等候</button>
+    </div>
+  </div>
+</div>
 
 <!-- 生鮮雜貨專屬團購網址等待與跳轉遮罩 -->
 <div id="groceryWaitingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.78); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); z-index:999999; align-items:center; justify-content:center; box-sizing:border-box; padding:20px;">
