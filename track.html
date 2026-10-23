@@ -3709,7 +3709,7 @@
 
             const lines = rawText.split('\n').map(l => l.trim()).filter(l => l);
 
-            const isSplit = rawText.includes('【多單');
+            const isSplit = rawText.includes('【多單') || rawText.includes('【分單') || /(?:【)?(?:多單|分單)\s*\d+/.test(rawText);
 
             
 
@@ -3743,7 +3743,7 @@
 
                     
 
-                    if (line.includes('【多單')) {
+                    if (line.includes('【多單') || line.includes('【分單') || /(?:【)?(?:多單|分單)\s*\d+/.test(line)) {
 
                         if (currentSplit) parsed.splits.push(currentSplit);
 
@@ -4071,6 +4071,11 @@
 
                         html += `<span style="background: #e65100; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">🛵 運送中</span>`;
 
+                    } else {
+                        const curSt = (window.lastTrackData && window.lastTrackData.order_status) || 'new';
+                        const stageStatus = (curSt === 'used') ? '👨‍🍳 點餐中' : '⏳ 等待接單';
+                        const stageColor = (curSt === 'used') ? '#0288d1' : '#f57c00';
+                        html += `<span style=\"background: ${stageColor}; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 4px;\">${stageStatus}</span>`;
                     }
 
                     html += `</div>`;
@@ -4442,223 +4447,121 @@
 
 
             let autoRefreshRemainingSec = 15;
-
             let autoRefreshIntervalTimer = null;
-
             let isManuallyRefreshing = false;
-
-
+            let lastManualRefreshTime = Date.now();
 
             window.triggerManualRefresh = function() {
-
-                if (isManuallyRefreshing) return;
-
-
+                const now = Date.now();
+                if (isManuallyRefreshing || (now - lastManualRefreshTime < 2500)) return;
+                lastManualRefreshTime = now;
 
                 // 若使用者正在滑動卡片，暫緩重新整理以保護手勢體驗
-
                 if (window.isUserTouchingSlider) {
-
                     console.log('👆 使用者正在滑動卡片中，暫緩自動更新');
-
                     autoRefreshRemainingSec = 5;
-
                     updateAutoRefreshDisplay();
-
                     return;
-
                 }
-
-
 
                 // 若多單外送員對話視窗正開啟，優先背景同步對話訊息，不打擾使用者打字
-
                 if (window.activeMultiChatUuid) {
-
                     syncMultiChatMessages(window.activeMultiChatUuid);
-
                     autoRefreshRemainingSec = 15;
-
                     updateAutoRefreshDisplay();
-
                     return;
-
                 }
 
-
-
                 isManuallyRefreshing = true;
-
                 autoRefreshRemainingSec = 15;
-
                 updateAutoRefreshDisplay();
 
-
-
                 const icon = document.getElementById('autoRefreshIcon');
-
                 if (icon) icon.classList.add('spin-icon');
-
-
 
                 console.log('🔄 觸發即時重新整理與狀態同步 (平滑更新)...');
 
-
+                const finishRefresh = () => {
+                    setTimeout(() => {
+                        if (icon) icon.classList.remove('spin-icon');
+                        isManuallyRefreshing = false;
+                    }, 600);
+                };
 
                 if (window.isMultiOrderMode && window.currentMultiUuidList) {
-
-                    loadAndRenderMultiOrders(window.currentMultiUuidList, window.lastParsedData, window.lastTrackData, true).finally(() => {
-
-                        setTimeout(() => {
-
-                            if (icon) icon.classList.remove('spin-icon');
-
-                            isManuallyRefreshing = false;
-
-                        }, 600);
-
-                    });
-
+                    loadAndRenderMultiOrders(window.currentMultiUuidList, window.lastParsedData, window.lastTrackData, true).finally(finishRefresh);
                 } else if (liveMap && window.currentActiveOrderUuid) {
-
                     fetchActiveOrder(window.currentActiveOrderUuid, '', window.trackApiBase).then(activeRes => {
-
                         if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
-
                             fetchTerminatedOrder(window.currentActiveOrderUuid, '', window.trackApiBase).then(termRes => {
-
                                 const finalData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
-
                                 renderDeliveredStage(finalData, window.lastParsedData || {}, window.lastTrackData || {}, '');
-
                             });
-
                         }
-
-                    }).catch(e => console.warn('手動重新整理異常:', e)).finally(() => {
-
-                        setTimeout(() => {
-
-                            if (icon) icon.classList.remove('spin-icon');
-
-                            isManuallyRefreshing = false;
-
-                        }, 600);
-
-                    });
-
+                    }).catch(e => console.warn('手動重新整理異常:', e)).finally(finishRefresh);
                 } else {
-
                     if (typeof checkStatus === 'function') {
-
-                        checkStatus(true).finally(() => {
-
-                            setTimeout(() => {
-
-                                if (icon) icon.classList.remove('spin-icon');
-
-                                isManuallyRefreshing = false;
-
-                            }, 600);
-
-                        });
-
+                        checkStatus(true).finally(finishRefresh);
                     } else {
-
-                        setTimeout(() => {
-
-                            if (icon) icon.classList.remove('spin-icon');
-
-                            isManuallyRefreshing = false;
-
-                        }, 600);
-
+                        finishRefresh();
                     }
-
                 }
-
             };
 
-
-
             function updateAutoRefreshDisplay() {
-
                 const secEl = document.getElementById('autoRefreshSec');
-
                 if (secEl) secEl.innerText = autoRefreshRemainingSec;
-
             }
-
-
 
             function initAutoRefreshWatchdog() {
-
                 if (autoRefreshIntervalTimer) clearInterval(autoRefreshIntervalTimer);
 
-
-
                 autoRefreshIntervalTimer = setInterval(() => {
+                    // 若訂單已取消或已全部送達，停止定時更新
+                    if (window.currentRenderedStage === 'delivered' || window.currentRenderedStage === 'canceled') {
+                        clearInterval(autoRefreshIntervalTimer);
+                        autoRefreshIntervalTimer = null;
+                        const secEl = document.getElementById('autoRefreshSec');
+                        if (secEl) secEl.innerText = '0';
+                        return;
+                    }
 
                     autoRefreshRemainingSec--;
-
                     if (autoRefreshRemainingSec <= 0) {
-
                         autoRefreshRemainingSec = 15;
-
                         updateAutoRefreshDisplay();
-
-
 
                         const chatInput = (document.getElementById('liveActiveChatInput') || 
-
                                            document.getElementById('liveCourierChatInput') ||
-
                                            document.getElementById('multiChatInput'));
-
                         const isTyping = chatInput && (document.activeElement === chatInput || chatInput.value.trim().length > 0);
-
                         if (!isTyping && !window.isUserTouchingSlider) {
-
                             window.triggerManualRefresh();
-
                         }
-
                     } else {
-
                         updateAutoRefreshDisplay();
-
                     }
-
                 }, 1000);
 
-
-
                 document.addEventListener('visibilitychange', () => {
-
                     if (document.visibilityState === 'visible') {
-
-                        console.log('📱 頁面恢復前景，立即執行即時重新整理！');
-
-                        window.triggerManualRefresh();
-
+                        const now = Date.now();
+                        if (now - lastManualRefreshTime > 10000) {
+                            console.log('📱 頁面恢復前景，執行即時重新整理！');
+                            window.triggerManualRefresh();
+                        }
                     }
-
                 });
-
-
 
                 window.addEventListener('focus', () => {
-
-                    window.triggerManualRefresh();
-
+                    const now = Date.now();
+                    if (now - lastManualRefreshTime > 10000) {
+                        window.triggerManualRefresh();
+                    }
                 });
-
             }
 
-
-
             // 啟動定時自動重新整理與狀態同步看門狗 (每 15 秒倒數與休眠喚醒檢查)
-
             initAutoRefreshWatchdog();
 
 
@@ -7392,7 +7295,7 @@
 
                             }
 
-                            setTimeout(checkStatus, 5000);
+                            // 統一由 initAutoRefreshWatchdog 倒數 15 秒排程更新，絕不在此私自 setTimeout 產生多重重複計時器
 
                         } else {
 
@@ -7448,7 +7351,7 @@
 
                             }
 
-                            setTimeout(checkStatus, 5000);
+                            // 統一由 initAutoRefreshWatchdog 倒數 15 秒排程更新，絕不在此私自 setTimeout 產生多重重複計時器
 
                         }
 
@@ -7522,7 +7425,7 @@
 
                         }
 
-                        setTimeout(checkStatus, 6000);
+                        if (typeof autoRefreshRemainingSec !== "undefined") { autoRefreshRemainingSec = 6; if (typeof updateAutoRefreshDisplay === "function") updateAutoRefreshDisplay(); } // 統一由 watchdog 倒數控管 6 秒重試，不自行產生獨立計時器
 
                     } else {
 
@@ -7538,7 +7441,7 @@
 
                         }
 
-                        setTimeout(checkStatus, 6000);
+                        if (typeof autoRefreshRemainingSec !== "undefined") { autoRefreshRemainingSec = 6; if (typeof updateAutoRefreshDisplay === "function") updateAutoRefreshDisplay(); } // 統一由 watchdog 倒數控管 6 秒重試，不自行產生獨立計時器
 
                     }
 
@@ -7558,7 +7461,7 @@
 
                     }
 
-                    setTimeout(checkStatus, 6000);
+                    if (typeof autoRefreshRemainingSec !== "undefined") { autoRefreshRemainingSec = 6; if (typeof updateAutoRefreshDisplay === "function") updateAutoRefreshDisplay(); } // 統一由 watchdog 倒數控管 6 秒重試，不自行產生獨立計時器
 
                 } finally {
 
