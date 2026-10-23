@@ -322,9 +322,34 @@
         @keyframes spinAnim {
             100% { transform: rotate(360deg); }
         }
+    
+        /* 畫面上層即時同步進度條 (置於最頂層，不佔據任何排版空間，讀取絕不推擠下方文字) */
+        #globalSyncTopBar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3.5px;
+            z-index: 999999;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            background: linear-gradient(90deg, #10b981 0%, #06c167 40%, #3b82f6 75%, #10b981 100%);
+            background-size: 200% 100%;
+        }
+        #globalSyncTopBar.active {
+            opacity: 1;
+            animation: globalSyncBarAnim 1.1s linear infinite;
+        }
+        @keyframes globalSyncBarAnim {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
     </style>
 </head>
 <body>
+    <!-- 頂部畫面上層即時同步進度條 (讀取完全在畫面上層呈現) -->
+    <div id="globalSyncTopBar"></div>
     <!-- 全局自動更新與定時重新整理膠囊 -->
     <div id="autoRefreshFloatingPill" onclick="window.triggerManualRefresh()" title="點擊立即重新整理">
         <span id="autoRefreshIcon">🔄</span>
@@ -802,10 +827,56 @@
 
             const statusArea = document.getElementById('trackStatusArea');
             if (statusArea) statusArea.innerHTML = canceledHtml;
+            window.currentRenderedStage = 'canceled';
+            window.hasRenderedOrderOnce = true;
 
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
                 orderTextArea.style.display = 'block';
+            }
+        }
+
+                // 渲染狀態紀錄器 (用於比對狀態變更，落實「有更新才變動，沒更新不會變動」)
+        window.currentRenderedStage = null;
+        window.hasRenderedOrderOnce = false;
+        window._lastRenderedOrderState = null;
+        window._lastRenderedOrderTextSig = null;
+
+        // 畫面上層即時同步狀態指示器 (上層顯示，絕不推擠或重排文字)
+        function showUpperLayerSync(isBackground = true) {
+            const topBar = document.getElementById('globalSyncTopBar');
+            if (topBar) topBar.classList.add('active');
+
+            const icon = document.getElementById('autoRefreshIcon');
+            if (icon) icon.classList.add('spin-icon');
+
+            const autoText = document.getElementById('autoRefreshText');
+            if (autoText && isBackground) {
+                if (!autoText.dataset.origHtml) autoText.dataset.origHtml = autoText.innerHTML;
+                autoText.innerHTML = `同步中...`;
+            }
+
+            const schedBadgeText = document.getElementById('schedSyncText');
+            if (schedBadgeText && window._lastUberSyncTimestamp) {
+                schedBadgeText.textContent = '連線同步中...';
+            }
+        }
+
+        function hideUpperLayerSync() {
+            const topBar = document.getElementById('globalSyncTopBar');
+            if (topBar) topBar.classList.remove('active');
+
+            const icon = document.getElementById('autoRefreshIcon');
+            if (icon) icon.classList.remove('spin-icon');
+
+            const autoText = document.getElementById('autoRefreshText');
+            if (autoText && autoText.dataset.origHtml) {
+                autoText.innerHTML = autoText.dataset.origHtml;
+                delete autoText.dataset.origHtml;
+            }
+
+            if (typeof updateSyncSecondsBadge === 'function') {
+                updateSyncSecondsBadge();
             }
         }
 
@@ -869,7 +940,7 @@
                         </div>
                         <div style="font-size: 18px; font-weight: 800; color: #311b92; margin-bottom: 6px;">📅 店家已接單排定預約配送</div>
                         <div style="font-size: 15px; color: #1a237e; font-weight: 700; margin-bottom: 6px;">
-                            🕒 <strong>預計送達時間:</strong> <span>${schedTime}</span>
+                            🕒 <strong>預計送達時間:</strong> <span id="schedTimeDisplay">${schedTime}</span>
                         </div>
                         <div style="font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 4px;">
                             📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
@@ -899,8 +970,8 @@
                                 <span id="schedSyncText">正常連線 (剛剛)</span>
                             </div>
                             <div style="font-size: 12px; color: #5c6bc0; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                                <span>🔄 每 15 秒自動偵測最新動態</span>
-                                <button type="button" onclick="window.triggerManualRefresh()" style="background: #5c6bc0; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; font-weight: bold; transition: filter 0.15s;">立即重新整理</button>
+                                <span>每 15 秒自動偵測最新動態</span>
+                                <button type="button" onclick="window.triggerManualRefresh()" style="background: #5c6bc0; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; font-weight: bold; transition: filter 0.15s;">🔄 立即重新整理</button>
                             </div>
                         </div>
                     </div>
@@ -916,17 +987,28 @@
                 orderTextArea.style.display = 'block';
             }
 
+            // 狀態與渲染旗標紀錄
+            window.currentRenderedStage = 'scheduled';
+            window.hasRenderedOrderOnce = true;
+            window._lastRenderedOrderState = {
+                stage: 'scheduled',
+                schedTime: schedTime,
+                storeName: storeName,
+                address: address,
+                text: (data && data.text) || '',
+                extIds: JSON.stringify((data && data.ext_order_ids) || [])
+            };
+
             // 啟動即時秒數計時器 (每秒遞增更新 X 秒前)
             if (window._syncSecInterval) clearInterval(window._syncSecInterval);
             updateSyncSecondsBadge();
             window._syncSecInterval = setInterval(updateSyncSecondsBadge, 1000);
 
-            // 啟動預約單自動定時重新檢查機制 (每 15 秒向 Uber Eats 重新查詢最新進度)
-            if (window._scheduledRefreshTimer) clearTimeout(window._scheduledRefreshTimer);
-            window._scheduledRefreshTimer = setTimeout(() => {
-                console.log('📅 預約排程單定時自動檢查最新進度...');
-                if (typeof checkStatus === 'function') checkStatus();
-            }, 15000);
+            // 自動更新由全局 initAutoRefreshWatchdog 統一控管倒數 15s，避免多重 timer 衝突
+            if (typeof autoRefreshRemainingSec !== 'undefined') {
+                autoRefreshRemainingSec = 15;
+                if (typeof updateAutoRefreshDisplay === 'function') updateAutoRefreshDisplay();
+            }
         }
 
         // 渲染已送達目的地階段 UI
@@ -1044,6 +1126,8 @@
 
             const statusArea = document.getElementById('trackStatusArea');
             if (statusArea) statusArea.innerHTML = deliveredHtml;
+            window.currentRenderedStage = 'delivered';
+            window.hasRenderedOrderOnce = true;
             
             // 完整顯示餐點明細與金額
             const orderTextArea = document.getElementById('trackOrderText');
@@ -2080,6 +2164,8 @@
         document.addEventListener('DOMContentLoaded', async () => {
             window.renderActiveDeliveryStage = renderActiveDeliveryStage;
             window.initActiveDeliveryMap = initActiveDeliveryMap;
+            window.currentRenderedStage = 'active';
+            window.hasRenderedOrderOnce = true;
             // 從網址列取得 UUID (支援 LINE LIFF 轉址特性)
             const urlParams = new URLSearchParams(window.location.search);
             let orderId = urlParams.get('id');
@@ -2446,6 +2532,8 @@
         function renderActiveDeliveryStage(activeData, parsedData, data, orderUuid) {
             window.renderActiveDeliveryStage = renderActiveDeliveryStage;
             window.initActiveDeliveryMap = initActiveDeliveryMap;
+            window.currentRenderedStage = 'active';
+            window.hasRenderedOrderOnce = true;
             const cardEl = document.querySelector('.card');
             if (cardEl) cardEl.classList.add('delivered-mode');
 
@@ -3402,118 +3490,166 @@
 
         async function checkStatus(isBackgroundRefresh = false) {
                 if (!orderId && window.isMultiOrderMode && window.currentMultiUuidList) {
-                    await loadAndRenderMultiOrders(window.currentMultiUuidList, window.lastParsedData, window.lastTrackData, isBackgroundRefresh);
+                    showUpperLayerSync(isBackgroundRefresh);
+                    try {
+                        await loadAndRenderMultiOrders(window.currentMultiUuidList, window.lastParsedData, window.lastTrackData, isBackgroundRefresh);
+                    } finally {
+                        hideUpperLayerSync();
+                    }
                     return;
                 }
+
+                showUpperLayerSync(isBackgroundRefresh);
+
                 try {
                     const data = await fetchTrackInfo(orderId, trackApiBase);
                     if (data && data.status === 'success') {
-                            const parsedData = parseOrderText(data.text);
+                        const parsedData = parseOrderText(data.text);
+                        const orderTextSignature = `${data.text || ''}__${JSON.stringify(data.ext_order_ids || [])}`;
+                        
+                        const hasTracking = (data.tracking_urls && data.tracking_urls.length > 0) || Boolean(data.tracking_url);
+
+                        // 僅在非 tracking 模式 (等待中/點餐中) 且內容發生實質變更時才重寫 orderTextArea
+                        if (!hasTracking && window._lastRenderedOrderTextSig !== orderTextSignature) {
+                            window._lastRenderedOrderTextSig = orderTextSignature;
                             orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, data.tracking_urls, [], data.ext_order_ids);
                             orderTextArea.style.backgroundColor = 'transparent';
                             orderTextArea.style.border = 'none';
                             orderTextArea.style.padding = '0';
                             orderTextArea.style.display = 'block';
+                        }
+                        
+                        let statusHtml = '';
+                        if (data.ext_order_id) {
+                            statusHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
+                        }
+                        
+                        if (hasTracking) {
+                            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                            countdownState = null;
+
+                            const trackingUrls = (data.tracking_urls && data.tracking_urls.length > 0)
+                                ? data.tracking_urls
+                                : (data.tracking_url ? [data.tracking_url] : []);
                             
-                            let statusHtml = '';
-                            if (data.ext_order_id) {
-                                statusHtml += `<p style='color: #666; font-size: 18px; margin-bottom: 5px;'>訂單編號: <strong style="color:#111; font-size:22px;">${data.ext_order_id}</strong></p>`;
-                            }
-                            
-                            const hasTracking = (data.tracking_urls && data.tracking_urls.length > 0) || Boolean(data.tracking_url);
-                            
-                            if (hasTracking) {
-                                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-                                countdownState = null;
+                            const isMulti = trackingUrls.length > 1 || parsedData.isSplit;
 
-                                const trackingUrls = (data.tracking_urls && data.tracking_urls.length > 0)
-                                    ? data.tracking_urls
-                                    : (data.tracking_url ? [data.tracking_url] : []);
-                                
-                                const isMulti = trackingUrls.length > 1 || parsedData.isSplit;
+                            if (isMulti) {
+                                await loadAndRenderMultiOrders(trackingUrls, parsedData, data, isBackgroundRefresh);
+                                return;
+                            } else {
+                                // 單一訂單情況
+                                const primaryTrackUrl = trackingUrls[0];
+                                const orderUuid = extractOrderUuid(primaryTrackUrl);
 
-                                if (isMulti) {
-                                    await loadAndRenderMultiOrders(trackingUrls, parsedData, data, isBackgroundRefresh);
-                                    return;
-                                } else {
-                                    // 單一訂單情況
-                                    const primaryTrackUrl = trackingUrls[0];
-                                    const orderUuid = extractOrderUuid(primaryTrackUrl);
+                                if (orderUuid) {
+                                    window.currentActiveOrderUuid = orderUuid;
+                                    window.trackApiBase = trackApiBase;
+                                    window.currentCookieSerial = data.cookie_serial || '';
+                                    window.currentCookieAccountIndex = data.cookie_account_index || data.ext_order_id || '';
 
-                                    if (orderUuid) {
-                                        window.currentActiveOrderUuid = orderUuid;
-                                        window.trackApiBase = trackApiBase;
-                                        window.currentCookieSerial = data.cookie_serial || '';
-                                        window.currentCookieAccountIndex = data.cookie_account_index || data.ext_order_id || '';
-
+                                    // 🌟 核心：僅在初次進入且畫面上尚未繪製任何卡片時，才使用 loader！
+                                    // 若畫面已經載入，讀取狀態純粹在畫面上層 (#globalSyncTopBar 與膠囊) 呈現，絕不覆蓋破壞文字！
+                                    if (!window.hasRenderedOrderOnce) {
                                         statusArea.innerHTML = `
                                             <div class="loader"></div>
                                             <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在同步外送員即時動態...</h3>
                                             <p style="color: #666; font-size: 13px; margin-top: 5px;">正在連接外送員定位與配送狀態</p>
                                         `;
+                                    }
 
-                                        // 1. 優先查詢進行中即時座標與外送狀態
-                                        const activeRes = await fetchActiveOrder(orderUuid, primaryTrackUrl, trackApiBase);
-                                        window._lastUberSyncTimestamp = Date.now();
-                                        window._lastUberSyncStatus = (activeRes && activeRes.status !== 'error') ? 'ok' : 'error';
-                                        if (typeof updateSyncSecondsBadge === 'function') updateSyncSecondsBadge();
+                                    // 1. 優先查詢進行中即時座標與外送狀態
+                                    const activeRes = await fetchActiveOrder(orderUuid, primaryTrackUrl, trackApiBase);
+                                    window._lastUberSyncTimestamp = Date.now();
+                                    window._lastUberSyncStatus = (activeRes && activeRes.status !== 'error') ? 'ok' : 'error';
+                                    if (typeof updateSyncSecondsBadge === 'function') updateSyncSecondsBadge();
 
-                                        // A. 檢查是否為取消 (無論如何優先處理)
-                                        if (isOrderCanceled(activeRes)) {
+                                    // A. 檢查是否為取消 (優先處理)
+                                    if (isOrderCanceled(activeRes)) {
+                                        if (window.currentRenderedStage !== 'canceled') {
                                             console.log('❌ 檢測到外送行程已取消！切換至已取消階段');
                                             renderCanceledStage(activeRes, parsedData, data, primaryTrackUrl);
-                                            return;
                                         }
+                                        return;
+                                    }
 
-                                        // B. 檢查是否已送達 (送達完成判定絕對優先於預約排程！避免已完成訂單被文字誤判卡在預約頁)
-                                        if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
+                                    // B. 檢查是否已送達 (送達完成判定絕對優先於預約排程)
+                                    if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
+                                        if (window.currentRenderedStage !== 'delivered') {
                                             console.log('🎉 檢測到外送夥伴已抵達送達！進一步獲取留置拍照與送達明細...');
                                             const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
                                             const finalDeliveredData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
                                             renderDeliveredStage(finalDeliveredData, parsedData, data, primaryTrackUrl);
-                                            return;
                                         }
-
-                                        // C. 檢查是否進行中 (店家接單備餐、外送員前往取餐或運送途中)
-                                        const isActivelyProgressing = activeRes && activeRes.status === 'success' && !activeRes.isScheduled && activeRes.orderPhase !== 'SCHEDULED';
-                                        if (isActivelyProgressing) {
-                                            console.log('🛵 檢測到外送進行中，直接渲染自製即時追蹤畫面 (絕不轉網址)');
-                                            renderActiveDeliveryStage(activeRes, parsedData, data, orderUuid);
-                                            return;
-                                        }
-
-                                        // D. 檢查是否為預約排程單 (Scheduled Order)
-                                        // 優先以 Uber Eats 官方 API 回傳為最高準則 (isScheduled / status==='scheduled' / orderPhase==='SCHEDULED')
-                                        // 僅在 API 尚未取得或返回尚未出發且未送達時，才參考本地文字
-                                        const isSingleSched = (activeRes && (activeRes.isScheduled || activeRes.status === 'scheduled' || activeRes.orderPhase === 'SCHEDULED')) ||
-                                                              (!(activeRes && activeRes.status === 'success') && isScheduledOrder(parsedData.time, null, data.text));
-                                        if (isSingleSched) {
-                                            console.log('📅 檢測到此訂單為預約排程單，進入預約展示階段');
-                                            renderScheduledStage(parsedData, data, primaryTrackUrl, activeRes);
-                                            return;
-                                        }
-
-                                        // 2. 備援查詢結單狀態 (Terminated)
-                                        const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
-                                        if (isOrderCanceled(termRes)) {
-                                            renderCanceledStage(termRes, parsedData, data, primaryTrackUrl);
-                                            return;
-                                        }
-                                        if (termRes && termRes.status === 'success') {
-                                            renderDeliveredStage(termRes, parsedData, data, primaryTrackUrl);
-                                            return;
-                                        }
-                                    }
-
-                                    // 檢查是否為預約排程單 (Scheduled Order)
-                                    const isSingleSched = !(activeRes && activeRes.status === 'success') && isScheduledOrder(parsedData.time, null, data.text);
-                                    if (isSingleSched) {
-                                        console.log('📅 單筆訂單為預約排程單，進入預約展示階段');
-                                        renderScheduledStage(parsedData, data, primaryTrackUrl);
                                         return;
                                     }
 
-                                    // 3. 進行中備援：直接在頁面展示自製追蹤畫面，絕不自動跳轉！
+                                    // C. 檢查是否進行中 (店家接單備餐、外送員前往取餐或運送途中)
+                                    const isActivelyProgressing = activeRes && activeRes.status === 'success' && !activeRes.isScheduled && activeRes.orderPhase !== 'SCHEDULED';
+                                    if (isActivelyProgressing) {
+                                        if (window.currentRenderedStage !== 'active') {
+                                            console.log('🛵 檢測到外送進行中，渲染自製即時追蹤畫面');
+                                            renderActiveDeliveryStage(activeRes, parsedData, data, orderUuid);
+                                        }
+                                        return;
+                                    }
+
+                                    // D. 檢查是否為預約排程單 (Scheduled Order)
+                                    const isSingleSched = (activeRes && (activeRes.isScheduled || activeRes.status === 'scheduled' || activeRes.orderPhase === 'SCHEDULED')) ||
+                                                          (!(activeRes && activeRes.status === 'success') && isScheduledOrder(parsedData.time, null, data.text));
+                                    if (isSingleSched) {
+                                        const curSchedTime = (activeRes && activeRes.scheduledTime) || parsedData.time || '預定時間';
+                                        const curStore = (activeRes && activeRes.store && activeRes.store.name) || parsedData.store || '外送合作店家';
+                                        const curAddress = (activeRes && activeRes.destination && activeRes.destination.address) || parsedData.address || '指定外送地址';
+
+                                        const isSameSched = (
+                                            window.currentRenderedStage === 'scheduled' &&
+                                            window._lastRenderedOrderState &&
+                                            window._lastRenderedOrderState.schedTime === curSchedTime &&
+                                            window._lastRenderedOrderState.storeName === curStore &&
+                                            window._lastRenderedOrderState.address === curAddress &&
+                                            window._lastRenderedOrderState.text === data.text
+                                        );
+
+                                        if (isSameSched) {
+                                            // 🌟 核心：有更新才變動，沒更新完全不碰 DOM，徹底消除任何畫面跳動！
+                                            console.log('⚡ 預約單狀態無實質變更，跳過 DOM 重新渲染，保持畫面完全靜止');
+                                            return;
+                                        }
+
+                                        console.log('📅 檢測到此訂單為預約排程單 (初次載入或內容變更)，渲染預約展示階段');
+                                        renderScheduledStage(parsedData, data, primaryTrackUrl, activeRes);
+                                        return;
+                                    }
+
+                                    // 2. 備援查詢結單狀態 (Terminated)
+                                    const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
+                                    if (isOrderCanceled(termRes)) {
+                                        if (window.currentRenderedStage !== 'canceled') {
+                                            renderCanceledStage(termRes, parsedData, data, primaryTrackUrl);
+                                        }
+                                        return;
+                                    }
+                                    if (termRes && termRes.status === 'success') {
+                                        if (window.currentRenderedStage !== 'delivered') {
+                                            renderDeliveredStage(termRes, parsedData, data, primaryTrackUrl);
+                                        }
+                                        return;
+                                    }
+                                }
+
+                                // 備援預約排程單判定
+                                const isSingleSchedFallback = !(activeRes && activeRes.status === 'success') && isScheduledOrder(parsedData.time, null, data.text);
+                                if (isSingleSchedFallback) {
+                                    if (window.currentRenderedStage !== 'scheduled') {
+                                        console.log('📅 單筆訂單為預約排程單 (備援)，進入預約展示階段');
+                                        renderScheduledStage(parsedData, data, primaryTrackUrl);
+                                    }
+                                    return;
+                                }
+
+                                // 3. 進行中備援
+                                if (window.currentRenderedStage !== 'active') {
                                     renderActiveDeliveryStage({
                                         eta: '計算中...',
                                         orderStatus: '訂單正在準備中 (外送即將出發)',
@@ -3522,11 +3658,15 @@
                                         destination: { address: parsedData.address || '指定外送地址' }
                                     }, parsedData, data, orderUuid);
                                 }
-                            } else if (data.order_status === 'used') {
-                                const accTimeStr = data.accepted_time_hm || extractHM(data.accepted_at) || extractHM(data.timestamp);
-                                const accElapsed = (typeof data.accept_elapsed_sec === 'number') ? data.accept_elapsed_sec : calcFallbackElapsedSec(data.accepted_at || data.timestamp);
-                                countdownState = { mode: 'used', baseElapsedSec: accElapsed, syncLocalMs: Date.now() };
+                            }
+                        } else if (data.order_status === 'used') {
+                            const accTimeStr = data.accepted_time_hm || extractHM(data.accepted_at) || extractHM(data.timestamp);
+                            const accElapsed = (typeof data.accept_elapsed_sec === 'number') ? data.accept_elapsed_sec : calcFallbackElapsedSec(data.accepted_at || data.timestamp);
+                            countdownState = { mode: 'used', baseElapsedSec: accElapsed, syncLocalMs: Date.now() };
 
+                            if (window.currentRenderedStage !== 'used') {
+                                window.currentRenderedStage = 'used';
+                                window.hasRenderedOrderOnce = true;
                                 statusHtml += `
                                     <h3 style="color: #007bff; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/LOADING.gif" style="width: 80px; vertical-align: middle; margin-right: 5px;"> 正在為您的訂單點餐...</h3>
                                     ${accTimeStr ? `<p style="color: #333; font-weight: bold; font-size: 15px; margin: 6px 0;">接單時間為${accTimeStr}</p>` : ''}
@@ -3534,12 +3674,24 @@
                                 `;
                                 statusArea.innerHTML = statusHtml;
                                 startCountdownLoop();
-                                setTimeout(checkStatus, 5000);
-                            } else {
-                                const subTimeStr = data.submitted_time_hm || extractHM(data.submitted_at) || extractHM(data.timestamp);
-                                const waitElapsed = (typeof data.wait_elapsed_sec === 'number') ? data.wait_elapsed_sec : calcFallbackElapsedSec(data.submitted_at || data.timestamp);
-                                countdownState = { mode: 'waiting', baseElapsedSec: waitElapsed, syncLocalMs: Date.now() };
+                            }
+                            setTimeout(checkStatus, 5000);
+                        } else {
+                            const subTimeStr = data.submitted_time_hm || extractHM(data.submitted_at) || extractHM(data.timestamp);
+                            const waitElapsed = (typeof data.wait_elapsed_sec === 'number') ? data.wait_elapsed_sec : calcFallbackElapsedSec(data.submitted_at || data.timestamp);
+                            countdownState = { mode: 'waiting', baseElapsedSec: waitElapsed, syncLocalMs: Date.now() };
 
+                            const isSameWaiting = window.currentRenderedStage === 'waiting' &&
+                                                  window._lastRenderedOrderState &&
+                                                  window._lastRenderedOrderState.activityText === (data.latest_activity_text || '');
+
+                            if (!isSameWaiting) {
+                                window.currentRenderedStage = 'waiting';
+                                window.hasRenderedOrderOnce = true;
+                                window._lastRenderedOrderState = {
+                                    stage: 'waiting',
+                                    activityText: data.latest_activity_text || ''
+                                };
                                 statusHtml += `
                                     <h3 style="color: #ff9800; font-size: 20px; margin-top: 15px;"><img src="http://weibsite.github.io/findDOG/image/sit.gif" style="width: 55px; vertical-align: middle; margin-right: 5px;"> 等待代訂接單</h3>
                                     <p style="color: #007bff; font-weight: bold; font-size: 15px; margin: 6px 0;">${data.latest_activity_text || '等待代訂接單中目前代訂有空'}</p>
@@ -3548,42 +3700,63 @@
                                 `;
                                 statusArea.innerHTML = statusHtml;
                                 startCountdownLoop();
-                                setTimeout(checkStatus, 5000);
                             }
-                            window.lastParsedData = parsedData;
-                            window.lastTrackData = data;
-                        } else if (data && data.status) {
-                            // 檢查 orderId 是否包含有效 UUID (單單或多單)，若是則進行 UUID 直接追蹤
-                            const candidateUuids = (orderId || '').split(',').map(s => s.trim()).filter(Boolean);
-                            if (candidateUuids.length > 0 && candidateUuids.every(u => /^[0-9a-fA-F-]{36}$/.test(u))) {
-                                if (candidateUuids.length > 1) {
-                                    await loadAndRenderMultiOrders(candidateUuids, null, null, isBackgroundRefresh);
-                                    return;
-                                } else {
-                                    const singleU = candidateUuids[0];
-                                    const activeRes = await fetchActiveOrder(singleU, '', trackApiBase);
-                                    if (activeRes && activeRes.status === 'success') {
+                            setTimeout(checkStatus, 5000);
+                        }
+                        window.lastParsedData = parsedData;
+                        window.lastTrackData = data;
+                    } else if (data && data.status) {
+                        const candidateUuids = (orderId || '').split(',').map(s => s.trim()).filter(Boolean);
+                        if (candidateUuids.length > 0 && candidateUuids.every(u => /^[0-9a-fA-F-]{36}$/.test(u))) {
+                            if (candidateUuids.length > 1) {
+                                await loadAndRenderMultiOrders(candidateUuids, null, null, isBackgroundRefresh);
+                                return;
+                            } else {
+                                const singleU = candidateUuids[0];
+                                const activeRes = await fetchActiveOrder(singleU, '', trackApiBase);
+                                if (activeRes && activeRes.status === 'success') {
+                                    if (window.currentRenderedStage !== 'active') {
                                         renderActiveDeliveryStage(activeRes, {}, {}, singleU);
-                                        return;
                                     }
-                                    const termRes = await fetchTerminatedOrder(singleU, '', trackApiBase);
-                                    if (termRes && termRes.status === 'success') {
+                                    return;
+                                }
+                                const termRes = await fetchTerminatedOrder(singleU, '', trackApiBase);
+                                if (termRes && termRes.status === 'success') {
+                                    if (window.currentRenderedStage !== 'delivered') {
                                         renderDeliveredStage(termRes, {}, {}, `https://www.ubereats.com/tw/orders/${singleU}`);
-                                        return;
                                     }
+                                    return;
                                 }
                             }
-                            statusArea.innerHTML = `<h3 style="color:red;">找不到此訂單</h3><p style="color:#666;">可能是系統處理中或連結錯誤 (將於 6 秒後自動重新檢查...)</p>`;
-                            setTimeout(checkStatus, 6000);
-                        } else {
-                            statusArea.innerHTML = `<h3 style="color:red;">無法連線到伺服器</h3><p style="color:#666;">請確認您的網路連線 (將於 6 秒後自動重新檢查...)</p>`;
-                            setTimeout(checkStatus, 6000);
                         }
-                    } catch(e) {
-                        console.error('checkStatus 執行異常:', e);
-                        statusArea.innerHTML = `<h3 style="color:red;">無法連線到伺服器</h3><p style="color:#666;">連線重試中 (6 秒後自動重新檢查)...</p>`;
+                        if (!window.hasRenderedOrderOnce) {
+                            statusArea.innerHTML = `<h3 style="color:red;">找不到此訂單</h3><p style="color:#666;">可能是系統處理中或連結錯誤 (將於 6 秒後自動重新檢查...)</p>`;
+                        } else {
+                            window._lastUberSyncStatus = 'error';
+                            if (typeof updateSyncSecondsBadge === 'function') updateSyncSecondsBadge();
+                        }
+                        setTimeout(checkStatus, 6000);
+                    } else {
+                        if (!window.hasRenderedOrderOnce) {
+                            statusArea.innerHTML = `<h3 style="color:red;">無法連線到伺服器</h3><p style="color:#666;">請確認您的網路連線 (將於 6 秒後自動重新檢查...)</p>`;
+                        } else {
+                            window._lastUberSyncStatus = 'error';
+                            if (typeof updateSyncSecondsBadge === 'function') updateSyncSecondsBadge();
+                        }
                         setTimeout(checkStatus, 6000);
                     }
+                } catch(e) {
+                    console.error('checkStatus 執行異常:', e);
+                    if (!window.hasRenderedOrderOnce) {
+                        statusArea.innerHTML = `<h3 style="color:red;">無法連線到伺服器</h3><p style="color:#666;">連線重試中 (6 秒後自動重新檢查)...</p>`;
+                    } else {
+                        window._lastUberSyncStatus = 'error';
+                        if (typeof updateSyncSecondsBadge === 'function') updateSyncSecondsBadge();
+                    }
+                    setTimeout(checkStatus, 6000);
+                } finally {
+                    hideUpperLayerSync();
+                }
             }
 
             window.checkStatus = checkStatus;
