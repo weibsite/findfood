@@ -2979,13 +2979,15 @@
 
                 const shortStore = store.length > 7 ? store.substring(0, 7) + '...' : store;
 
+                const isCanceledTab = concise.step === 0;
+                const isScheduledTab = concise.badge === '預約單';
+                const tabStatusClass = isCanceledTab ? 'canceled-tab' : (isScheduledTab ? 'scheduled-tab' : '');
                 const activeClass = (idx === (window.currentMultiOrderIndex || 0)) ? 'active' : '';
 
 
 
                 html += `
-
-                    <button type="button" class="split-tab-btn ${activeClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}">
+                    <button type="button" class="split-tab-btn ${tabStatusClass} ${activeClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}">
 
                         <span>${idx + 1}. ${shortStore}</span>
 
@@ -3319,6 +3321,9 @@
 
                 window.currentMultiOrderIndex = idx;
 
+                if (window.currentMultiUuidList && window.currentMultiUuidList[idx]) {
+                    window.currentMultiActiveOrderUuid = window.currentMultiUuidList[idx];
+                }
                 if (!tabsContainer) return;
 
                 const tabs = tabsContainer.querySelectorAll('.split-tab-btn');
@@ -3485,227 +3490,189 @@
 
         // ============================================================
 
-        async function loadAndRenderMultiOrders(uuidList, parsedData = null, rawData = null, isBackgroundRefresh = false) {
-
+                async function loadAndRenderMultiOrders(uuidList, parsedData = null, rawData = null, isBackgroundRefresh = false) {
             window.isMultiOrderMode = true;
-
             window.currentMultiUuidList = uuidList;
 
-
-
             const trackingUrls = uuidList.map(u => {
-
                 if (!u || !String(u).trim()) return '';
-
                 if (String(u).startsWith('http')) return String(u).trim();
-
                 const cleanU = extractOrderUuid(u) || String(u).trim();
-
                 return cleanU ? `https://www.ubereats.com/tw/orders/${cleanU}` : '';
-
             });
-
-
 
             // 僅在非背景更新且目前畫面上還沒有多單卡片時，顯示 Loading 畫面
-
             const statusArea = document.getElementById('trackStatusArea');
-
             if (!isBackgroundRefresh && statusArea && !document.getElementById('deliveryStatusSlider')) {
-
                 statusArea.innerHTML = `
-
                     <div class="loader"></div>
-
                     <h3 style="color: #06c167; font-size: 18px; margin-top: 15px;">🛵 正在同步各筆子訂單外送進度...</h3>
-
                     <p style="color: #666; font-size: 13px; margin-top: 5px;">共 ${uuidList.length} 筆子訂單，正在即時查詢外送員與狀態...</p>
-
                 `;
-
             }
-
-
 
             // 同步獲取各單最新狀態 (進行中 active 優先、送達與取消自動辨識)
-
             const subResults = await Promise.all(uuidList.map(async (item, idx) => {
-
                 const rawItem = (item || '').trim();
-
                 const u = extractOrderUuid(rawItem) || (rawItem.startsWith('http') ? '' : rawItem);
-
                 const url = (!rawItem) ? '' : (rawItem.startsWith('http') ? rawItem : (u ? `https://www.ubereats.com/tw/orders/${u}` : ''));
-
                 const res = await getSubOrderStatus(u, url, window.trackApiBase);
-
                 return { ...res, url, idx, orderUuid: u || '' };
-
             }));
 
+            // 組合多單各項關聯資料 (safeParsedData 與 safeRawData)
+            const safeParsedData = parsedData ? JSON.parse(JSON.stringify(parsedData)) : {
+                isSplit: true,
+                address: rawData?.address || (subResults.find(r => r.destination?.address)?.destination?.address) || '指定外送地址',
+                splits: uuidList.map((u, i) => {
+                    const r = subResults[i] || {};
+                    const storeName = r.storeName || (r.store && r.store.name) || `店家 ${i + 1}`;
+                    return {
+                        title: `【多單 ${i + 1}】`,
+                        store: storeName,
+                        items: [],
+                        fees: [],
+                        subtotal: '',
+                        discount: '',
+                        total: r.total || ''
+                    };
+                })
+            };
 
+            const safeRawData = rawData ? JSON.parse(JSON.stringify(rawData)) : {
+                status: 'success',
+                text: '',
+                ext_order_ids: []
+            };
 
-            // 產生狀態特徵簽章 (Signature) 用於比對 (Diffing)
-
-            const currentSignature = JSON.stringify(subResults.map(r => ({
-
-                uuid: r.orderUuid,
-
-                status: r.status,
-
-                orderStatus: r.orderStatus,
-
-                isDelivered: r.isDelivered,
-
-                isCanceled: r.isCanceled,
-
-                etaMin: r.etaMinutes,
-
-                courier: r.courier?.name,
-
-                courierVeh: r.courier?.vehicle,
-
-                pin: r.pinCode || r.courier?.pinCode
-
-            })));
-
-
-
-            // 🌟 核心優化：若資料沒有任何變動，完全不重新渲染 DOM，徹底避免畫面閃爍或拖曳回滾！
-
-            if (isBackgroundRefresh && window.lastMultiOrderSignature === currentSignature) {
-
-                console.log('⚡ 多單狀態無實質變更，跳過 DOM 重新渲染，保持當前滑動位置');
-
-                return;
-
+            const itemCount = Math.max(uuidList.length, trackingUrls.length, subResults.length, (safeParsedData.splits || []).length);
+            const combinedList = [];
+            for (let i = 0; i < itemCount; i++) {
+                combinedList.push({
+                    origIndex: i,
+                    uuid: uuidList[i] || '',
+                    trackingUrl: trackingUrls[i] || '',
+                    subResult: subResults[i] || {},
+                    split: (safeParsedData.splits && safeParsedData.splits[i]) ? safeParsedData.splits[i] : null,
+                    extOrderId: (safeRawData.ext_order_ids && safeRawData.ext_order_ids[i]) ? safeRawData.ext_order_ids[i] : ''
+                });
             }
 
-            window.lastMultiOrderSignature = currentSignature;
-
-
-
-            // 若要更新 DOM，先精準紀錄當前滑動位置與分頁索引
-
-            const topSlider = document.getElementById('deliveryStatusSlider');
-
-            const bottomSlider = document.getElementById('splitsDetailSlider');
-
-            const savedTopScrollLeft = topSlider ? topSlider.scrollLeft : null;
-
-            const savedBottomScrollLeft = bottomSlider ? bottomSlider.scrollLeft : null;
-
-            const savedIndex = window.currentMultiOrderIndex || 0;
-
-
-
-            const safeParsedData = parsedData || {
-
-                isSplit: true,
-
-                address: rawData?.address || (subResults.find(r => r.destination?.address)?.destination?.address) || '指定外送地址',
-
-                splits: uuidList.map((u, i) => {
-
-                    const r = subResults[i] || {};
-
-                    const storeName = r.storeName || (r.store && r.store.name) || `店家 ${i + 1}`;
-
-                    return {
-
-                        title: `【多單 ${i + 1}】`,
-
-                        store: storeName,
-
-                        items: [],
-
-                        fees: [],
-
-                        subtotal: '',
-
-                        discount: '',
-
-                        total: r.total || ''
-
-                    };
-
-                })
-
-            };
-
-
-
-            const safeRawData = rawData || {
-
-                status: 'success',
-
-                text: '',
-
-                ext_order_ids: []
-
-            };
-
-
-
-            window.lastParsedData = safeParsedData;
-
-            window.lastTrackData = safeRawData;
-
-
-
-            // 執行渲染
-
-            renderMultiDeliveredStage(subResults, safeParsedData, safeRawData, trackingUrls);
-
-
-
-            // 立即恢復使用者原先瀏覽的捲軸位置與卡片
-
-            requestAnimationFrame(() => {
-
-                const newTopSlider = document.getElementById('deliveryStatusSlider');
-
-                const newBottomSlider = document.getElementById('splitsDetailSlider');
-
-                if (newTopSlider && savedTopScrollLeft !== null) {
-
-                    newTopSlider.scrollLeft = savedTopScrollLeft;
-
-                }
-
-                if (newBottomSlider && savedBottomScrollLeft !== null) {
-
-                    newBottomSlider.scrollLeft = savedBottomScrollLeft;
-
-                }
-
-                if (savedIndex > 0 && typeof window.scrollToSplitIndex === 'function') {
-
-                    const tabsContainer = document.getElementById('splitTabsContainer');
-
-                    if (tabsContainer) {
-
-                        const tabs = tabsContainer.querySelectorAll('.split-tab-btn');
-
-                        tabs.forEach((tab, i) => {
-
-                            if (i === savedIndex) tab.classList.add('active');
-
-                            else tab.classList.remove('active');
-
-                        });
-
+            // 判斷該子單是否已取消
+            function checkSubIsCanceled(item) {
+                const sub = item.subResult;
+                if (sub) {
+                    if (sub.isCanceled === true || sub.status === 'canceled' || sub.status === 'deleted' || sub.isUntracked === true) return true;
+                    if (typeof isOrderCanceled === 'function' && isOrderCanceled(sub)) return true;
+                    if (typeof getSubOrderConciseStatus === 'function') {
+                        const c = getSubOrderConciseStatus(sub);
+                        if (c && c.step === 0) return true;
                     }
-
+                    const fullTitle = (sub.cancelTitle || sub.cancelReason || sub.orderStatus || sub.title || '').trim();
+                    if (fullTitle.includes('取消') || fullTitle.toLowerCase().includes('cancel') || fullTitle.includes('無法接單')) return true;
                 }
+                const split = item.split;
+                if (split) {
+                    if (typeof isOrderCanceled === 'function' && isOrderCanceled(split)) return true;
+                    if (split.isCanceled === true || split.status === 'canceled') return true;
+                    const sTitle = (split.title || split.cancelReason || '').trim();
+                    if (sTitle.includes('取消') || sTitle.toLowerCase().includes('cancel')) return true;
+                }
+                return false;
+            }
 
+            // 🌟 核心要求：若出現多單情況，強制把已取消訂單排列在最後面 (非取消訂單維持原始順序)
+            combinedList.sort((a, b) => {
+                const aCanceled = checkSubIsCanceled(a);
+                const bCanceled = checkSubIsCanceled(b);
+                if (aCanceled && !bCanceled) return 1;
+                if (!aCanceled && bCanceled) return -1;
+                return a.origIndex - b.origIndex;
             });
 
+            // 重新序號化 split 標題，保證分頁、進度卡與明細卡序號一致且保留代訂編號
+            combinedList.forEach((item, idx) => {
+                if (item.split) {
+                    if (item.split.title && /(?:【)?(?:多單|分單|子訂單)\s*\d+/.test(item.split.title)) {
+                        item.split.title = item.split.title.replace(/((?:【)?(?:多單|分單|子訂單)\s*)\d+/, `$1${idx + 1}`);
+                    } else if (!item.split.title) {
+                        item.split.title = `【多單 ${idx + 1}】`;
+                    }
+                }
+            });
+
+            // 解構成排序後陣列
+            const sortedUuidList = combinedList.map(it => it.uuid);
+            const sortedTrackingUrls = combinedList.map(it => it.trackingUrl);
+            const sortedSubResults = combinedList.map(it => it.subResult);
+            const sortedSplits = combinedList.map(it => it.split).filter(Boolean);
+            const sortedExtOrderIds = combinedList.map(it => it.extOrderId);
+
+            safeParsedData.splits = sortedSplits;
+            safeRawData.ext_order_ids = sortedExtOrderIds;
+            window.currentMultiUuidList = sortedUuidList;
+
+            // 產生狀態特徵簽章 (Signature) 用於比對 (Diffing)
+            const currentSignature = JSON.stringify(sortedSubResults.map(r => ({
+                uuid: r.orderUuid,
+                status: r.status,
+                orderStatus: r.orderStatus,
+                isDelivered: r.isDelivered,
+                isCanceled: r.isCanceled,
+                etaMin: r.etaMinutes,
+                courier: r.courier?.name,
+                courierVeh: r.courier?.vehicle,
+                pin: r.pinCode || r.courier?.pinCode
+            })));
+
+            // 🌟 核心優化：若資料沒有任何變動，完全不重新渲染 DOM，徹底避免畫面閃爍或拖曳回滾！
+            if (isBackgroundRefresh && window.lastMultiOrderSignature === currentSignature) {
+                console.log('⚡ 多單狀態無實質變更，跳過 DOM 重新渲染，保持當前滑動位置');
+                return;
+            }
+            window.lastMultiOrderSignature = currentSignature;
+
+            // 若要更新 DOM，先精準紀錄當前滑動位置與分頁索引
+            const topSlider = document.getElementById('deliveryStatusSlider');
+            const bottomSlider = document.getElementById('splitsDetailSlider');
+            const savedTopScrollLeft = topSlider ? topSlider.scrollLeft : null;
+            const savedBottomScrollLeft = bottomSlider ? bottomSlider.scrollLeft : null;
+            const previousIndex = window.currentMultiOrderIndex || 0;
+            const activeUuid = window.currentMultiActiveOrderUuid || null;
+
+            let targetIndex = 0;
+            if (activeUuid && sortedUuidList.includes(activeUuid)) {
+                targetIndex = sortedUuidList.indexOf(activeUuid);
+            } else if (previousIndex >= 0 && previousIndex < sortedUuidList.length) {
+                targetIndex = previousIndex;
+            }
+            window.currentMultiOrderIndex = targetIndex;
+            window.currentMultiActiveOrderUuid = sortedUuidList[targetIndex] || null;
+
+            window.lastParsedData = safeParsedData;
+            window.lastTrackData = safeRawData;
+
+            // 執行渲染
+            renderMultiDeliveredStage(sortedSubResults, safeParsedData, safeRawData, sortedTrackingUrls);
+
+            // 立即恢復使用者原先瀏覽的捲軸位置與卡片
+            requestAnimationFrame(() => {
+                if (targetIndex > 0 && typeof window.scrollToSplitIndex === 'function') {
+                    window.scrollToSplitIndex(targetIndex);
+                } else {
+                    const newTopSlider = document.getElementById('deliveryStatusSlider');
+                    const newBottomSlider = document.getElementById('splitsDetailSlider');
+                    if (newTopSlider && savedTopScrollLeft !== null) {
+                        newTopSlider.scrollLeft = savedTopScrollLeft;
+                    }
+                    if (newBottomSlider && savedBottomScrollLeft !== null) {
+                        newBottomSlider.scrollLeft = savedBottomScrollLeft;
+                    }
+                }
+            });
         }
 
-        
-
-                        function parseOrderText(rawText) {
+        function parseOrderText(rawText) {
 
             const lines = rawText.split('\n').map(l => l.trim()).filter(l => l);
 
