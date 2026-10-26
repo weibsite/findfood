@@ -446,6 +446,28 @@
 
         }
 
+        .split-tab-btn.ordering-tab {
+
+            border-color: #7dd3fc;
+
+            color: #0369a1;
+
+            background: #e0f2fe;
+
+        }
+
+        .split-tab-btn.ordering-tab.active {
+
+            background: #0284c7 !important;
+
+            color: #fff !important;
+
+            border-color: #0284c7 !important;
+
+            box-shadow: 0 2px 6px rgba(2,132,199,0.3);
+
+        }
+
 
 
         /* 留置照片點擊放大 (Lightbox Zoom Modal) */
@@ -1392,44 +1414,47 @@
 
 
 
-        // 判斷訂單或子單是否為預約單 (預約排程)
+        // 判斷是否為「盡快送達」非預約訂單 (即使 Uber API 回傳預約排程，實際為代訂點餐前置作業)
+        function isAsapDelivery(timeStr, rawText, parsedData, splitObj) {
+            const t = (splitObj?.time || timeStr || parsedData?.time || '').trim();
+            if (t.includes('盡快') || t.includes('盡速')) {
+                return true;
+            }
+            const full = ((rawText || '') + ' ' + (parsedData?.time || '') + ' ' + (splitObj?.time || '')).toLowerCase();
+            if (/時間\s*[:：]\s*盡[快速]/.test(full) || /🕒\s*盡[快速]/.test(full) || /盡[快速]送達/.test(full)) {
+                return true;
+            }
+            return false;
+        }
+        window.isAsapDelivery = isAsapDelivery;
 
+        // 判斷訂單或子單是否為預約單 (預約排程)
         function isScheduledOrder(timeStr, splitObj, rawText) {
+            // 🌟 核心：若時間或明細明確要求「盡快/盡速」，絕非預約單
+            const combinedTime = (splitObj?.time || timeStr || '').trim();
+            if (combinedTime.includes('盡快') || combinedTime.includes('盡速')) {
+                return false;
+            }
+            if (isAsapDelivery(timeStr, rawText, null, splitObj)) {
+                return false;
+            }
 
             const t = (timeStr || '').toLowerCase();
-
             const st = splitObj ? ((splitObj.time || '') + ' ' + (splitObj.fees ? splitObj.fees.map(f=>f.name).join(' ') : '')) : '';
-
             const full = (t + ' ' + st + ' ' + (rawText || '')).toLowerCase();
 
-
-
             if (full.includes('預定折扣') || full.includes('預訂折扣') || full.includes('預約') || full.includes('預定') || full.includes('預訂')) {
-
                 return true;
-
             }
-
             if (full.includes('明天') || full.includes('後天') || full.includes('下週') || full.includes('下周')) {
-
                 return true;
-
             }
-
-            const combinedTime = (splitObj?.time || timeStr || '').trim();
-
             if (combinedTime && !combinedTime.includes('盡快') && !combinedTime.includes('盡速') && !combinedTime.includes('歷史訂單合併查詢')) {
-
                 if (combinedTime.includes('下午') || combinedTime.includes('上午') || combinedTime.includes('晚上') || combinedTime.includes('-') || combinedTime.includes('🌙') || combinedTime.includes('☀️')) {
-
                     return true;
-
                 }
-
             }
-
             return false;
-
         }
 
 
@@ -1760,170 +1785,152 @@
 
 
 
-        // 渲染單筆訂單預約排程階段 UI
-
+        // 渲染單筆訂單預約排程或點餐前置作業階段 UI
         function renderScheduledStage(parsedData, data, primaryUrl, activeRes) {
-
             const cardEl = document.querySelector('.card');
-
             if (cardEl) cardEl.classList.add('delivered-mode');
 
-
+            // 判斷明細是否標示為「盡快送達」
+            const isAsap = isAsapDelivery(parsedData?.time, data?.text, parsedData);
 
             const mainHeader = document.querySelector('.card h2');
-
             if (mainHeader) {
-
-                mainHeader.innerHTML = '📅 預約單已排定配送';
-
-                mainHeader.style.color = '#5c6bc0';
-
+                if (isAsap) {
+                    mainHeader.innerHTML = '👨‍🍳 代訂已接單（點餐中）';
+                    mainHeader.style.color = '#0284c7';
+                } else {
+                    mainHeader.innerHTML = '📅 預約單已排定配送';
+                    mainHeader.style.color = '#5c6bc0';
+                }
             }
-
-
 
             const storeName = (activeRes && activeRes.store && activeRes.store.name) || parsedData.store || '外送合作店家';
-
             const address = (activeRes && activeRes.destination && activeRes.destination.address) || parsedData.address || '指定外送地址';
-
             const schedTime = (activeRes && activeRes.scheduledTime) || parsedData.time || '預定時間';
+            const displayTime = isAsap ? (parsedData.time || '盡快送達') : schedTime;
+            const accTimeStr = data?.accepted_time_hm || extractHM(data?.accepted_at);
 
-
-
-            let scheduledHtml = `
-
+            let scheduledHtml = '';
+            if (isAsap) {
+                // 🌟 當下方明細為「盡快送達」，此時 Uber 預約排程代表為代訂前置點餐作業，顯示「代訂已接單（點餐中）」
+                scheduledHtml = `
                 <div style="text-align: left; margin-bottom: 20px;">
-
-                    <!-- 頂部預約橫幅 -->
-
-                    <div style="background: #ede7f6; border: 1.5px solid #b39ddb; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
-
+                    <!-- 頂部點餐中橫幅 -->
+                    <div style="background: #e0f2fe; border: 1.5px solid #7dd3fc; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-
-                            <span style="background: #5c6bc0; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">📅 預約排程中</span>
-
-                            <span style="color: #4527a0; font-size: 12px; font-weight: bold;">尚未到配送時間</span>
-
+                            <span style="background: #0284c7; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">👨‍🍳 代訂已接單</span>
+                            <span style="color: #0369a1; font-size: 12px; font-weight: bold;">點餐處理中</span>
                         </div>
-
-                        <div style="font-size: 18px; font-weight: 800; color: #311b92; margin-bottom: 6px;">📅 店家已接單排定預約配送</div>
-
-                        <div style="font-size: 15px; color: #1a237e; font-weight: 700; margin-bottom: 6px;">
-
-                            🕒 <strong>預計送達時間:</strong> <span id="schedTimeDisplay">${schedTime}</span>
-
+                        <div style="font-size: 18px; font-weight: 800; color: #0369a1; margin-bottom: 6px;">👨‍🍳 代訂已接單（點餐中）</div>
+                        <div style="font-size: 15px; color: #0284c7; font-weight: 700; margin-bottom: 6px;">
+                            🕒 <strong>送達時間:</strong> <span id="schedTimeDisplay">${displayTime}</span>
                         </div>
-
                         <div style="font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 4px;">
-
                             📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
-
                         </div>
-
                         <div style="font-size: 14px; color: #444; line-height: 1.4;">
-
-                            🏪 <strong>預訂店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
-
+                            🏪 <strong>外送店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
                         </div>
-
+                        ${accTimeStr ? `<div style="font-size: 13px; color: #555; font-weight: 600; margin-top: 4px;">接單時間為 ${accTimeStr}</div>` : ''}
                         ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
-
                     </div>
 
-
+                    <!-- 點餐中說明卡片 -->
+                    <div style="background: #fff; border: 1.5px solid #bae6fd; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: center;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">👨‍🍳📋</div>
+                        <div style="font-weight: 800; color: #0369a1; font-size: 16px; margin-bottom: 6px;">正在為您的訂單進行點餐</div>
+                        <div style="font-size: 13.5px; color: #444; line-height: 1.6; max-width: 420px; margin: 0 auto 12px;">
+                            您的訂單需求為<strong>「${displayTime}」</strong>，目前代訂已接單並正在為您進行點餐前置作業。<br>完成下單並由店家接單備餐後，將即時在此更新外送動態與地圖追蹤。
+                        </div>
+                        ${primaryUrl ? `
+                        <a href="${primaryUrl}" target="_blank" class="btn" style="display: inline-block; padding: 10px 20px; font-size: 14px; background: #0284c7; border-color: #0369a1; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                            🔗 開啟 Uber Eats 查看狀態 ↗
+                        </a>
+                        ` : ''}
+                        <!-- 🟢 即時連線狀態燈號與自動更新控制 -->
+                        <div style="margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                            <div id="schedSyncBadge" class="sync-live-badge" style="background: #ecfdf5; border: 1.5px solid #a7f3d0; color: #065f46;">
+                                <span class="sync-dot green"></span>
+                                <span id="schedSyncText">正常連線 (剛剛)</span>
+                            </div>
+                            <div style="font-size: 12px; color: #0284c7; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span></span>
+                                <button type="button" onclick="window.triggerManualRefresh()" style="background: #0284c7; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; font-weight: bold; transition: filter 0.15s;">🔄 立即重新整理</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            } else {
+                // 原有預約單排程顯示
+                scheduledHtml = `
+                <div style="text-align: left; margin-bottom: 20px;">
+                    <!-- 頂部預約橫幅 -->
+                    <div style="background: #ede7f6; border: 1.5px solid #b39ddb; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="background: #5c6bc0; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">📅 預約排程中</span>
+                            <span style="color: #4527a0; font-size: 12px; font-weight: bold;">尚未到配送時間</span>
+                        </div>
+                        <div style="font-size: 18px; font-weight: 800; color: #311b92; margin-bottom: 6px;">📅 店家已接單排定預約配送</div>
+                        <div style="font-size: 15px; color: #1a237e; font-weight: 700; margin-bottom: 6px;">
+                            🕒 <strong>預計送達時間:</strong> <span id="schedTimeDisplay">${schedTime}</span>
+                        </div>
+                        <div style="font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 4px;">
+                            📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
+                        </div>
+                        <div style="font-size: 14px; color: #444; line-height: 1.4;">
+                            🏪 <strong>預訂店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
+                        </div>
+                        ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
+                    </div>
 
                     <!-- 預約排程說明卡片 -->
-
                     <div style="background: #fff; border: 1.5px solid #d1c4e9; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: center;">
-
                         <div style="font-size: 32px; margin-bottom: 8px;">⏰🛵</div>
-
                         <div style="font-weight: 800; color: #311b92; font-size: 16px; margin-bottom: 6px;">預約訂單已成立</div>
-
                         <div style="font-size: 13.5px; color: #444; line-height: 1.6; max-width: 420px; margin: 0 auto 12px;">
-
                             店家已收到您的預約訂單，將於預定時間（${schedTime}）開始備餐並安排外送夥伴前往配送。送達並拍照後將即時在此更新現場留置照片與定位。
-
                         </div>
-
                         ${primaryUrl ? `
-
                         <a href="${primaryUrl}" target="_blank" class="btn" style="display: inline-block; padding: 10px 20px; font-size: 14px; background: #5c6bc0; border-color: #3949ab; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
-
                             🔗 開啟 Uber Eats 查看預約訂單 ↗
-
                         </a>
-
                         ` : ''}
-
                         <!-- 🟢 即時連線狀態燈號與自動更新控制 -->
-
                         <div style="margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-
                             <div id="schedSyncBadge" class="sync-live-badge" style="background: #ecfdf5; border: 1.5px solid #a7f3d0; color: #065f46;">
-
                                 <span class="sync-dot green"></span>
-
                                 <span id="schedSyncText">正常連線 (剛剛)</span>
-
                             </div>
-
                             <div style="font-size: 12px; color: #5c6bc0; display: flex; align-items: center; justify-content: center; gap: 8px;">
-
                                 <span></span>
-
                                 <button type="button" onclick="window.triggerManualRefresh()" style="background: #5c6bc0; color: #fff; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; font-weight: bold; transition: filter 0.15s;">🔄 立即重新整理</button>
-
                             </div>
-
                         </div>
-
                     </div>
-
                 </div>
-
-            `;
-
-
-
-            const statusArea = document.getElementById('trackStatusArea');
-
-            if (statusArea) statusArea.innerHTML = scheduledHtml;
-
-
-
-            const orderTextArea = document.getElementById('trackOrderText');
-
-            if (orderTextArea) {
-
-                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, [primaryUrl], [{ status: 'scheduled' }], data.ext_order_ids);
-
-                orderTextArea.style.display = 'block';
-
+                `;
             }
 
+            const statusArea = document.getElementById('trackStatusArea');
+            if (statusArea) statusArea.innerHTML = scheduledHtml;
 
+            const orderTextArea = document.getElementById('trackOrderText');
+            if (orderTextArea) {
+                orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text, [primaryUrl], [{ status: isAsap ? 'ordering' : 'scheduled' }], data.ext_order_ids);
+                orderTextArea.style.display = 'block';
+            }
 
             // 狀態與渲染旗標紀錄
-
-            window.currentRenderedStage = 'scheduled';
-
+            window.currentRenderedStage = isAsap ? 'ordering_staging' : 'scheduled';
             window.hasRenderedOrderOnce = true;
-
             window._lastRenderedOrderState = {
-
-                stage: 'scheduled',
-
+                stage: isAsap ? 'ordering_staging' : 'scheduled',
                 schedTime: schedTime,
-
                 storeName: storeName,
-
                 address: address,
-
                 text: (data && data.text) || '',
-
                 extIds: JSON.stringify((data && data.ext_order_ids) || [])
-
             };
 
 
@@ -2358,7 +2365,7 @@
 
 
 
-        function getSubOrderConciseStatus(sub) {
+        function getSubOrderConciseStatus(sub, split, parsedData) {
 
             if (!sub) return { emoji: '❓', title: '狀態未知', badge: '未知', badgeBg: '#64748b', isDone: false, step: 1 };
 
@@ -2391,9 +2398,11 @@
             }
 
             if (sub.isScheduled || sub.orderPhase === 'SCHEDULED' || sub.status === 'scheduled') {
-
+                const isAsapSub = typeof isAsapDelivery === 'function' && isAsapDelivery(split ? split.time : null, null, parsedData, split);
+                if (isAsapSub) {
+                    return { emoji: '👨‍🍳', title: '代訂已接單（點餐中）', badge: '點餐中', badgeBg: '#0284c7', isDone: false, step: 1 };
+                }
                 return { emoji: '📅', title: '預約排程中', badge: '預約單', badgeBg: '#5c6bc0', isDone: false, step: 1 };
-
             }
 
 
@@ -2843,15 +2852,17 @@
 
             const totalOrders = trackingUrls.length;
 
-            const subStatuses = termResults.map(r => getSubOrderConciseStatus(r));
+            const subStatuses = termResults.map((r, idx) => getSubOrderConciseStatus(r, (safeParsedData.splits && safeParsedData.splits[idx]), safeParsedData));
 
             const canceledCount = subStatuses.filter(s => s.step === 0).length;
 
             const deliveredCount = subStatuses.filter(s => s.step === 4).length;
 
-            const inTransitCount = subStatuses.filter(s => s.step >= 1 && s.step <= 3).length;
+            const inTransitCount = subStatuses.filter(s => s.step >= 1 && s.step <= 3 && s.badge !== '預約單' && s.badge !== '點餐中').length;
 
             const scheduledCount = subStatuses.filter(s => s.badge === '預約單').length;
+
+            const orderingCount = subStatuses.filter(s => s.badge === '點餐中').length;
 
             const isAllCompleted = (deliveredCount + canceledCount === totalOrders);
 
@@ -2886,6 +2897,12 @@
                     mainHeader.innerHTML = '📅 預約單已排定配送';
 
                     mainHeader.style.color = '#5c6bc0';
+
+                } else if (orderingCount > 0) {
+
+                    mainHeader.innerHTML = '👨‍🍳 代訂已接單（點餐中）';
+
+                    mainHeader.style.color = '#0284c7';
 
                 } else if (isAllCompleted) {
 
@@ -2981,7 +2998,8 @@
 
                 const isCanceledTab = concise.step === 0;
                 const isScheduledTab = concise.badge === '預約單';
-                const tabStatusClass = isCanceledTab ? 'canceled-tab' : (isScheduledTab ? 'scheduled-tab' : '');
+                const isOrderingTab = concise.badge === '點餐中';
+                const tabStatusClass = isCanceledTab ? 'canceled-tab' : (isScheduledTab ? 'scheduled-tab' : (isOrderingTab ? 'ordering-tab' : ''));
                 const activeClass = (idx === (window.currentMultiOrderIndex || 0)) ? 'active' : '';
 
 
@@ -3209,7 +3227,7 @@
 
                                 <span>⏱️ 預計抵達：</span>
 
-                                <strong style="color: #166534; font-size: 14px;">${etaText}</strong>
+                                <strong style="color: #166534; font-size: 14px;">${concise.badge === '點餐中' ? '盡快送達 (點餐中)' : etaText}</strong>
 
                             </div>
 
@@ -7100,7 +7118,7 @@
 
 
 
-                                    // D. 檢查是否為預約排程單 (Scheduled Order)
+                                    // D. 檢查是否為預約排程單 (Scheduled Order) 或代訂前置點餐作業
 
                                     const isSingleSched = (activeRes && (activeRes.isScheduled || activeRes.status === 'scheduled' || activeRes.orderPhase === 'SCHEDULED')) ||
 
@@ -7108,7 +7126,11 @@
 
                                     if (isSingleSched) {
 
-                                        const curSchedTime = (activeRes && activeRes.scheduledTime) || parsedData.time || '預定時間';
+                                        const isAsap = isAsapDelivery(parsedData?.time, data?.text, parsedData);
+
+                                        const expectedStage = isAsap ? 'ordering_staging' : 'scheduled';
+
+                                        const curSchedTime = isAsap ? (parsedData.time || '盡快送達') : ((activeRes && activeRes.scheduledTime) || parsedData.time || '預定時間');
 
                                         const curStore = (activeRes && activeRes.store && activeRes.store.name) || parsedData.store || '外送合作店家';
 
@@ -7118,9 +7140,11 @@
 
                                         const isSameSched = (
 
-                                            window.currentRenderedStage === 'scheduled' &&
+                                            window.currentRenderedStage === expectedStage &&
 
                                             window._lastRenderedOrderState &&
+
+                                            window._lastRenderedOrderState.stage === expectedStage &&
 
                                             window._lastRenderedOrderState.schedTime === curSchedTime &&
 
@@ -7138,7 +7162,7 @@
 
                                             // 🌟 核心：有更新才變動，沒更新完全不碰 DOM，徹底消除任何畫面跳動！
 
-                                            console.log('⚡ 預約單狀態無實質變更，跳過 DOM 重新渲染，保持畫面完全靜止');
+                                            console.log('⚡ 狀態無實質變更，跳過 DOM 重新渲染，保持畫面完全靜止');
 
                                             return;
 
@@ -7146,7 +7170,7 @@
 
 
 
-                                        console.log('📅 檢測到此訂單為預約排程單 (初次載入或內容變更)，渲染預約展示階段');
+                                        console.log(isAsap ? '👨‍🍳 檢測到此訂單為「盡快送達」，渲染代訂點餐中階段' : '📅 檢測到此訂單為預約排程單，渲染預約展示階段');
 
                                         renderScheduledStage(parsedData, data, primaryTrackUrl, activeRes);
 
