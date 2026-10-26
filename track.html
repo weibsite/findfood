@@ -2852,7 +2852,7 @@
 
             const totalOrders = trackingUrls.length;
 
-            const subStatuses = termResults.map((r, idx) => getSubOrderConciseStatus(r, (safeParsedData.splits && safeParsedData.splits[idx]), safeParsedData));
+            const subStatuses = termResults.map((r, idx) => getSubOrderConciseStatus(r, (parsedData && parsedData.splits && parsedData.splits[idx]), parsedData));
 
             const canceledCount = subStatuses.filter(s => s.step === 0).length;
 
@@ -7442,7 +7442,7 @@
 
                     if (!window.hasRenderedOrderOnce) {
 
-                        statusArea.innerHTML = `<h3 style="color:red;">無法連線到伺服器</h3><p style="color:#666;">連線重試中 (6 秒後自動重新檢查)...</p>`;
+                        statusArea.innerHTML = `<h3 style="color:red;">訂單載入異常</h3><p style="color:#666;">${e.message ? ('錯誤: ' + e.message) : '請確認您的網路連線'} (6 秒後自動重新檢查)...</p>`;
 
                     } else {
 
