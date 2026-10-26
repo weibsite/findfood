@@ -2502,60 +2502,54 @@
                 };
             }
 
+            // 0. 前端快取檢查 (終態訂單直接瞬間從記憶體取用，零網路等待)
+            window._FRONTEND_SUB_CACHE = window._FRONTEND_SUB_CACHE || {};
+            if (uuid && window._FRONTEND_SUB_CACHE[uuid]) {
+                const cached = window._FRONTEND_SUB_CACHE[uuid];
+                if (cached.isDelivered || cached.isCanceled) {
+                    return { ...cached, url, orderUuid: uuid };
+                }
+            }
+
             try {
-
                 // 1. 優先查詢進行中狀態 (即時 GPS、ETA、備餐/取餐/外送中狀態、PIN碼、外送員)
-
                 const activeRes = await fetchActiveOrder(uuid, url, trackApiBase);
 
                 if (activeRes && activeRes.status === 'success') {
-
                     if (activeRes.isDelivered || activeRes.status === 'concluded' || activeRes.orderPhase === 'COMPLETED') {
-
+                        // 後端已具備 terminated 24小時快取，若有留置照片則合併，否則非同步背景獲取
                         const termRes = await fetchTerminatedOrder(uuid, url, trackApiBase);
-
-                        return { ...activeRes, ...(termRes && termRes.status === 'success' ? termRes : {}), url, orderUuid: uuid, isDelivered: true, isLiveActive: false };
-
+                        const finalRes = { ...activeRes, ...(termRes && termRes.status === 'success' ? termRes : {}), url, orderUuid: uuid, isDelivered: true, isLiveActive: false };
+                        window._FRONTEND_SUB_CACHE[uuid] = finalRes;
+                        return finalRes;
                     }
 
                     if (isOrderCanceled(activeRes)) {
-
-                        return { ...activeRes, url, orderUuid: uuid, isCanceled: true, isLiveActive: false };
-
+                        const finalRes = { ...activeRes, url, orderUuid: uuid, isCanceled: true, isLiveActive: false };
+                        window._FRONTEND_SUB_CACHE[uuid] = finalRes;
+                        return finalRes;
                     }
 
                     return { ...activeRes, url, orderUuid: uuid, isLiveActive: true };
-
                 }
-
-
 
                 // 2. 備援查 terminated (已結單或取消)
-
                 const termRes = await fetchTerminatedOrder(uuid, url, trackApiBase);
-
                 if (isOrderCanceled(termRes)) {
-
-                    return { ...termRes, url, orderUuid: uuid, isCanceled: true, isLiveActive: false };
-
+                    const finalRes = { ...termRes, url, orderUuid: uuid, isCanceled: true, isLiveActive: false };
+                    window._FRONTEND_SUB_CACHE[uuid] = finalRes;
+                    return finalRes;
                 }
-
                 if (termRes && termRes.status === 'success') {
-
-                    return { ...termRes, url, orderUuid: uuid, isDelivered: true, isLiveActive: false };
-
+                    const finalRes = { ...termRes, url, orderUuid: uuid, isDelivered: true, isLiveActive: false };
+                    window._FRONTEND_SUB_CACHE[uuid] = finalRes;
+                    return finalRes;
                 }
-
-
 
                 return { ...(activeRes || {}), ...(termRes || {}), url, orderUuid: uuid, status: 'unknown', isLiveActive: false };
-
             } catch(e) {
-
                 return { status: 'error', message: String(e), url, orderUuid: uuid };
-
             }
-
         }
 
 
