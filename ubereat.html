@@ -6477,37 +6477,41 @@ function openGroceryCheckoutSummary() {
 
       <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
 
-      <h3 style="margin:0 0 10px 0; font-size:18px;">訂單優惠與費用試算</h3>
+      <div style="padding: 0 10px;">
 
-      <div style="color:#555; line-height:1.8;">
+        <h3 style="margin:0 0 12px 0; font-size:18px;">訂單優惠與費用試算</h3>
 
-        <div style="display:flex; justify-content:space-between;"><span>🏷️ 優惠方案</span><span>${escapeHTML(timeText)}</span></div>
+        <div style="color:#555; line-height:1.8;">
 
-        <div style="display:flex; justify-content:space-between;"><span>💰 滿額條件</span><span>需滿 $${minSpend}</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>🏷️ 優惠方案</span><span>${escapeHTML(timeText)}</span></div>
 
-        <div style="display:flex; justify-content:space-between; color:#f43f5e;"><span>💸 優惠折扣</span><span>-$${promoDiscount}</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>💰 滿額條件</span><span>需滿 $${minSpend}</span></div>
 
-        <div style="display:flex; justify-content:space-between;"><span>🛵 平台服務費</span>${svcDisplayHtml}</div>
+          <div style="display:flex; justify-content:space-between; color:#f43f5e;"><span>💸 優惠折扣</span><span>-$${promoDiscount}</span></div>
 
-        ${is150 ? `
+          <div style="display:flex; justify-content:space-between;"><span>🛵 平台服務費</span>${svcDisplayHtml}</div>
 
-        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$50</span></div>
+          ${is150 ? `
 
-        ` : (isAdvanceBooking ? `
+          <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$50</span></div>
 
-        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(179分鐘以上預約優惠)</span></span></div>
+          ` : (isAdvanceBooking ? `
 
-        ` : `
+          <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(179分鐘以上預約優惠)</span></span></div>
 
-        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$60</span></div>
+          ` : `
 
-        `)}
+          <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$60</span></div>
 
-        ${isThreeHourSlot ? `
+          `)}
 
-        <div style="display:flex; justify-content:space-between; color:#f43f5e; font-weight:bold;"><span>⏰ 優惠時段折扣</span><span>-$25</span></div>
+          ${isThreeHourSlot ? `
 
-        ` : ''}
+          <div style="display:flex; justify-content:space-between; color:#f43f5e; font-weight:bold;"><span>⏰ 優惠時段折扣</span><span>-$25</span></div>
+
+          ` : ''}
+
+        </div>
 
       </div>
 
