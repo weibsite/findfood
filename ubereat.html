@@ -3016,7 +3016,11 @@ function generateStoreListHTML(stores, q, currentVertical) {
 
         let name = s.title ? (s.title.text || (typeof s.title === 'string' ? s.title : '')) : '未知餐廳';
         if (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') {
-            name += ' (不需外送費、需要服務費)';
+            if (name.includes('優市')) {
+                name += ' (免外送費、免服務費)';
+            } else {
+                name += ' (不需外送費、需要服務費)';
+            }
         }
 
         
@@ -6361,20 +6365,35 @@ function openGroceryCheckoutSummary() {
     }
   }
 
-  const agentFee = isAdvanceBooking ? 45 : 60;
+  const is150 = (currentStoreName && currentStoreName.includes('優市'));
+
+  const minSpend = is150 ? 399 : 449;
+  const promoDiscount = is150 ? 150 : 180;
+  const agentFee = is150 ? 50 : (isAdvanceBooking ? 45 : 60);
   const timeSlotDiscount = isThreeHourSlot ? 25 : 0;
 
-  let svcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${window.groceryServiceFee}` : '$30~$60不等';
-  let svcCalcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `${window.groceryServiceFee}` : '30~60';
-
+  let svcDisplayHtml = '';
+  let svcCalcStr = '';
   let totalEstimateStr = '';
-  if (window.groceryServiceFee !== undefined && window.groceryServiceFee !== null) {
-      const netTotal = 449 - 180 + window.groceryServiceFee + agentFee - timeSlotDiscount;
+
+  if (is150) {
+      svcDisplayHtml = '<span style="color:#d32f2f; font-weight:bold;">免服務費</span>';
+      svcCalcStr = '0';
+      const netTotal = minSpend - promoDiscount + 0 + agentFee - timeSlotDiscount;
       totalEstimateStr = `$${netTotal}`;
   } else {
-      const minTotal = 449 - 180 + 30 + agentFee - timeSlotDiscount;
-      const maxTotal = 449 - 180 + 60 + agentFee - timeSlotDiscount;
-      totalEstimateStr = `$${minTotal} ~ $${maxTotal}`;
+      let svcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${window.groceryServiceFee}` : '$30~$60不等';
+      svcDisplayHtml = `<span>${svcStr}</span>`;
+      if (window.groceryServiceFee !== undefined && window.groceryServiceFee !== null) {
+          svcCalcStr = `${window.groceryServiceFee}`;
+          const netTotal = minSpend - promoDiscount + window.groceryServiceFee + agentFee - timeSlotDiscount;
+          totalEstimateStr = `$${netTotal}`;
+      } else {
+          svcCalcStr = '30~60';
+          const minTotal = minSpend - promoDiscount + 30 + agentFee - timeSlotDiscount;
+          const maxTotal = minSpend - promoDiscount + 60 + agentFee - timeSlotDiscount;
+          totalEstimateStr = `$${minTotal} ~ $${maxTotal}`;
+      }
   }
 
 
@@ -6464,13 +6483,17 @@ function openGroceryCheckoutSummary() {
 
         <div style="display:flex; justify-content:space-between;"><span>🏷️ 優惠方案</span><span>${escapeHTML(timeText)}</span></div>
 
-        <div style="display:flex; justify-content:space-between;"><span>💰 滿額條件</span><span>需滿 $449</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>💰 滿額條件</span><span>需滿 $${minSpend}</span></div>
 
-        <div style="display:flex; justify-content:space-between; color:#f43f5e;"><span>💸 優惠折扣</span><span>-$180</span></div>
+        <div style="display:flex; justify-content:space-between; color:#f43f5e;"><span>💸 優惠折扣</span><span>-$${promoDiscount}</span></div>
 
-        <div style="display:flex; justify-content:space-between;"><span>🛵 平台服務費</span><span>${svcStr}</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>🛵 平台服務費</span>${svcDisplayHtml}</div>
 
-        ${isAdvanceBooking ? `
+        ${is150 ? `
+
+        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$50</span></div>
+
+        ` : (isAdvanceBooking ? `
 
         <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(179分鐘以上預約優惠)</span></span></div>
 
@@ -6478,7 +6501,7 @@ function openGroceryCheckoutSummary() {
 
         <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$60</span></div>
 
-        `}
+        `)}
 
         ${isThreeHourSlot ? `
 
@@ -6494,11 +6517,11 @@ function openGroceryCheckoutSummary() {
 
       <div style="background:#f8f9fa; padding:12px; border-radius:6px;">
 
-        <div style="font-weight:bold; margin-bottom:8px;">🧮 費用試算 (以剛好滿$449為例)</div>
+        <div style="font-weight:bold; margin-bottom:8px;">🧮 費用試算 (以剛好滿$${minSpend}為例)</div>
 
         <div style="color:#555;">
 
-          449 (商品) - 180 (優惠) + ${svcCalcStr} (平台費) + ${agentFee} (代訂費)${isThreeHourSlot ? ' - 25 (優惠時段)' : ''}<br>
+          ${minSpend} (商品) - ${promoDiscount} (優惠) + ${svcCalcStr} (平台費) + ${agentFee} (代訂費)${isThreeHourSlot ? ' - 25 (優惠時段)' : ''}<br>
 
           <strong style="color:#d32f2f; font-size:18px;">預估總計約: ${totalEstimateStr}</strong>
 
@@ -6836,7 +6859,12 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       msgText += `⏱ 預計取餐：${timeText}\n`;
 
-      if (isAdvanceBooking) {
+      const is150 = (currentStoreName && currentStoreName.includes('優市'));
+      if (is150) {
+
+          msgText += `💼 專人代訂費: $50\n`;
+
+      } else if (isAdvanceBooking) {
 
           msgText += `💼 專人代訂費: $45 (179分鐘以上預約優惠)\n`;
 
@@ -8509,8 +8537,15 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP');
       window._groceryDisabled = false;
-      if (window.isGroceryStore && !currentStoreName.includes('不需外送費、服務費')) {
-          currentStoreName += ' (不需外送費、需要服務費)';
+      const is150StoreName = currentStoreName && currentStoreName.includes('優市');
+      if (window.isGroceryStore) {
+          if (is150StoreName) {
+              if (!currentStoreName.includes('免外送費、免服務費')) {
+                  currentStoreName += ' (免外送費、免服務費)';
+              }
+          } else if (!currentStoreName.includes('不需外送費、服務費') && !currentStoreName.includes('不需外送費、需要服務費')) {
+              currentStoreName += ' (不需外送費、需要服務費)';
+          }
       }
 
       const ssb = document.getElementById('storeSearchBtn');
@@ -9143,30 +9178,37 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
             if (window.isGroceryStore) {
 
-          window.groceryServiceFee = null;
-          let feeText = '需服務費';
-          try {
-              if (d.basketDependentFeePolicy && d.basketDependentFeePolicy.dialog && d.basketDependentFeePolicy.dialog.tierFee) {
-                  const tier = d.basketDependentFeePolicy.dialog.tierFee[0];
-                  if (tier && tier.nonMemberServiceFee) {
-                      const fareText = tier.nonMemberServiceFee;
-                      const matchVal = fareText.match(/(\d+)/);
-                      if (matchVal) {
-                          let fee = parseInt(matchVal[1], 10);
-                          let displayFee = Math.round(fee * 0.8);
-                          window.groceryServiceFee = displayFee;
-                          feeText = `服務費${displayFee}`;
+          const is150Store = (currentStoreName && currentStoreName.includes('優市'));
+          if (is150Store) {
+              window.groceryServiceFee = 0;
+              fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、<span style="color:#d32f2f;">免服務費</span></div>`;
+              currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          } else {
+              window.groceryServiceFee = null;
+              let feeText = '需服務費';
+              try {
+                  if (d.basketDependentFeePolicy && d.basketDependentFeePolicy.dialog && d.basketDependentFeePolicy.dialog.tierFee) {
+                      const tier = d.basketDependentFeePolicy.dialog.tierFee[0];
+                      if (tier && tier.nonMemberServiceFee) {
+                          const fareText = tier.nonMemberServiceFee;
+                          const matchVal = fareText.match(/(\d+)/);
+                          if (matchVal) {
+                              let fee = parseInt(matchVal[1], 10);
+                              let displayFee = Math.round(fee * 0.8);
+                              window.groceryServiceFee = displayFee;
+                              feeText = `服務費${displayFee}`;
+                          }
                       }
+                  } else if (d.fareInfo && d.fareInfo.serviceFee !== undefined) {
+                      let fee = parseInt(d.fareInfo.serviceFee, 10);
+                      let displayFee = Math.round(fee * 0.8);
+                      window.groceryServiceFee = displayFee;
+                      feeText = `服務費${displayFee}`;
                   }
-              } else if (d.fareInfo && d.fareInfo.serviceFee !== undefined) {
-                  let fee = parseInt(d.fareInfo.serviceFee, 10);
-                  let displayFee = Math.round(fee * 0.8);
-                  window.groceryServiceFee = displayFee;
-                  feeText = `服務費${displayFee}`;
-              }
-          } catch(e) { console.error(e); }
-          fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、${feeText}</div>`;
-          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+              } catch(e) { console.error(e); }
+              fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、${feeText}</div>`;
+              currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          }
 
       }
 
@@ -9553,7 +9595,10 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                       currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
                   }
                   
-                  if (window.isGroceryStore && fd.basketDependentFeePolicy && fd.basketDependentFeePolicy.dialog && fd.basketDependentFeePolicy.dialog.tierFee) {
+                  const is150Store = (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('優市'));
+                  if (is150Store) {
+                      window.groceryServiceFee = 0;
+                  } else if (window.isGroceryStore && fd.basketDependentFeePolicy && fd.basketDependentFeePolicy.dialog && fd.basketDependentFeePolicy.dialog.tierFee) {
                       const tier = fd.basketDependentFeePolicy.dialog.tierFee[0];
                       if (tier && tier.nonMemberServiceFee) {
                           const matchVal = tier.nonMemberServiceFee.match(/(\d+)/);
