@@ -300,6 +300,8 @@
   .search-modern-input-wrapper input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 16px; background: transparent; color: #1c1917; }
   .search-suggestions-bar::-webkit-scrollbar { display: none; }
 
+  .sleep-icon-img { transition: transform 0.1s ease; }
+  .sleep-icon-img:active { transform: scale(0.92); }
 </style>
 
 </head>
@@ -5919,7 +5921,7 @@ window.selectedPlan = 'A';
 window.selectPlan = function(p) {};
 
 window.submitSelectedPlan = async function() {
-    if (window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+    if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
         showModal('目前暫時無法接單', '', false, '', true);
         return;
     }
@@ -5948,7 +5950,7 @@ window.submitSelectedPlan = async function() {
 };
 
 function openCheckoutSummary() {
-    if (window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+    if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
         showModal('目前暫時無法接單', '', false, '', true);
         return;
     }
@@ -6700,7 +6702,7 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
 }
 
 async function sendOrderToLine(forceSubmit = false) {
-  if (window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+  if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
     showModal('目前暫時無法接單', '', false, '', true);
     return;
   }
@@ -10254,9 +10256,82 @@ function buildSplitSuggestionHtml(result) {
 
   window.errorModalCloseCallback = null;
 
+  // 🌟 檢查是否已由密碼解鎖忽略「暫時無法接單」狀態
+  window.isClosedStatusBypassed = function() {
+    try {
+        return localStorage.getItem('bypass_closed_status') === '5318';
+    } catch (e) {
+        return false;
+    }
+  };
+
+  // 🌟 連續點擊圖片 5 次觸發輸入密碼邏輯
+  window._sleepIconClickCount = 0;
+  window._sleepIconTimer = null;
+  window.handleSleepIconClick = function(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const title = document.getElementById('errorModalTitle')?.innerText || '';
+    if (title !== '目前暫時無法接單' && !title.includes('無法接單')) {
+        return;
+    }
+    window._sleepIconClickCount = (window._sleepIconClickCount || 0) + 1;
+    clearTimeout(window._sleepIconTimer);
+    window._sleepIconTimer = setTimeout(() => {
+        window._sleepIconClickCount = 0;
+    }, 2500);
+
+    if (window._sleepIconClickCount >= 5) {
+        window._sleepIconClickCount = 0;
+        clearTimeout(window._sleepIconTimer);
+        window.openBypassPasswordModal();
+    }
+  };
+
+  window.openBypassPasswordModal = function() {
+    const modal = document.getElementById('bypassClosedModal');
+    const input = document.getElementById('bypassClosedPwdInput');
+    const errMsg = document.getElementById('bypassClosedErrorMsg');
+    if (errMsg) errMsg.style.display = 'none';
+    if (input) input.value = '';
+    if (modal) {
+        modal.style.display = 'flex';
+        setTimeout(() => { if (input) input.focus(); }, 150);
+    }
+  };
+
+  window.closeBypassPasswordModal = function() {
+    const modal = document.getElementById('bypassClosedModal');
+    if (modal) modal.style.display = 'none';
+  };
+
+  window.verifyBypassPassword = function() {
+    const input = document.getElementById('bypassClosedPwdInput');
+    const val = input ? input.value.trim() : '';
+    if (val === '5318') {
+        try {
+            localStorage.setItem('bypass_closed_status', '5318');
+        } catch (e) {
+            console.error('localStorage error', e);
+        }
+        window.closeBypassPasswordModal();
+        const overlay = document.getElementById('errorModalOverlay');
+        if (overlay) overlay.style.display = 'none';
+        if (typeof showToast === 'function') {
+            showToast('🔓 已解除暫時無法接單限制');
+        }
+    } else {
+        const errMsg = document.getElementById('bypassClosedErrorMsg');
+        if (errMsg) errMsg.style.display = 'block';
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+    }
+  };
+
   function closeErrorModal() {
     const title = document.getElementById('errorModalTitle')?.innerText || '';
-    if (title === '代訂睡覺中' || title === '目前暫時無法接單' || title.includes('無法接單')) {
+    if (title === '代訂睡覺中' || ((title === '目前暫時無法接單' || title.includes('無法接單')) && !isClosedStatusBypassed())) {
         return;
     }
     const cb = window.errorModalCloseCallback;
@@ -10269,6 +10344,9 @@ function buildSplitSuggestionHtml(result) {
   }
 
   function showModal(title, text, isError = true, htmlContent = '', hideBtn = false, onClose = null) {
+    if ((title === '目前暫時無法接單' || title.includes('無法接單')) && isClosedStatusBypassed()) {
+        return;
+    }
     window.errorModalCloseCallback = (typeof onClose === 'function') ? onClose : null;
     if (typeof text === 'string' && (text.includes('<div') || text.includes('<button') || text.includes('<span') || text.includes('<p') || text.includes('<br>')) && !htmlContent) {
         htmlContent = text;
@@ -10276,7 +10354,7 @@ function buildSplitSuggestionHtml(result) {
     }
 
     if (title === '代訂睡覺中' || title === '目前暫時無法接單' || title.includes('無法接單')) {
-        document.getElementById('errorModalIcon').innerHTML = '<img src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">';
+        document.getElementById('errorModalIcon').innerHTML = '<img class="sleep-icon-img" src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1)); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
     } else if (title === '購物車是空的') {
@@ -10569,7 +10647,7 @@ function showToast(msg) {
 
       <button id="errorModalCloseBtn" onclick="closeErrorModal()" style="position:absolute; top:15px; right:15px; background:transparent; border:none; font-size:24px; color:#999; cursor:pointer; line-height:1;">&times;</button>
 
-      <div id="errorModalIcon" style="font-size:48px; margin-bottom:15px;">❌</div>
+      <div id="errorModalIcon" onclick="handleSleepIconClick(event)" style="font-size:48px; margin-bottom:15px; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:manipulation;">❌</div>
 
       <div id="errorModalTitle" style="font-size:20px; font-weight:bold; margin-bottom:12px; color:#111;">無法預約</div>
 
@@ -10585,6 +10663,21 @@ function showToast(msg) {
 
     </div>
 
+  </div>
+
+  <!-- Bypass Closed Password Modal -->
+  <div id="bypassClosedModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); z-index:100000; align-items:center; justify-content:center;" onclick="if(event.target===this) closeBypassPasswordModal();">
+    <div style="background:#fff; width:85%; max-width:340px; border-radius:18px; padding:24px 20px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.25); position:relative; animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);">
+      <div style="font-size:36px; margin-bottom:10px;">🔐</div>
+      <div style="font-size:18px; font-weight:bold; margin-bottom:8px; color:#111;">請輸入解鎖密碼</div>
+      <div style="font-size:13px; color:#666; margin-bottom:16px;">輸入密碼後可直接忽略暫時無法接單限制</div>
+      <input type="password" id="bypassClosedPwdInput" inputmode="numeric" placeholder="請輸入密碼" style="width:100%; padding:12px; border:1.5px solid #ddd; border-radius:10px; font-size:18px; text-align:center; box-sizing:border-box; outline:none; margin-bottom:15px; letter-spacing:4px;" onkeydown="if(event.key==='Enter') verifyBypassPassword();" />
+      <div id="bypassClosedErrorMsg" style="display:none; color:#e11d48; font-size:13px; margin-top:-10px; margin-bottom:12px; font-weight:600;">密碼錯誤，請重新輸入</div>
+      <div style="display:flex; gap:10px;">
+        <button type="button" onclick="closeBypassPasswordModal()" style="flex:1; background:#f3f4f6; color:#4b5563; border:none; padding:11px; border-radius:10px; font-weight:bold; font-size:14px; cursor:pointer;">取消</button>
+        <button type="button" onclick="verifyBypassPassword()" style="flex:1; background:#111827; color:#fff; border:none; padding:11px; border-radius:10px; font-weight:bold; font-size:14px; cursor:pointer;">確認解鎖</button>
+      </div>
+    </div>
   </div>
 
 
@@ -11400,11 +11493,20 @@ async function loadServerStatusDot() {
         // 🌟 判斷伺服器營業狀態是否為「休息中(無法接單)」(由 LINE 控制：type === 'closed' 或文字包含「無法接單」)
         const isClosed = data.type === 'closed' || (data.text && data.text.includes('無法接單'));
         if (isClosed) {
-            showModal('目前暫時無法接單', '', false, '', true);
-            if (!offlineCheckInterval) {
-                offlineCheckInterval = setInterval(loadServerStatusDot, 15000);
+            if (!isClosedStatusBypassed()) {
+                showModal('目前暫時無法接單', '', false, '', true);
+                if (!offlineCheckInterval) {
+                    offlineCheckInterval = setInterval(loadServerStatusDot, 15000);
+                }
+                return;
+            } else {
+                // 已被使用者以密碼 5318 解鎖，若畫面上正好有無法接單彈窗則自動隱藏
+                const overlay = document.getElementById('errorModalOverlay');
+                const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
+                if (overlay && overlay.style.display !== 'none' && (modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+                    overlay.style.display = 'none';
+                }
             }
-            return;
         }
 
         // 伺服器狀態正常 (非 closed 且非 offline)，若目前正開啟睡覺或無法接單彈窗，則自動關閉解除鎖定
