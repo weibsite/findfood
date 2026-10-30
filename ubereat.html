@@ -6921,9 +6921,10 @@ async function _sendOrderToLine(forceSubmit = false) {
               isASAPCheckout = true; // 3小時內的預約單視同即時單標準
           }
       }
-      let minOrderLimit = 199;
+      // 🌟 連續點擊圖片輸入密碼 5318 解鎖之使用者，不限制金額滿 199
+      let minOrderLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 199;
 
-      if (foodTotal < minOrderLimit) {
+      if (minOrderLimit > 0 && foodTotal < minOrderLimit) {
 
         showModal('金額過低', `訂單小計低於$${minOrderLimit}，建議再加個東西吧！`);
 
@@ -10071,7 +10072,7 @@ function normalizeAddress(addr) {
             isASAP = true; // 3小時內的預約單視同即時單標準
         }
     }
-    let binLimit = 199;
+    let binLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 199;
     
     let validSplit = true;
 
