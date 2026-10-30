@@ -1197,6 +1197,9 @@ let isAddressSet = false;
     if (typeof loadThreeHourStores === 'function') loadThreeHourStores();
     fetchDeliveryTimes();
     loadServerStatusDot();
+    if (!window._serverStatusWatchdog) {
+      window._serverStatusWatchdog = setInterval(loadServerStatusDot, 20000);
+    }
     if (typeof checkAndInitGroupBuyFromUrl === 'function') {
       checkAndInitGroupBuyFromUrl();
     }
@@ -5916,6 +5919,10 @@ window.selectedPlan = 'A';
 window.selectPlan = function(p) {};
 
 window.submitSelectedPlan = async function() {
+    if (window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+        showModal('目前暫時無法接單', '', false, '', true);
+        return;
+    }
     if (window.isGroceryStore) {
         const sName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : '';
         const is150 = sName.includes('優市');
@@ -5941,6 +5948,10 @@ window.submitSelectedPlan = async function() {
 };
 
 function openCheckoutSummary() {
+    if (window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+        showModal('目前暫時無法接單', '', false, '', true);
+        return;
+    }
     if (window.isGroupBuyClosed) {
         showToast('⚠️ 本團購訂單已送出結帳，團購已截止！');
         return;
@@ -6689,6 +6700,10 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
 }
 
 async function sendOrderToLine(forceSubmit = false) {
+  if (window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+    showModal('目前暫時無法接單', '', false, '', true);
+    return;
+  }
   if (window.isGroupBuyClosed) {
     showToast('⚠️ 本團購訂單已送出結帳，團購已截止！');
     return;
@@ -10240,6 +10255,10 @@ function buildSplitSuggestionHtml(result) {
   window.errorModalCloseCallback = null;
 
   function closeErrorModal() {
+    const title = document.getElementById('errorModalTitle')?.innerText || '';
+    if (title === '代訂睡覺中' || title === '目前暫時無法接單' || title.includes('無法接單')) {
+        return;
+    }
     const cb = window.errorModalCloseCallback;
     window.errorModalCloseCallback = null;
     const overlay = document.getElementById('errorModalOverlay');
@@ -10256,7 +10275,7 @@ function buildSplitSuggestionHtml(result) {
         text = '';
     }
 
-    if (title === '代訂睡覺中') {
+    if (title === '代訂睡覺中' || title === '目前暫時無法接單' || title.includes('無法接單')) {
         document.getElementById('errorModalIcon').innerHTML = '<img src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
@@ -10289,6 +10308,8 @@ function buildSplitSuggestionHtml(result) {
     }
 
     document.getElementById('errorModalExtra').innerHTML = htmlContent;
+    const closeBtn = document.getElementById('errorModalCloseBtn');
+    if (closeBtn) closeBtn.style.display = hideBtn ? 'none' : 'block';
     document.getElementById('errorModalBtn').style.display = hideBtn ? 'none' : 'block';
     document.getElementById('errorModalOverlay').style.display = 'flex';
   }
@@ -11373,12 +11394,29 @@ async function loadServerStatusDot() {
         if (!response.ok) throw new Error('API Error');
         
         const data = await response.json();
+        window.lastServerStoreStatus = data;
         updateStatusDot(data.type);
         
+        // 🌟 判斷伺服器營業狀態是否為「休息中(無法接單)」(由 LINE 控制：type === 'closed' 或文字包含「無法接單」)
+        const isClosed = data.type === 'closed' || (data.text && data.text.includes('無法接單'));
+        if (isClosed) {
+            showModal('目前暫時無法接單', '', false, '', true);
+            if (!offlineCheckInterval) {
+                offlineCheckInterval = setInterval(loadServerStatusDot, 15000);
+            }
+            return;
+        }
+
+        // 伺服器狀態正常 (非 closed 且非 offline)，若目前正開啟睡覺或無法接單彈窗，則自動關閉解除鎖定
+        const overlay = document.getElementById('errorModalOverlay');
+        const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
+        if (overlay && overlay.style.display !== 'none' && (modalTitle === '代訂睡覺中' || modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+            overlay.style.display = 'none';
+        }
+
         if (offlineCheckInterval) {
             clearInterval(offlineCheckInterval);
             offlineCheckInterval = null;
-            document.getElementById('errorModalOverlay').style.display = 'none';
         }
     } catch (err) {
         console.error("Status check error", err);
