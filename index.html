@@ -300,6 +300,8 @@
   .search-modern-input-wrapper input { flex: 1; min-width: 0; border: 0; outline: 0; font-size: 16px; background: transparent; color: #1c1917; }
   .search-suggestions-bar::-webkit-scrollbar { display: none; }
 
+  .sleep-icon-img { transition: transform 0.1s ease; }
+  .sleep-icon-img:active { transform: scale(0.92); }
 </style>
 
 </head>
@@ -1197,6 +1199,9 @@ let isAddressSet = false;
     if (typeof loadThreeHourStores === 'function') loadThreeHourStores();
     fetchDeliveryTimes();
     loadServerStatusDot();
+    if (!window._serverStatusWatchdog) {
+      window._serverStatusWatchdog = setInterval(loadServerStatusDot, 20000);
+    }
     if (typeof checkAndInitGroupBuyFromUrl === 'function') {
       checkAndInitGroupBuyFromUrl();
     }
@@ -3016,7 +3021,11 @@ function generateStoreListHTML(stores, q, currentVertical) {
 
         let name = s.title ? (s.title.text || (typeof s.title === 'string' ? s.title : '')) : '未知餐廳';
         if (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') {
-            name += ' (不需外送費、需要服務費)';
+            if (name.includes('優市')) {
+                name += ' (免外送費、免服務費)';
+            } else {
+                name += ' (不需外送費、需要服務費)';
+            }
         }
 
         
@@ -4062,7 +4071,11 @@ function handleStoreSearch(isUserInput = false) {
 
                 try {
                   if (item.promoInfo && (item.promoInfo.promotionUUID || (item.promoInfo.promoBadge && item.promoInfo.promoBadge.content))) {
-                    isPromo = true;
+                    // 生鮮雜貨關閉優惠商品隔離，一般餐廳維持隔離
+                    const isGroceryStoreCurrent = (typeof window !== 'undefined' && window.isGroceryStore) || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+                    if (!isGroceryStoreCurrent) {
+                      isPromo = true;
+                    }
                     if (item.promoInfo.promoBadge && item.promoInfo.promoBadge.content && item.promoInfo.promoBadge.content.richText) {
                       const elements = item.promoInfo.promoBadge.content.richText.richTextElements;
                       if (elements && elements.length > 0 && elements[0].text && elements[0].text.text && elements[0].text.text.text) {
@@ -4099,6 +4112,8 @@ function handleStoreSearch(isUserInput = false) {
                   itemHtml = '<div class="menu-item" style="position: relative;' + (isSoldOut ? ' opacity:0.6; cursor:not-allowed;' : '') + '" ' + (isSoldOut ? '' : 'onclick="toggleStoreSearch(); openItemModal(\'' + storeUuid + '\', \'' + secUuid + '\', \'' + subsecUuid + '\', \'' + item.uuid + '\', \'' + encodeURIComponent(itemTitle).replace(/'/g, "%27") + '\', \'' + encodeURIComponent(itemDesc).replace(/'/g, "%27") + '\', ' + priceVal + ', \'' + imgUrl + '\', ' + (item.hasCustomizations === false ? 'false' : 'true') + ')"') + '>';
 
                   itemHtml += '<div class="menu-item-info">';
+
+                  if (promoBadgeHtml) itemHtml += promoBadgeHtml;
 
                   itemHtml += '<div class="menu-item-title">' + escapeHTML(itemTitle) + '</div>';
 
@@ -5906,16 +5921,23 @@ window.selectedPlan = 'A';
 window.selectPlan = function(p) {};
 
 window.submitSelectedPlan = async function() {
+    if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+        showModal('目前暫時無法接單', '', false, '', true);
+        return;
+    }
     if (window.isGroceryStore) {
+        const sName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : '';
+        const is150 = sName.includes('優市');
+        const typeTitle = is150 ? '優市' : '雜貨';
         if (window._groceryDisabled) {
-            showToast('⚠️ 目前雜貨已售完 請等待補貨');
+            showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
             return;
         }
         if (typeof checkGroceryStatus === 'function') {
-            const isDisabled = await checkGroceryStatus();
+            const isDisabled = await checkGroceryStatus(sName);
             if (isDisabled) {
-                if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI();
-                showToast('⚠️ 目前雜貨已售完 請等待補貨');
+                if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(sName);
+                showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
                 return;
             }
         }
@@ -5928,6 +5950,10 @@ window.submitSelectedPlan = async function() {
 };
 
 function openCheckoutSummary() {
+    if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+        showModal('目前暫時無法接單', '', false, '', true);
+        return;
+    }
     if (window.isGroupBuyClosed) {
         showToast('⚠️ 本團購訂單已送出結帳，團購已截止！');
         return;
@@ -6352,20 +6378,35 @@ function openGroceryCheckoutSummary() {
     }
   }
 
-  const agentFee = isAdvanceBooking ? 45 : 60;
+  const is150 = (currentStoreName && currentStoreName.includes('優市'));
+
+  const minSpend = is150 ? 399 : 449;
+  const promoDiscount = is150 ? 150 : 180;
+  const agentFee = is150 ? 50 : (isAdvanceBooking ? 45 : 60);
   const timeSlotDiscount = isThreeHourSlot ? 25 : 0;
 
-  let svcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${window.groceryServiceFee}` : '$30~$60不等';
-  let svcCalcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `${window.groceryServiceFee}` : '30~60';
-
+  let svcDisplayHtml = '';
+  let svcCalcStr = '';
   let totalEstimateStr = '';
-  if (window.groceryServiceFee !== undefined && window.groceryServiceFee !== null) {
-      const netTotal = 449 - 180 + window.groceryServiceFee + agentFee - timeSlotDiscount;
+
+  if (is150) {
+      svcDisplayHtml = '<span style="color:#d32f2f; font-weight:bold;">免服務費</span>';
+      svcCalcStr = '0';
+      const netTotal = minSpend - promoDiscount + 0 + agentFee - timeSlotDiscount;
       totalEstimateStr = `$${netTotal}`;
   } else {
-      const minTotal = 449 - 180 + 30 + agentFee - timeSlotDiscount;
-      const maxTotal = 449 - 180 + 60 + agentFee - timeSlotDiscount;
-      totalEstimateStr = `$${minTotal} ~ $${maxTotal}`;
+      let svcStr = window.groceryServiceFee !== undefined && window.groceryServiceFee !== null ? `$${window.groceryServiceFee}` : '$30~$60不等';
+      svcDisplayHtml = `<span>${svcStr}</span>`;
+      if (window.groceryServiceFee !== undefined && window.groceryServiceFee !== null) {
+          svcCalcStr = `${window.groceryServiceFee}`;
+          const netTotal = minSpend - promoDiscount + window.groceryServiceFee + agentFee - timeSlotDiscount;
+          totalEstimateStr = `$${netTotal}`;
+      } else {
+          svcCalcStr = '30~60';
+          const minTotal = minSpend - promoDiscount + 30 + agentFee - timeSlotDiscount;
+          const maxTotal = minSpend - promoDiscount + 60 + agentFee - timeSlotDiscount;
+          totalEstimateStr = `$${minTotal} ~ $${maxTotal}`;
+      }
   }
 
 
@@ -6449,33 +6490,41 @@ function openGroceryCheckoutSummary() {
 
       <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
 
-      <h3 style="margin:0 0 10px 0; font-size:18px;">訂單優惠與費用試算</h3>
+      <div style="padding: 0 10px;">
 
-      <div style="color:#555; line-height:1.8;">
+        <h3 style="margin:0 0 12px 0; font-size:18px;">訂單優惠與費用試算</h3>
 
-        <div style="display:flex; justify-content:space-between;"><span>🏷️ 優惠方案</span><span>${escapeHTML(timeText)}</span></div>
+        <div style="color:#555; line-height:1.8;">
 
-        <div style="display:flex; justify-content:space-between;"><span>💰 滿額條件</span><span>需滿 $449</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>🏷️ 優惠方案</span><span>${escapeHTML(timeText)}</span></div>
 
-        <div style="display:flex; justify-content:space-between; color:#f43f5e;"><span>💸 優惠折扣</span><span>-$180</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>💰 滿額條件</span><span>需滿 $${minSpend}</span></div>
 
-        <div style="display:flex; justify-content:space-between;"><span>🛵 平台服務費</span><span>${svcStr}</span></div>
+          <div style="display:flex; justify-content:space-between; color:#f43f5e;"><span>💸 優惠折扣</span><span>-$${promoDiscount}</span></div>
 
-        ${isAdvanceBooking ? `
+          <div style="display:flex; justify-content:space-between;"><span>🛵 平台服務費</span>${svcDisplayHtml}</div>
 
-        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(179分鐘以上預約優惠)</span></span></div>
+          ${is150 ? `
 
-        ` : `
+          <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$50</span></div>
 
-        <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$60</span></div>
+          ` : (isAdvanceBooking ? `
 
-        `}
+          <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span><del>$60</del> $45 <span style="color:#f43f5e; font-size:13px; font-weight:bold;">(179分鐘以上預約優惠)</span></span></div>
 
-        ${isThreeHourSlot ? `
+          ` : `
 
-        <div style="display:flex; justify-content:space-between; color:#f43f5e; font-weight:bold;"><span>⏰ 優惠時段折扣</span><span>-$25</span></div>
+          <div style="display:flex; justify-content:space-between;"><span>💼 專人代訂費</span><span>$60</span></div>
 
-        ` : ''}
+          `)}
+
+          ${isThreeHourSlot ? `
+
+          <div style="display:flex; justify-content:space-between; color:#f43f5e; font-weight:bold;"><span>⏰ 優惠時段折扣</span><span>-$25</span></div>
+
+          ` : ''}
+
+        </div>
 
       </div>
 
@@ -6485,11 +6534,11 @@ function openGroceryCheckoutSummary() {
 
       <div style="background:#f8f9fa; padding:12px; border-radius:6px;">
 
-        <div style="font-weight:bold; margin-bottom:8px;">🧮 費用試算 (以剛好滿$449為例)</div>
+        <div style="font-weight:bold; margin-bottom:8px;">🧮 費用試算 (以剛好滿$${minSpend}為例)</div>
 
         <div style="color:#555;">
 
-          449 (商品) - 180 (優惠) + ${svcCalcStr} (平台費) + ${agentFee} (代訂費)${isThreeHourSlot ? ' - 25 (優惠時段)' : ''}<br>
+          ${minSpend} (商品) - ${promoDiscount} (優惠) + ${svcCalcStr} (平台費) + ${agentFee} (代訂費)${isThreeHourSlot ? ' - 25 (優惠時段)' : ''}<br>
 
           <strong style="color:#d32f2f; font-size:18px;">預估總計約: ${totalEstimateStr}</strong>
 
@@ -6519,7 +6568,7 @@ function openGroceryCheckoutSummary() {
 
   document.getElementById('checkoutContent').innerHTML = html;
   if (typeof checkAndApplyGroceryDisabledUI === 'function') {
-      checkAndApplyGroceryDisabledUI();
+      checkAndApplyGroceryDisabledUI(currentStoreName);
   }
 
 
@@ -6653,6 +6702,10 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
 }
 
 async function sendOrderToLine(forceSubmit = false) {
+  if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+    showModal('目前暫時無法接單', '', false, '', true);
+    return;
+  }
   if (window.isGroupBuyClosed) {
     showToast('⚠️ 本團購訂單已送出結帳，團購已截止！');
     return;
@@ -6827,7 +6880,12 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       msgText += `⏱ 預計取餐：${timeText}\n`;
 
-      if (isAdvanceBooking) {
+      const is150 = (currentStoreName && currentStoreName.includes('優市'));
+      if (is150) {
+
+          msgText += `💼 專人代訂費: $50\n`;
+
+      } else if (isAdvanceBooking) {
 
           msgText += `💼 專人代訂費: $45 (179分鐘以上預約優惠)\n`;
 
@@ -7377,9 +7435,11 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
 async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUuid, titleEnc, descEnc, basePrice, imgUrl, hasCustomizations) {
 
   if (window.isGroceryStore) {
-
+      const sName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : '';
+      const is150 = sName.includes('優市');
+      const typeTitle = is150 ? '優市' : '雜貨';
       if (window._groceryDisabled) {
-          showToast('⚠️ 目前雜貨已售完 請等待補貨');
+          showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
           return;
       }
 
@@ -8497,8 +8557,16 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       }
 
       window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP');
-      if (window.isGroceryStore && !currentStoreName.includes('不需外送費、服務費')) {
-          currentStoreName += ' (不需外送費、需要服務費)';
+      window._groceryDisabled = false;
+      const is150StoreName = currentStoreName && currentStoreName.includes('優市');
+      if (window.isGroceryStore) {
+          if (is150StoreName) {
+              if (!currentStoreName.includes('免外送費、免服務費')) {
+                  currentStoreName += ' (免外送費、免服務費)';
+              }
+          } else if (!currentStoreName.includes('不需外送費、服務費') && !currentStoreName.includes('不需外送費、需要服務費')) {
+              currentStoreName += ' (不需外送費、需要服務費)';
+          }
       }
 
       const ssb = document.getElementById('storeSearchBtn');
@@ -9131,30 +9199,37 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
             if (window.isGroceryStore) {
 
-          window.groceryServiceFee = null;
-          let feeText = '需服務費';
-          try {
-              if (d.basketDependentFeePolicy && d.basketDependentFeePolicy.dialog && d.basketDependentFeePolicy.dialog.tierFee) {
-                  const tier = d.basketDependentFeePolicy.dialog.tierFee[0];
-                  if (tier && tier.nonMemberServiceFee) {
-                      const fareText = tier.nonMemberServiceFee;
-                      const matchVal = fareText.match(/(\d+)/);
-                      if (matchVal) {
-                          let fee = parseInt(matchVal[1], 10);
-                          let displayFee = Math.round(fee * 0.8);
-                          window.groceryServiceFee = displayFee;
-                          feeText = `服務費${displayFee}`;
+          const is150Store = (currentStoreName && currentStoreName.includes('優市'));
+          if (is150Store) {
+              window.groceryServiceFee = 0;
+              fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、<span style="color:#d32f2f;">免服務費</span></div>`;
+              currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          } else {
+              window.groceryServiceFee = null;
+              let feeText = '需服務費';
+              try {
+                  if (d.basketDependentFeePolicy && d.basketDependentFeePolicy.dialog && d.basketDependentFeePolicy.dialog.tierFee) {
+                      const tier = d.basketDependentFeePolicy.dialog.tierFee[0];
+                      if (tier && tier.nonMemberServiceFee) {
+                          const fareText = tier.nonMemberServiceFee;
+                          const matchVal = fareText.match(/(\d+)/);
+                          if (matchVal) {
+                              let fee = parseInt(matchVal[1], 10);
+                              let displayFee = Math.round(fee * 0.8);
+                              window.groceryServiceFee = displayFee;
+                              feeText = `服務費${displayFee}`;
+                          }
                       }
+                  } else if (d.fareInfo && d.fareInfo.serviceFee !== undefined) {
+                      let fee = parseInt(d.fareInfo.serviceFee, 10);
+                      let displayFee = Math.round(fee * 0.8);
+                      window.groceryServiceFee = displayFee;
+                      feeText = `服務費${displayFee}`;
                   }
-              } else if (d.fareInfo && d.fareInfo.serviceFee !== undefined) {
-                  let fee = parseInt(d.fareInfo.serviceFee, 10);
-                  let displayFee = Math.round(fee * 0.8);
-                  window.groceryServiceFee = displayFee;
-                  feeText = `服務費${displayFee}`;
-              }
-          } catch(e) { console.error(e); }
-          fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、${feeText}</div>`;
-          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+              } catch(e) { console.error(e); }
+              fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、${feeText}</div>`;
+              currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          }
 
       }
 
@@ -9313,7 +9388,11 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
 
                   try {
                     if (item.promoInfo && (item.promoInfo.promotionUUID || (item.promoInfo.promoBadge && item.promoInfo.promoBadge.content))) {
-                      isPromo = true;
+                      // 生鮮雜貨關閉優惠商品隔離，一般餐廳維持隔離
+                      const isGroceryStoreCurrent = (typeof window !== 'undefined' && window.isGroceryStore) || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+                      if (!isGroceryStoreCurrent) {
+                        isPromo = true;
+                      }
                       
                       if (item.promoInfo.promoBadge && item.promoInfo.promoBadge.content && item.promoInfo.promoBadge.content.richText) {
                           const elements = item.promoInfo.promoBadge.content.richText.richTextElements;
@@ -9372,6 +9451,8 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                         <div class="menu-item" style="position: relative; ${isSoldOut ? 'opacity: 0.6; cursor: not-allowed;' : ''}" ${isSoldOut ? '' : `onclick="openItemModal('${storeUuid}', '${sectionUuid}', '${subsectionUuid}', '${menuItemUuid}', '${encodeURIComponent(itemTitle).replace(/'/g, "%27")}', '${encodeURIComponent(itemDesc).replace(/'/g, "%27")}', ${priceVal}, '${imgUrl}', ${item.hasCustomizations === false ? false : true})"`}>
 
                     <div class="menu-item-info">
+
+                      ${promoBadgeHtml}
 
                       <div class="menu-item-title">${escapeHTML(itemTitle)}</div>
 
@@ -9535,7 +9616,10 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                       currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
                   }
                   
-                  if (window.isGroceryStore && fd.basketDependentFeePolicy && fd.basketDependentFeePolicy.dialog && fd.basketDependentFeePolicy.dialog.tierFee) {
+                  const is150Store = (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('優市'));
+                  if (is150Store) {
+                      window.groceryServiceFee = 0;
+                  } else if (window.isGroceryStore && fd.basketDependentFeePolicy && fd.basketDependentFeePolicy.dialog && fd.basketDependentFeePolicy.dialog.tierFee) {
                       const tier = fd.basketDependentFeePolicy.dialog.tierFee[0];
                       if (tier && tier.nonMemberServiceFee) {
                           const matchVal = tier.nonMemberServiceFee.match(/(\d+)/);
@@ -10172,7 +10256,84 @@ function buildSplitSuggestionHtml(result) {
 
   window.errorModalCloseCallback = null;
 
+  // 🌟 檢查是否已由密碼解鎖忽略「暫時無法接單」狀態
+  window.isClosedStatusBypassed = function() {
+    try {
+        return localStorage.getItem('bypass_closed_status') === '5318';
+    } catch (e) {
+        return false;
+    }
+  };
+
+  // 🌟 連續點擊圖片 5 次觸發輸入密碼邏輯
+  window._sleepIconClickCount = 0;
+  window._sleepIconTimer = null;
+  window.handleSleepIconClick = function(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const title = document.getElementById('errorModalTitle')?.innerText || '';
+    if (title !== '目前暫時無法接單' && !title.includes('無法接單')) {
+        return;
+    }
+    window._sleepIconClickCount = (window._sleepIconClickCount || 0) + 1;
+    clearTimeout(window._sleepIconTimer);
+    window._sleepIconTimer = setTimeout(() => {
+        window._sleepIconClickCount = 0;
+    }, 2500);
+
+    if (window._sleepIconClickCount >= 5) {
+        window._sleepIconClickCount = 0;
+        clearTimeout(window._sleepIconTimer);
+        window.openBypassPasswordModal();
+    }
+  };
+
+  window.openBypassPasswordModal = function() {
+    const modal = document.getElementById('bypassClosedModal');
+    const input = document.getElementById('bypassClosedPwdInput');
+    const errMsg = document.getElementById('bypassClosedErrorMsg');
+    if (errMsg) errMsg.style.display = 'none';
+    if (input) input.value = '';
+    if (modal) {
+        modal.style.display = 'flex';
+        setTimeout(() => { if (input) input.focus(); }, 150);
+    }
+  };
+
+  window.closeBypassPasswordModal = function() {
+    const modal = document.getElementById('bypassClosedModal');
+    if (modal) modal.style.display = 'none';
+  };
+
+  window.verifyBypassPassword = function() {
+    const input = document.getElementById('bypassClosedPwdInput');
+    const val = input ? input.value.trim() : '';
+    if (val === '5318') {
+        try {
+            localStorage.setItem('bypass_closed_status', '5318');
+        } catch (e) {
+            console.error('localStorage error', e);
+        }
+        window.closeBypassPasswordModal();
+        const overlay = document.getElementById('errorModalOverlay');
+        if (overlay) overlay.style.display = 'none';
+        if (typeof showToast === 'function') {
+            showToast('🔓 已解除暫時無法接單限制');
+        }
+    } else {
+        const errMsg = document.getElementById('bypassClosedErrorMsg');
+        if (errMsg) errMsg.style.display = 'block';
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+    }
+  };
+
   function closeErrorModal() {
+    const title = document.getElementById('errorModalTitle')?.innerText || '';
+    if (title === '代訂睡覺中' || ((title === '目前暫時無法接單' || title.includes('無法接單')) && !isClosedStatusBypassed())) {
+        return;
+    }
     const cb = window.errorModalCloseCallback;
     window.errorModalCloseCallback = null;
     const overlay = document.getElementById('errorModalOverlay');
@@ -10183,14 +10344,17 @@ function buildSplitSuggestionHtml(result) {
   }
 
   function showModal(title, text, isError = true, htmlContent = '', hideBtn = false, onClose = null) {
+    if ((title === '目前暫時無法接單' || title.includes('無法接單')) && isClosedStatusBypassed()) {
+        return;
+    }
     window.errorModalCloseCallback = (typeof onClose === 'function') ? onClose : null;
     if (typeof text === 'string' && (text.includes('<div') || text.includes('<button') || text.includes('<span') || text.includes('<p') || text.includes('<br>')) && !htmlContent) {
         htmlContent = text;
         text = '';
     }
 
-    if (title === '代訂睡覺中') {
-        document.getElementById('errorModalIcon').innerHTML = '<img src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">';
+    if (title === '代訂睡覺中' || title === '目前暫時無法接單' || title.includes('無法接單')) {
+        document.getElementById('errorModalIcon').innerHTML = '<img class="sleep-icon-img" src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1)); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
     } else if (title === '購物車是空的') {
@@ -10222,6 +10386,8 @@ function buildSplitSuggestionHtml(result) {
     }
 
     document.getElementById('errorModalExtra').innerHTML = htmlContent;
+    const closeBtn = document.getElementById('errorModalCloseBtn');
+    if (closeBtn) closeBtn.style.display = hideBtn ? 'none' : 'block';
     document.getElementById('errorModalBtn').style.display = hideBtn ? 'none' : 'block';
     document.getElementById('errorModalOverlay').style.display = 'flex';
   }
@@ -10481,7 +10647,7 @@ function showToast(msg) {
 
       <button id="errorModalCloseBtn" onclick="closeErrorModal()" style="position:absolute; top:15px; right:15px; background:transparent; border:none; font-size:24px; color:#999; cursor:pointer; line-height:1;">&times;</button>
 
-      <div id="errorModalIcon" style="font-size:48px; margin-bottom:15px;">❌</div>
+      <div id="errorModalIcon" onclick="handleSleepIconClick(event)" style="font-size:48px; margin-bottom:15px; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:manipulation;">❌</div>
 
       <div id="errorModalTitle" style="font-size:20px; font-weight:bold; margin-bottom:12px; color:#111;">無法預約</div>
 
@@ -10497,6 +10663,21 @@ function showToast(msg) {
 
     </div>
 
+  </div>
+
+  <!-- Bypass Closed Password Modal -->
+  <div id="bypassClosedModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); z-index:100000; align-items:center; justify-content:center;" onclick="if(event.target===this) closeBypassPasswordModal();">
+    <div style="background:#fff; width:85%; max-width:340px; border-radius:18px; padding:24px 20px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.25); position:relative; animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);">
+      <div style="font-size:36px; margin-bottom:10px;">🔐</div>
+      <div style="font-size:18px; font-weight:bold; margin-bottom:8px; color:#111;">請輸入解鎖密碼</div>
+      <div style="font-size:13px; color:#666; margin-bottom:16px;">輸入密碼後可直接忽略暫時無法接單限制</div>
+      <input type="password" id="bypassClosedPwdInput" inputmode="numeric" placeholder="請輸入密碼" style="width:100%; padding:12px; border:1.5px solid #ddd; border-radius:10px; font-size:18px; text-align:center; box-sizing:border-box; outline:none; margin-bottom:15px; letter-spacing:4px;" onkeydown="if(event.key==='Enter') verifyBypassPassword();" />
+      <div id="bypassClosedErrorMsg" style="display:none; color:#e11d48; font-size:13px; margin-top:-10px; margin-bottom:12px; font-weight:600;">密碼錯誤，請重新輸入</div>
+      <div style="display:flex; gap:10px;">
+        <button type="button" onclick="closeBypassPasswordModal()" style="flex:1; background:#f3f4f6; color:#4b5563; border:none; padding:11px; border-radius:10px; font-weight:bold; font-size:14px; cursor:pointer;">取消</button>
+        <button type="button" onclick="verifyBypassPassword()" style="flex:1; background:#111827; color:#fff; border:none; padding:11px; border-radius:10px; font-weight:bold; font-size:14px; cursor:pointer;">確認解鎖</button>
+      </div>
+    </div>
   </div>
 
 
@@ -11306,12 +11487,38 @@ async function loadServerStatusDot() {
         if (!response.ok) throw new Error('API Error');
         
         const data = await response.json();
+        window.lastServerStoreStatus = data;
         updateStatusDot(data.type);
         
+        // 🌟 判斷伺服器營業狀態是否為「休息中(無法接單)」(由 LINE 控制：type === 'closed' 或文字包含「無法接單」)
+        const isClosed = data.type === 'closed' || (data.text && data.text.includes('無法接單'));
+        if (isClosed) {
+            if (!isClosedStatusBypassed()) {
+                showModal('目前暫時無法接單', '', false, '', true);
+                if (!offlineCheckInterval) {
+                    offlineCheckInterval = setInterval(loadServerStatusDot, 15000);
+                }
+                return;
+            } else {
+                // 已被使用者以密碼 5318 解鎖，若畫面上正好有無法接單彈窗則自動隱藏
+                const overlay = document.getElementById('errorModalOverlay');
+                const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
+                if (overlay && overlay.style.display !== 'none' && (modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+                    overlay.style.display = 'none';
+                }
+            }
+        }
+
+        // 伺服器狀態正常 (非 closed 且非 offline)，若目前正開啟睡覺或無法接單彈窗，則自動關閉解除鎖定
+        const overlay = document.getElementById('errorModalOverlay');
+        const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
+        if (overlay && overlay.style.display !== 'none' && (modalTitle === '代訂睡覺中' || modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+            overlay.style.display = 'none';
+        }
+
         if (offlineCheckInterval) {
             clearInterval(offlineCheckInterval);
             offlineCheckInterval = null;
-            document.getElementById('errorModalOverlay').style.display = 'none';
         }
     } catch (err) {
         console.error("Status check error", err);
@@ -12084,14 +12291,18 @@ let groceryPollTimer = null;
 let groceryPollAttempts = 0;
 window._groceryDisabled = false;
 
-async function checkGroceryStatus() {
+async function checkGroceryStatus(storeName) {
     try {
+        const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
+        const is150 = (sName && sName.includes('優市'));
+        const couponType = is150 ? '150' : '225';
         const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
-        const res = await fetch(`${apiBase}/api/grocery/status?t=${Date.now()}`);
+        const res = await fetch(`${apiBase}/api/grocery/status?store_name=${encodeURIComponent(sName)}&type=${couponType}&t=${Date.now()}`);
         if (res.ok) {
             const data = await res.json();
-            window._groceryDisabled = (data.enabled === false || data.status === 'disabled');
-            return window._groceryDisabled;
+            const isDisabled = (data.enabled === false || data.status === 'disabled');
+            window._groceryDisabled = isDisabled;
+            return isDisabled;
         }
     } catch (e) {
         console.warn('checkGroceryStatus error:', e);
@@ -12099,32 +12310,56 @@ async function checkGroceryStatus() {
     return false;
 }
 
-function applyGroceryDisabledUI() {
+function applyGroceryDisabledUI(storeName) {
     window._groceryDisabled = true;
+    const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
+    const is150 = (sName && sName.includes('優市'));
+    const typeTitle = is150 ? '優市' : '雜貨';
+    const couponTitle = is150 ? '優市 150' : '生鮮雜貨 225';
     const noticeEl = document.getElementById('groceryCheckoutNotice');
     if (noticeEl) {
         noticeEl.innerHTML = `
           <div style="background:#FEE2E2; border:1px solid #EF4444; color:#B91C1C; padding:14px; border-radius:10px; font-weight:bold; font-size:15px; text-align:center; box-shadow:0 2px 6px rgba(239,68,68,0.15);">
-            ⚠️ 目前雜貨已售完 請等待補貨<br>
-            <span style="font-size:13px; font-weight:normal; color:#7F1D1D; margin-top:4px; display:inline-block;">生鮮雜貨 225 優惠券目前暫停發券，補貨後將重新開放</span>
+            ⚠️ 目前已售完 請等待補貨<br>
+            <span style="font-size:13px; font-weight:normal; color:#7F1D1D; margin-top:4px; display:inline-block;">目前已售完 請等待補貨</span>
           </div>
         `;
     }
     const submitBtn = document.getElementById('checkoutSubmitBtn');
     if (submitBtn) {
-        submitBtn.innerText = '🚫 目前雜貨已售完 請等待補貨';
+        submitBtn.innerText = `🚫 目前${typeTitle}已售完 請等待補貨`;
         submitBtn.style.background = '#94A3B8';
         submitBtn.style.cursor = 'not-allowed';
         submitBtn.onclick = function() {
-            showToast('⚠️ 目前雜貨已售完 請等待補貨');
+            showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
         };
     }
 }
 
-async function checkAndApplyGroceryDisabledUI() {
-    const isDisabled = await checkGroceryStatus();
+function restoreGroceryEnabledUI() {
+    window._groceryDisabled = false;
+    const noticeEl = document.getElementById('groceryCheckoutNotice');
+    if (noticeEl) {
+        noticeEl.innerHTML = `
+          ⚠️ <b>注意：</b>此為生鮮雜貨代訂。我們不需要您在此點選詳細商品，請直接送出訂單後，代訂會提供網址，直接選購商品即可。
+        `;
+    }
+    const submitBtn = document.getElementById('checkoutSubmitBtn');
+    if (submitBtn) {
+        submitBtn.innerText = '送出訂單';
+        submitBtn.style.background = '#f43f5e';
+        submitBtn.style.cursor = 'pointer';
+        submitBtn.onclick = submitSelectedPlan;
+    }
+}
+
+async function checkAndApplyGroceryDisabledUI(storeName) {
+    const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
+    const isDisabled = await checkGroceryStatus(sName);
     if (isDisabled) {
-        applyGroceryDisabledUI();
+        applyGroceryDisabledUI(sName);
+    } else {
+        restoreGroceryEnabledUI();
     }
 }
 
@@ -12198,10 +12433,12 @@ async function handleGroceryOrderSubmit(msgText) {
     const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
 
     // 送出前再次檢查開關狀態，若已售完則直接攔截
-    const isDisabled = await checkGroceryStatus();
+    const isDisabled = await checkGroceryStatus(storeName);
     if (isDisabled) {
+        const is150 = storeName.includes('優市');
+        const typeTitle = is150 ? '優市' : '雜貨';
         showGroceryWaitingOverlay(storeName);
-        onGroceryUrlDisabled('目前雜貨已售完 請等待補貨');
+        onGroceryUrlDisabled(`目前${typeTitle}已售完 請等待補貨`, storeName);
         return;
     }
 
@@ -12241,7 +12478,7 @@ async function handleGroceryOrderSubmit(msgText) {
                 } else if (data.status === 'disabled' || data.status === 'sold_out' || (data.message && (data.message.includes('已售完') || data.message.includes('手動關閉')))) {
                     clearInterval(groceryPollTimer);
                     groceryPollTimer = null;
-                    onGroceryUrlDisabled(data.message || '目前雜貨已售完 請等待補貨');
+                    onGroceryUrlDisabled(data.message || '目前雜貨已售完 請等待補貨', storeName);
                     return;
                 } else if (data.status === 'manual') {
                     clearInterval(groceryPollTimer);
@@ -12303,10 +12540,14 @@ function onGroceryUrlTimeout() {
     }, 2200);
 }
 
-function onGroceryUrlDisabled(msg) {
+function onGroceryUrlDisabled(msg, storeName) {
+    const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
+    const is150 = (sName && sName.includes('優市')) || (msg && msg.includes('優市'));
+    const typeTitle = is150 ? '優市' : '雜貨';
+    const couponTitle = is150 ? '優市 150' : '生鮮雜貨 225';
     const titleEl = document.getElementById('gwTitle');
     if (titleEl) {
-        titleEl.innerText = '⚠️ 目前雜貨已售完';
+        titleEl.innerText = `⚠️ 目前${typeTitle}已售完`;
         titleEl.style.color = '#EF4444';
     }
     const emojiEl = document.getElementById('gwEmoji');
@@ -12317,10 +12558,10 @@ function onGroceryUrlDisabled(msg) {
     if (contentEl) {
         contentEl.innerHTML = `
           <div style="line-height:1.6; text-align:center; font-size:16px; color:#1E293B; font-weight:bold; padding:12px 0;">
-            ${msg || '目前雜貨已售完 請等待補貨'}
+            ${msg || `目前${typeTitle}已售完 請等待補貨`}
           </div>
           <div style="line-height:1.5; text-align:center; font-size:13px; color:#64748B;">
-            生鮮雜貨 225 優惠券目前暫停發券，補貨完成後將重新開放，敬請見諒！
+            ${couponTitle} 優惠券目前暫停發券，補貨完成後將重新開放，敬請見諒！
           </div>
         `;
     }
