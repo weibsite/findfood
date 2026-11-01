@@ -3421,6 +3421,11 @@ async function triggerPickupSupplement(query, currentStores, vertical, sessionTo
 async function searchStores() {
     window.isDiscountZone = false;
 
+    // 清除任何打字殘留的背景 suggestion 計時器與請求，防止慢速請求覆蓋搜尋結果
+    if (typeof queryDebounceTimer !== 'undefined') clearTimeout(queryDebounceTimer);
+    if (typeof latestStoreSuggestionsReqId !== 'undefined') latestStoreSuggestionsReqId++;
+    if (typeof isFetchingSuggestions !== 'undefined') isFetchingSuggestions = false;
+
     // [修補] 防止搜尋按鈕被連按，導致重複輪詢與浪費 Token
     if (window._searchLock) return;
     
@@ -3594,30 +3599,7 @@ async function searchStores() {
         return;
     }
 
-    // ⭐【並行發起 PICKUP 搜尋】：不再等待第一個搜尋結束才發送，大幅縮減等待時間並消除競態
-    if (currentVert !== 'SHOP') {
-        fetchPickupDiscountStores(q).then(pStores => {
-            if (window._activeSearchSession.token !== sessionToken) return;
-            window._activeSearchSession.pickupStores = pStores || [];
-
-            // 若第一個搜尋 (DELIVERY) 已經完成並渲染在畫面上，即時合併更新！
-            if (window._activeSearchSession.deliveryStores && window._activeSearchSession.deliveryStores.length > 0) {
-                const merged = applyPickupDiscountToStores(window._activeSearchSession.deliveryStores, window._activeSearchSession.pickupStores);
-                window.suggestionStores = merged;
-                const resultsDiv = document.getElementById('results');
-                if (resultsDiv) {
-                    const currentScroll = window.scrollY;
-                    resultsDiv.innerHTML = generateStoreListHTML(merged, q, currentVert);
-                    window.scrollTo(0, currentScroll);
-                }
-            }
-        }).catch(err => {
-            console.warn('Background pickup supplement error:', err);
-        });
-    }
-
     try {
-
       const searchPayload = { 
           query: q, 
           lat: currentLat,
@@ -3626,160 +3608,62 @@ async function searchStores() {
           searchSource: 'SEARCH_SUGGESTION',
           searchType: 'GLOBAL_SEARCH'
       };
-        if (typeof scheduleMode !== 'undefined') {
-            if (scheduleMode === 'ASAP') {
-                searchPayload.date = "";
-                searchPayload.startTime = 0;
-                searchPayload.endTime = 0;
-            } else if (scheduleMode === 'SCHEDULE') {
-                const timeSelect = document.getElementById('scheduleTime');
-                if (timeSelect && timeSelect.value) {
-                    try {
-                        const sData = JSON.parse(timeSelect.value);
-                        searchPayload.date = sData.date;
-                        searchPayload.startTime = sData.startTime;
-                        searchPayload.endTime = sData.endTime;
-                    } catch (e) {}
-                }
-            }
-        }
-
-      
-      if (scheduleMode === 'SCHEDULE') {
-          const timeSelect = document.getElementById('scheduleTime');
-          if (timeSelect && timeSelect.value) {
-              try {
-                  const sData = JSON.parse(timeSelect.value);
-                  searchPayload.date = sData.date;
-                  searchPayload.startTime = sData.startTime;
-                  searchPayload.endTime = sData.endTime;
-              } catch (e) {}
+      if (typeof scheduleMode !== 'undefined') {
+          if (scheduleMode === 'ASAP') {
+              searchPayload.date = "";
+              searchPayload.startTime = 0;
+              searchPayload.endTime = 0;
+          } else if (scheduleMode === 'SCHEDULE') {
+              const timeSelect = document.getElementById('scheduleTime');
+              if (timeSelect && timeSelect.value) {
+                  try {
+                      const sData = JSON.parse(timeSelect.value);
+                      searchPayload.date = sData.date;
+                      searchPayload.startTime = sData.startTime;
+                      searchPayload.endTime = sData.endTime;
+                  } catch (e) {}
+              }
           }
       }
 
+      // ⭐【原子性並行：同時發送 DELIVERY 與 PICKUP，齊備後一次性渲染到位，杜絕中間無標籤狀態】
+      const pickupPromise = (currentVert !== 'SHOP') ? fetchPickupDiscountStores(q).catch(() => []) : Promise.resolve([]);
       
-      // 在 F12 顯示預計送往 Uber API 的真實 Payload 以利除錯
-      const expectedUberPayload = {
-          userQuery: q,
-          searchSource: searchPayload.searchSource,
-          searchType: searchPayload.searchType,
-          vertical: searchPayload.vertical,
-          displayType: searchPayload.displayType,
-          overrideLocationDetails: {
-              latitude: currentLat,
-              longitude: currentLng
-          }
-      };
-      if (searchPayload.date) {
-          expectedUberPayload.date = searchPayload.date;
-          expectedUberPayload.startTime = searchPayload.startTime;
-          expectedUberPayload.endTime = searchPayload.endTime;
-      }
-      console.group('🚀 [Uber Eats API] 預計發送的 Payload');
-      console.log(JSON.stringify(expectedUberPayload, null, 2));
-      console.groupEnd();
-
-      // 改為跟 getStoreV1 一樣，直送 Uber Eats 伺服器
-      const uberSearchHeaders = {
-          "accept": "*/*",
-          "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-          "content-type": "application/json",
-          "x-csrf-token": "x",
-          "x-uber-ciid": "c65c5fae-d7e3-44ad-9146-011e930f77dd",
-          "x-uber-client-gitref": "cdeec6f0ad55ef2fc11f85faf00785cd01b5ddf1",
-          "x-uber-request-id": "e2449281-4735-4392-ae07-b803eb404d0a",
-          "x-uber-session-id": "c86ad72f-ecde-4174-9b4f-9121887789cc",
-          "x-uber-device-location-latitude": currentLat.toString(),
-          "x-uber-device-location-longitude": currentLng.toString(),
-          "x-uber-target-location-latitude": currentLat.toString(),
-          "x-uber-target-location-longitude": currentLng.toString()
-      };
-      
-      const uberSearchPayload = {
-          userQuery: q,
-          searchSource: searchPayload.searchSource,
-          searchType: searchPayload.searchType,
-          vertical: searchPayload.vertical,
-          overrideLocationDetails: {
-              latitude: currentLat,
-              longitude: currentLng
-          }
-      };
-      
-      if (searchPayload.date) {
-          uberSearchPayload.date = searchPayload.date;
-          uberSearchPayload.startTime = searchPayload.startTime;
-          uberSearchPayload.endTime = searchPayload.endTime;
-      }
-      
-      console.log('📡 [搜尋餐廳] 直送 Uber Payload:', JSON.stringify(uberSearchPayload, null, 2));
-
-      const res = await fetch(`${API_BASE_URL}/api/search_v4`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(searchPayload)
-      });
-
-      let json;
-
-      try {
-
+      const deliveryPromise = (async () => {
+          const res = await fetch(`${API_BASE_URL}/api/search_v4`, {
+              method: 'POST', 
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(searchPayload)
+          });
           const textRes = await res.text();
+          return JSON.parse(textRes);
+      })();
 
-          try {
+      const [pickupStores, json] = await Promise.all([pickupPromise, deliveryPromise]);
 
-              json = JSON.parse(textRes);
+      if (window._activeSearchSession.token !== sessionToken) return;
 
-          } catch (e) {
-
-              console.error('Non-JSON response from server:', textRes);
-
-              throw new Error('伺服器回傳了非 JSON 格式的錯誤: ' + textRes.substring(0, 50) + '...');
-
-          }
-
-      } catch (e) {
-
-          throw e;
-
+      if (!json || json.status === 'failure' || !json.data) {
+          statusEl.innerHTML = '搜尋失敗';
+          return;
       }
-
-      if (!res.ok || json.status === 'failure') { statusEl.innerHTML = '搜尋失敗'; return; }
-
-      
 
       let stores = [];
-
       (json.data.feedItems || []).forEach(item => {
-
           if ((item.type === 'REGULAR_STORE' || item.type === 'REGULAR_STORE_WITH_ITEMS') && item.store) {
-
               stores.push(item.store);
-
           } else if ((item.type === 'REGULAR_CAROUSEL' || item.type === 'STORE_CAROUSEL') && item.carousel && item.carousel.stores) {
-
               stores.push(...item.carousel.stores);
-
           } else if (item.type === 'MINI_STORE_WITH_ITEMS' && item.miniStoreWithItems && item.miniStoreWithItems.store) {
-
               stores.push(item.miniStoreWithItems.store);
-
           }
-
       });
 
-      // 過濾掉重複的 storeUuid (有時推薦輪播跟一般列表會重複)
-
       const seen = new Set();
-
       stores = stores.filter(s => {
-
           if (seen.has(s.storeUuid)) return false;
-
           seen.add(s.storeUuid);
-
           return true;
-
       });
       // 過濾掉自取(無法外送)的店家
       stores = stores.filter(s => {
@@ -3789,45 +3673,16 @@ async function searchStores() {
           return true;
       });
 
-
-      
-
-      
-      // [優化] 同步完整搜尋的結果到背景快取，若第一次有結果而第二次沒結果，不覆蓋掉第一次的結果
-      const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
-      if (stores.length > 0) {
-          window.suggestionStores = stores;
-          window.suggestionStoreSource = 'search_v3';
-          window.suggestionStoreQuery = q;
-      } else if (hasFirstResults) {
-          // 第一次有結果 第二次沒結果：保留第一次的結果，不覆蓋掉
-          stores = window.suggestionStores;
-      } else {
-          window.suggestionStores = [];
-          window.suggestionStoreSource = 'search_v3_empty';
-          window.suggestionStoreQuery = q;
-      }
-      if (typeof lastSearchedQuery !== 'undefined') {
-          lastSearchedQuery = q;
-      } else {
-          window.lastSearchedQuery = q;
-      }
-      if (typeof lastSearchedVertical !== 'undefined') {
-          lastSearchedVertical = currentVert;
-      } else {
-          window.lastSearchedVertical = currentVert;
-      }
-
-      if (window._activeSearchSession.token !== sessionToken) return;
       window._activeSearchSession.deliveryStores = stores;
+      window._activeSearchSession.pickupStores = pickupStores || [];
 
-      // ⭐【核心防禦：防止第一個搜尋把先完成的 PICKUP 資料壓過去】
-      // 若 PICKUP 比較快 (比第一個搜尋更早返回)，立即在此時自動合併 PICKUP 資料！
+      // ⭐ 一次性安全合併免運資訊
       let finalStores = stores;
-      if (window._activeSearchSession.pickupStores && window._activeSearchSession.pickupStores.length > 0) {
-          finalStores = applyPickupDiscountToStores(stores, window._activeSearchSession.pickupStores);
+      if (pickupStores && pickupStores.length > 0) {
+          finalStores = applyPickupDiscountToStores(stores, pickupStores);
       }
 
+      const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
       if (finalStores.length > 0) {
           window.suggestionStores = finalStores;
           window.suggestionStoreSource = 'search_v3';
@@ -3844,7 +3699,13 @@ async function searchStores() {
       } else {
           window.lastSearchedQuery = q;
       }
-      
+      if (typeof lastSearchedVertical !== 'undefined') {
+          lastSearchedVertical = currentVert;
+      } else {
+          window.lastSearchedVertical = currentVert;
+      }
+
+      // ⭐ 只渲染一次！第一瞬間就是帶有免運費標籤與抵達時間的完整狀態，絕不閃退
       resultsEl.innerHTML = generateStoreListHTML(finalStores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
       window.scrollTo(0, 0); // 確保每次搜尋完成後，畫面回到最上方優先顯示第一個結果
 
@@ -4039,6 +3900,7 @@ async function searchStoresPickup(q) {
             return `
             <div class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${storeUuid}', '${name.replace(/'/g, "\\'")}', '${actionUrl}', false, 'PICKUP', '${safeEtdText}')" style="position:relative;">
                 ${distBadge}
+                <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); color:#00cc66; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">免運費</div>
                 <div class="card-img" style="background-image: url('${imgUrl}');"></div>
                 <div class="card-body">
                   <div class="card-name">${name}</div>
@@ -11666,9 +11528,9 @@ async function fetchStoreSuggestions(q) {
                 window.suggestionStoreQuery = q;
             }
             const resultsEl = document.getElementById('results');
-            if (resultsEl) {
+            // ⭐【關鍵防護】：若使用者已經點擊完整搜尋進入列表 (currentView === 'list')，絕不允許被背景打字預查覆蓋！
+            if (resultsEl && currentView !== 'list') {
                 resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
-                // Status update is now handled inside generateStoreListHTML
             }
 
         // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無全聯結果 (出現大全聯不算)，即時補搜全聯
