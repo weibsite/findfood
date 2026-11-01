@@ -3331,53 +3331,86 @@ async function fetchPickupDiscountStores(q) {
     }
 }
 
-async function triggerPickupSupplement(query, currentStores, vertical) {
-    const currentToken = ++window._pickupSearchToken;
+window._activeSearchSession = {
+    token: 0,
+    query: '',
+    vertical: '',
+    deliveryStores: null,
+    pickupStores: null
+};
+
+function applyPickupDiscountToStores(deliveryStores, pickupStores) {
+    if (!deliveryStores || deliveryStores.length === 0) {
+        if (!pickupStores || pickupStores.length === 0) return [];
+        return pickupStores.map(ps => {
+            ps._isPickupDiscount = true;
+            ps._fromPickupSupplement = true;
+            ps._pickupMeta = ps.meta;
+            return ps;
+        });
+    }
+    if (!pickupStores || pickupStores.length === 0) {
+        return deliveryStores;
+    }
+
+    const pickupMap = new Map();
+    pickupStores.forEach(ps => {
+        if (ps && ps.storeUuid) pickupMap.set(ps.storeUuid, ps);
+    });
+
+    const existingUuids = new Set();
+    const merged = [];
+
+    // 1. 保留原本 deliveryStores 順序，若在 PICKUP 中存在，加上免運標籤與資訊
+    deliveryStores.forEach(s => {
+        if (!s || !s.storeUuid) return;
+        existingUuids.add(s.storeUuid);
+        if (pickupMap.has(s.storeUuid)) {
+            s._isPickupDiscount = true;
+            const ps = pickupMap.get(s.storeUuid);
+            if (ps.meta && Array.isArray(ps.meta)) {
+                s._pickupMeta = ps.meta;
+            }
+        }
+        merged.push(s);
+    });
+
+    // 2. 將 PICKUP 有但 deliveryStores 沒有的店家穿插追加在後面
+    pickupStores.forEach(ps => {
+        if (!ps || !ps.storeUuid) return;
+        if (!existingUuids.has(ps.storeUuid)) {
+            existingUuids.add(ps.storeUuid);
+            ps._isPickupDiscount = true;
+            ps._fromPickupSupplement = true;
+            ps._pickupMeta = ps.meta;
+            merged.push(ps);
+        }
+    });
+
+    return merged;
+}
+
+async function triggerPickupSupplement(query, currentStores, vertical, sessionToken) {
+    const currentToken = sessionToken || ++window._pickupSearchToken;
     try {
         const pickupStores = await fetchPickupDiscountStores(query);
-        if (currentToken !== window._pickupSearchToken) return;
+        if (currentToken !== window._activeSearchSession.token && currentToken !== window._pickupSearchToken) return;
         if (!pickupStores || pickupStores.length === 0) return;
 
-        const pickupMap = new Map();
-        pickupStores.forEach(ps => pickupMap.set(ps.storeUuid, ps));
+        window._activeSearchSession.pickupStores = pickupStores;
 
-        const existingUuids = new Set();
-        let matchedCount = 0;
+        const baseStores = (window._activeSearchSession.deliveryStores && window._activeSearchSession.deliveryStores.length > 0)
+            ? window._activeSearchSession.deliveryStores
+            : (currentStores || []);
 
-        // 1. 階段一已有店家：直接加上右上(ETD)與左上(免運費)
-        currentStores.forEach(s => {
-            existingUuids.add(s.storeUuid);
-            if (pickupMap.has(s.storeUuid)) {
-                s._isPickupDiscount = true;
-                const ps = pickupMap.get(s.storeUuid);
-                if (ps.meta && Array.isArray(ps.meta)) {
-                    s._pickupMeta = ps.meta;
-                }
-                matchedCount++;
-            }
-        });
+        const merged = applyPickupDiscountToStores(baseStores, pickupStores);
+        window.suggestionStores = merged;
 
-        // 2. 階段一未有的店家：標記後穿插追加進後面排序
-        const newStores = [];
-        pickupStores.forEach(ps => {
-            if (!existingUuids.has(ps.storeUuid)) {
-                existingUuids.add(ps.storeUuid);
-                ps._isPickupDiscount = true;
-                ps._fromPickupSupplement = true;
-                ps._pickupMeta = ps.meta;
-                newStores.push(ps);
-            }
-        });
-
-        if (newStores.length > 0) {
-            currentStores.push(...newStores);
-        }
-
-        // 3. 重新渲染列表（保持當前畫面捲動位置，不晃動跳轉）
+        // 重新渲染列表（保持當前畫面捲動位置，不晃動跳轉）
         const resultsEl = document.getElementById('results');
         if (resultsEl) {
             const currentScroll = window.scrollY;
-            resultsEl.innerHTML = generateStoreListHTML(currentStores, query, vertical);
+            resultsEl.innerHTML = generateStoreListHTML(merged, query, vertical);
             window.scrollTo(0, currentScroll);
         }
     } catch (err) {
@@ -3534,8 +3567,17 @@ async function searchStores() {
 
     statusEl.innerHTML = '<div style="padding: 100px 0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; font-size: 16px; font-weight: bold; color: #666;">搜尋中...</div></div>'; statusEl.className = 'status'; resultsEl.innerHTML = '';
     
+        const currentVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
+    const sessionToken = ++window._pickupSearchToken;
+    window._activeSearchSession = {
+        token: sessionToken,
+        query: q,
+        vertical: currentVert,
+        deliveryStores: null,
+        pickupStores: null
+    };
+
     // [優化] 如果關鍵字與剛剛自動搜尋的關鍵字完全相同 (且分類相同)，且資料已下載完畢，直接使用快取不需重發 API
-    const currentVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
     if (q === lastSearchedQuery && currentVert === (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') && typeof isFetchingSuggestions !== 'undefined' && !isFetchingSuggestions && window.suggestionStores && window.suggestionStores.length > 0) {
         const keyword = (q || '').trim();
         const safeKw = typeof escapeHTML === 'function' ? escapeHTML(keyword) : keyword;
@@ -3543,12 +3585,35 @@ async function searchStores() {
             ? (keyword ? `找到與${safeKw}相關的店家：` : `為您找到 ${window.suggestionStores.length} 家生鮮雜貨：`)
             : (keyword ? `找到與${safeKw}相關的餐廳：` : `為您找到 ${window.suggestionStores.length} 家餐廳：`));
         statusEl.className = 'status success';
-        resultsEl.innerHTML = generateStoreListHTML(window.suggestionStores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
+        window._activeSearchSession.deliveryStores = window.suggestionStores;
+        resultsEl.innerHTML = generateStoreListHTML(window.suggestionStores, q, currentVert);
         window.scrollTo(0, 0);
         if (currentVert !== 'SHOP') {
-            triggerPickupSupplement(q, window.suggestionStores, currentVert);
+            triggerPickupSupplement(q, window.suggestionStores, currentVert, sessionToken);
         }
         return;
+    }
+
+    // ⭐【並行發起 PICKUP 搜尋】：不再等待第一個搜尋結束才發送，大幅縮減等待時間並消除競態
+    if (currentVert !== 'SHOP') {
+        fetchPickupDiscountStores(q).then(pStores => {
+            if (window._activeSearchSession.token !== sessionToken) return;
+            window._activeSearchSession.pickupStores = pStores || [];
+
+            // 若第一個搜尋 (DELIVERY) 已經完成並渲染在畫面上，即時合併更新！
+            if (window._activeSearchSession.deliveryStores && window._activeSearchSession.deliveryStores.length > 0) {
+                const merged = applyPickupDiscountToStores(window._activeSearchSession.deliveryStores, window._activeSearchSession.pickupStores);
+                window.suggestionStores = merged;
+                const resultsDiv = document.getElementById('results');
+                if (resultsDiv) {
+                    const currentScroll = window.scrollY;
+                    resultsDiv.innerHTML = generateStoreListHTML(merged, q, currentVert);
+                    window.scrollTo(0, currentScroll);
+                }
+            }
+        }).catch(err => {
+            console.warn('Background pickup supplement error:', err);
+        });
     }
 
     try {
@@ -3752,14 +3817,36 @@ async function searchStores() {
       } else {
           window.lastSearchedVertical = currentVert;
       }
-      
-      resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
-      window.scrollTo(0, 0); // 確保每次搜尋完成後，畫面回到最上方優先顯示第一個結果
 
-      // ⭐ [優惠/免運專區即時穿插] 顯示階段一餐廳時，立刻在背景送出優惠專區(PICKUP)要求，不換頁並穿插進後面排序
-      if (currentVert !== 'SHOP') {
-          triggerPickupSupplement(q, stores, currentVert);
+      if (window._activeSearchSession.token !== sessionToken) return;
+      window._activeSearchSession.deliveryStores = stores;
+
+      // ⭐【核心防禦：防止第一個搜尋把先完成的 PICKUP 資料壓過去】
+      // 若 PICKUP 比較快 (比第一個搜尋更早返回)，立即在此時自動合併 PICKUP 資料！
+      let finalStores = stores;
+      if (window._activeSearchSession.pickupStores && window._activeSearchSession.pickupStores.length > 0) {
+          finalStores = applyPickupDiscountToStores(stores, window._activeSearchSession.pickupStores);
       }
+
+      if (finalStores.length > 0) {
+          window.suggestionStores = finalStores;
+          window.suggestionStoreSource = 'search_v3';
+          window.suggestionStoreQuery = q;
+      } else if (hasFirstResults) {
+          finalStores = window.suggestionStores;
+      } else {
+          window.suggestionStores = [];
+          window.suggestionStoreSource = 'search_v3_empty';
+          window.suggestionStoreQuery = q;
+      }
+      if (typeof lastSearchedQuery !== 'undefined') {
+          lastSearchedQuery = q;
+      } else {
+          window.lastSearchedQuery = q;
+      }
+      
+      resultsEl.innerHTML = generateStoreListHTML(finalStores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
+      window.scrollTo(0, 0); // 確保每次搜尋完成後，畫面回到最上方優先顯示第一個結果
 
       // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無任何全聯結果 (出現大全聯不算)，自動以即時補搜全聯
       const vertCheck = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
@@ -9515,9 +9602,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
 
 
+      const isPickupDiscount = (localStorage.getItem('uberCartIsDiscount') === 'true') || (diningMode === 'PICKUP');
+
       let fareHtml = '<div id="storeFareArea" style="text-align: center; color: #999; font-size: 13px; margin-bottom: 10px;">運費查詢中...</div>';
 
-      if (d.fareBadge && d.fareBadge.text) {
+      if (isPickupDiscount) {
+          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">免運費 🎉</div>`;
+      } else if (d.fareBadge && d.fareBadge.text) {
 
           const fareText = d.fareBadge.text;
 
@@ -9917,6 +10009,20 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
       // === Background fetch v1 for delivery fee ===
       (async () => {
           try {
+              const isPickupDiscount = (localStorage.getItem('uberCartIsDiscount') === 'true') || (diningMode === 'PICKUP');
+              if (isPickupDiscount) {
+                  currentStoreDeliveryFee = 0;
+                  currentOriginalDeliveryFee = 0;
+                  const fareArea = document.getElementById('storeFareArea');
+                  if (fareArea) {
+                      fareArea.innerHTML = '免運費 🎉';
+                      fareArea.style.color = '#d32f2f';
+                      fareArea.style.fontWeight = 'bold';
+                      fareArea.style.fontSize = '14px';
+                      fareArea.style.display = 'block';
+                  }
+                  return; // ⭐ 免運費店家直接不需要查詢，絕不呼叫 /api/store 且保持固定顯示免運費
+              }
               
 
               const feePayload = {
