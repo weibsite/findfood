@@ -6747,6 +6747,8 @@ async function _sendOrderToLine(forceSubmit = false) {
           : (isStoreCanPickup ? '🏷️' : '');
 
   let msgText = '';
+  let addr = '';
+  let timeText = '盡快送達';
 
       if (forceSubmit === 'planA' ) {
           window.selectedPlan = forceSubmit;
@@ -6830,14 +6832,14 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       let addrEl = document.getElementById(prefix + 'AddrInput');
 
-      let addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
+      addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
       addr = normalizeAddress(addr);
 
       if (addr.startsWith('📍 ')) addr = addr.substring(3).trim();
 
 
 
-            let timeText = '盡快送達';
+            timeText = '盡快送達';
       let isAdvanceBooking = false; // 179分鐘以上: 專人代訂費 45 元
       let isThreeHourSlot = false;  // 三小時時段: 優惠時段折扣 -$25
 
@@ -6972,7 +6974,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       let addrEl = document.getElementById(prefix + 'AddrInput');
 
-      let addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
+      addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
       if (!addr && window.currentGroupBuyId && window.groupBuyData?.address) {
           addr = window.groupBuyData.address;
       }
@@ -7012,7 +7014,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       }
 
-      let timeText = '盡快送達';
+      timeText = '盡快送達';
 
       let isPreOrder = false;
 
@@ -7439,13 +7441,13 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
               items: structuredItems,
               bins: splitBins,
               delivery_info: {
-                  address: addr,
+                  address: (typeof addr !== 'undefined' && addr) ? addr : '',
                   lat: (typeof currentLat !== 'undefined') ? currentLat : null,
                   lng: (typeof currentLng !== 'undefined') ? currentLng : null,
-                  phone: phoneVal,
-                  deliveryMethod: selectedMethodVal,
-                  notes: finalNote,
-                  timeText: timeText
+                  phone: (typeof phoneVal !== 'undefined' && phoneVal) ? phoneVal : '',
+                  deliveryMethod: (typeof selectedMethodVal !== 'undefined' && selectedMethodVal) ? selectedMethodVal : '當面點交',
+                  notes: (typeof finalNote !== 'undefined' && finalNote) ? finalNote : '',
+                  timeText: (typeof timeText !== 'undefined' && timeText) ? timeText : '盡快送達'
               }
           })
       });
