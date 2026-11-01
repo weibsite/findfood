@@ -873,7 +873,8 @@ function getSelectedScheduleTimestamp() {
       }
   }
 
-  let API_BASE_URL = 'https://api.9ysong.shop';
+  const isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  let API_BASE_URL = isLocalEnv ? window.location.origin : 'https://api.9ysong.shop';
 
   let WS_URL = 'wss://api.9ysong.shop/ws';
 
@@ -1166,14 +1167,13 @@ let isAddressSet = false;
 
         const configData = await configRes.json();
 
-        if (configData.api_url) {
-
+        const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocalHost) {
+          API_BASE_URL = window.location.origin;
+        } else if (configData.api_url) {
           API_BASE_URL = configData.api_url.replace(/\/$/, '');
-
         } else if (configData.line_url) {
-
           API_BASE_URL = configData.line_url.replace(/\/$/, '');
-
         }
 
         if (configData.ws_url) WS_URL = configData.ws_url;
@@ -2915,7 +2915,10 @@ function generateStoreListHTML(stores, q, currentVertical) {
       let openWeak = [], closedWeak = [];
       let openNone = [], closedNone = [];
 
-      stores.forEach(s => {
+      const stage1Stores = stores.filter(s => !s._fromPickupSupplement);
+      const stage2Stores = stores.filter(s => s._fromPickupSupplement);
+
+      stage1Stores.forEach(s => {
           const name = (s.title && s.title.text) ? s.title.text.toLowerCase() : (typeof s.title === 'string' ? s.title.toLowerCase() : '');
           const state = s.storeAvailablityState || '';
           
@@ -2957,6 +2960,9 @@ function generateStoreListHTML(stores, q, currentVertical) {
       // 6. 無關聯 (沒開) - 垃圾桶墊底
       finalList = finalList.concat(closedNone);
 
+      if (stage2Stores.length > 0) {
+          finalList = finalList.concat(stage2Stores);
+      }
       stores.length = 0; finalList.forEach(x => stores.push(x));
 
 
@@ -2991,7 +2997,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
               const safeQ = (q || '').replace(/'/g, "\\\'").replace(/"/g, '&quot;');
               t = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
                      <div>${t}</div>
-                     <button onclick="searchStoresPickup('${safeQ}')" style="background:#ff9800; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">前往優惠專區</button>
+                     <button onclick="searchStoresPickup('${safeQ}')" style="background:#ff9800; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">前往免運專區</button>
                    </div>`;
           }
           statusEl.innerHTML = t;
@@ -3088,32 +3094,64 @@ function generateStoreListHTML(stores, q, currentVertical) {
             overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; letter-spacing:1px; z-index:2;">無法接單</div>`;
         }
 
+        const isPickup = s._isPickupDiscount === true;
+
+        let etdText = '';
+        const metaSource = s._pickupMeta || s.meta;
+        if (metaSource && Array.isArray(metaSource)) {
+            const etdMeta = metaSource.find(m => m.badgeType === 'ETD');
+            if (etdMeta) {
+                if (etdMeta.accessibilityText) {
+                    const match = etdMeta.accessibilityText.match(/(\d+)\s*(?:to|到)\s*(\d+)/);
+                    if (match) {
+                        etdText = `${match[1]}-${match[2]} 分鐘`;
+                    } else {
+                        etdText = etdMeta.accessibilityText;
+                    }
+                } else if (etdMeta.text) {
+                    etdText = etdMeta.text.replace('min', '分鐘');
+                }
+            }
+        }
+        if (!etdText && metaText) {
+            etdText = metaText.replace('預計 ', '');
+        }
+        if (!etdText) {
+            etdText = '免運專區';
+        }
+
         let etaBadgeHtml = '';
-        if (metaText && !isClosed && !isBad) {
-            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
+        let freeDeliveryBadge = '';
+
+        if (isPickup) {
+            // 左上增加綠色字 免運費
+            freeDeliveryBadge = `<div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); color:#00cc66; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">免運費</div>`;
+            // 右上按照優惠專區格式 (顯示抵達時間)
+            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${escapeHTML(etdText)}</div>`;
+        } else {
+            if (metaText && !isClosed && !isBad) {
+                etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
+            }
         }
 
         let metaDisplay = `⭐ ${escapeHTML(rating)}`;
-
-        // 原本在下方的文字保留，也可以考慮拿掉，為了保險先留著
-
-        if (metaText) {
-
+        if (isPickup) {
+            metaDisplay += ` &nbsp;|&nbsp; <span style="color:#ff9800; font-weight:bold;">免運專區外送加成$0</span>`;
+        } else if (metaText) {
             metaDisplay += ` &nbsp;|&nbsp; <span style="color:#e67e22; font-weight:bold;">${escapeHTML(metaText)}</span>`;
-
         }
 
-        
+        const safeMetaText = (metaText || '').replace(/'/g, "\\'");
+        const safeEtdText = (etdText || metaText || '免運專區').replace(/'/g, "\\'");
+        const cardOnclick = isPickup
+            ? `localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'PICKUP', '${safeEtdText}')`
+            : `localStorage.setItem('uberCartIsDiscount', 'false'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'DELIVERY', '${safeMetaText}')`;
 
-          const safeMetaText = (metaText || '').replace(/'/g, "\\'");
-          return `
-
-          <div id="card_${s.storeUuid}" class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'false'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'DELIVERY', '${safeMetaText}')">
-
+        return `
+          <div id="card_${s.storeUuid}" class="card" onclick="${cardOnclick}">
             <div class="card-img" style="position:relative; overflow:hidden; ${style}">
-
                 ${imgUrl ? `<img src="${imgUrl}" loading="lazy" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:0;" />` : ''}
-
+                ${freeDeliveryBadge}
                 ${etaBadgeHtml}
                 <div style="position:relative; z-index:1; width:100%; height:100%;">
 
@@ -3195,8 +3233,198 @@ async function fetchPxmartAsapStores(q) {
     }
 }
 
+window._pickupSearchToken = 0;
+
+async function fetchPickupDiscountStores(q) {
+    if (!isAddressSet) return [];
+    try {
+        const searchPayload = { 
+            query: q, 
+            lat: currentLat,
+            lng: currentLng,
+            vertical: 'RESTAURANTS',
+            searchSource: 'SEARCH_SUGGESTION',
+            searchType: 'GLOBAL_SEARCH',
+            mapContext: {
+                northEast: { latitude: currentLat + 0.09, longitude: currentLng + 0.09 },
+                southWest: { latitude: currentLat - 0.09, longitude: currentLng - 0.09 }
+            },
+            diningMode: 'PICKUP'
+        };
+
+        if (typeof scheduleMode !== 'undefined') {
+            if (scheduleMode === 'ASAP') {
+                searchPayload.date = "";
+                searchPayload.startTime = 0;
+                searchPayload.endTime = 0;
+            } else if (scheduleMode === 'SCHEDULE') {
+                const timeSelect = document.getElementById('scheduleTime');
+                if (timeSelect && timeSelect.value) {
+                    try {
+                        const sData = JSON.parse(timeSelect.value);
+                        searchPayload.date = sData.date;
+                        searchPayload.startTime = sData.startTime;
+                        searchPayload.endTime = sData.endTime;
+                    } catch (e) {}
+                }
+            }
+        }
+
+        const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+        const res = await fetch(`${apiBase}/api/search_v4`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(searchPayload)
+        });
+
+        const textRes = await res.text();
+        const json = JSON.parse(textRes);
+
+        if (!res.ok || json.status === 'failure') { 
+            return [];
+        }
+
+        let stores = [];
+        (json.data.feedItems || []).forEach(item => {
+            if ((item.type === 'REGULAR_STORE' || item.type === 'REGULAR_STORE_WITH_ITEMS') && item.store) {
+                stores.push(item.store);
+            } else if ((item.type === 'REGULAR_CAROUSEL' || item.type === 'STORE_CAROUSEL') && item.carousel && item.carousel.stores) {
+                stores.push(...item.carousel.stores);
+            } else if (item.type === 'MINI_STORE_WITH_ITEMS' && item.miniStoreWithItems && item.miniStoreWithItems.store) {
+                stores.push(item.miniStoreWithItems.store);
+            }
+        });
+
+        const seen = new Set();
+        stores = stores.filter(s => {
+            if (seen.has(s.storeUuid)) return false;
+            seen.add(s.storeUuid);
+            return true;
+        });
+
+        const getDist = (s) => {
+            if (s.location && s.location.distanceToUser) return s.location.distanceToUser;
+            if (s.meta && Array.isArray(s.meta)) {
+                const distMeta = s.meta.find(m => m.badgeType === 'DISTANCE');
+                if (distMeta && distMeta.text) {
+                    const match = distMeta.text.match(/[\d.]+/);
+                    if (match) return parseFloat(match[0]);
+                }
+            }
+            return 99999;
+        };
+
+        stores = stores.filter(s => getDist(s) <= 5.0);
+        stores.sort((a, b) => getDist(a) - getDist(b));
+
+        if (q) {
+            const qLower = q.toLowerCase();
+            const exactMatches = stores.filter(s => s.title && s.title.text && s.title.text.toLowerCase().includes(qLower));
+            const others = stores.filter(s => !(s.title && s.title.text && s.title.text.toLowerCase().includes(qLower)));
+            stores = [...exactMatches, ...others];
+        }
+
+        return stores;
+    } catch (e) {
+        console.warn('fetchPickupDiscountStores error:', e);
+        return [];
+    }
+}
+
+window._activeSearchSession = {
+    token: 0,
+    query: '',
+    vertical: '',
+    deliveryStores: null,
+    pickupStores: null
+};
+
+function applyPickupDiscountToStores(deliveryStores, pickupStores) {
+    if (!deliveryStores || deliveryStores.length === 0) {
+        if (!pickupStores || pickupStores.length === 0) return [];
+        return pickupStores.map(ps => {
+            ps._isPickupDiscount = true;
+            ps._fromPickupSupplement = true;
+            ps._pickupMeta = ps.meta;
+            return ps;
+        });
+    }
+    if (!pickupStores || pickupStores.length === 0) {
+        return deliveryStores;
+    }
+
+    const pickupMap = new Map();
+    pickupStores.forEach(ps => {
+        if (ps && ps.storeUuid) pickupMap.set(ps.storeUuid, ps);
+    });
+
+    const existingUuids = new Set();
+    const merged = [];
+
+    // 1. 保留原本 deliveryStores 順序，若在 PICKUP 中存在，加上免運標籤與資訊
+    deliveryStores.forEach(s => {
+        if (!s || !s.storeUuid) return;
+        existingUuids.add(s.storeUuid);
+        if (pickupMap.has(s.storeUuid)) {
+            s._isPickupDiscount = true;
+            const ps = pickupMap.get(s.storeUuid);
+            if (ps.meta && Array.isArray(ps.meta)) {
+                s._pickupMeta = ps.meta;
+            }
+        }
+        merged.push(s);
+    });
+
+    // 2. 將 PICKUP 有但 deliveryStores 沒有的店家穿插追加在後面
+    pickupStores.forEach(ps => {
+        if (!ps || !ps.storeUuid) return;
+        if (!existingUuids.has(ps.storeUuid)) {
+            existingUuids.add(ps.storeUuid);
+            ps._isPickupDiscount = true;
+            ps._fromPickupSupplement = true;
+            ps._pickupMeta = ps.meta;
+            merged.push(ps);
+        }
+    });
+
+    return merged;
+}
+
+async function triggerPickupSupplement(query, currentStores, vertical, sessionToken) {
+    const currentToken = sessionToken || ++window._pickupSearchToken;
+    try {
+        const pickupStores = await fetchPickupDiscountStores(query);
+        if (currentToken !== window._activeSearchSession.token && currentToken !== window._pickupSearchToken) return;
+        if (!pickupStores || pickupStores.length === 0) return;
+
+        window._activeSearchSession.pickupStores = pickupStores;
+
+        const baseStores = (window._activeSearchSession.deliveryStores && window._activeSearchSession.deliveryStores.length > 0)
+            ? window._activeSearchSession.deliveryStores
+            : (currentStores || []);
+
+        const merged = applyPickupDiscountToStores(baseStores, pickupStores);
+        window.suggestionStores = merged;
+
+        // 重新渲染列表（保持當前畫面捲動位置，不晃動跳轉）
+        const resultsEl = document.getElementById('results');
+        if (resultsEl) {
+            const currentScroll = window.scrollY;
+            resultsEl.innerHTML = generateStoreListHTML(merged, query, vertical);
+            window.scrollTo(0, currentScroll);
+        }
+    } catch (err) {
+        console.warn('triggerPickupSupplement error:', err);
+    }
+}
+
 async function searchStores() {
     window.isDiscountZone = false;
+
+    // 清除任何打字殘留的背景 suggestion 計時器與請求，防止慢速請求覆蓋搜尋結果
+    if (typeof queryDebounceTimer !== 'undefined') clearTimeout(queryDebounceTimer);
+    if (typeof latestStoreSuggestionsReqId !== 'undefined') latestStoreSuggestionsReqId++;
+    if (typeof isFetchingSuggestions !== 'undefined') isFetchingSuggestions = false;
 
     // [修補] 防止搜尋按鈕被連按，導致重複輪詢與浪費 Token
     if (window._searchLock) return;
@@ -3344,8 +3572,17 @@ async function searchStores() {
 
     statusEl.innerHTML = '<div style="padding: 100px 0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; font-size: 16px; font-weight: bold; color: #666;">搜尋中...</div></div>'; statusEl.className = 'status'; resultsEl.innerHTML = '';
     
+        const currentVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
+    const sessionToken = ++window._pickupSearchToken;
+    window._activeSearchSession = {
+        token: sessionToken,
+        query: q,
+        vertical: currentVert,
+        deliveryStores: null,
+        pickupStores: null
+    };
+
     // [優化] 如果關鍵字與剛剛自動搜尋的關鍵字完全相同 (且分類相同)，且資料已下載完畢，直接使用快取不需重發 API
-    const currentVert = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
     if (q === lastSearchedQuery && currentVert === (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') && typeof isFetchingSuggestions !== 'undefined' && !isFetchingSuggestions && window.suggestionStores && window.suggestionStores.length > 0) {
         const keyword = (q || '').trim();
         const safeKw = typeof escapeHTML === 'function' ? escapeHTML(keyword) : keyword;
@@ -3353,13 +3590,16 @@ async function searchStores() {
             ? (keyword ? `找到與${safeKw}相關的店家：` : `為您找到 ${window.suggestionStores.length} 家生鮮雜貨：`)
             : (keyword ? `找到與${safeKw}相關的餐廳：` : `為您找到 ${window.suggestionStores.length} 家餐廳：`));
         statusEl.className = 'status success';
-        resultsEl.innerHTML = generateStoreListHTML(window.suggestionStores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
+        window._activeSearchSession.deliveryStores = window.suggestionStores;
+        resultsEl.innerHTML = generateStoreListHTML(window.suggestionStores, q, currentVert);
         window.scrollTo(0, 0);
+        if (currentVert !== 'SHOP') {
+            triggerPickupSupplement(q, window.suggestionStores, currentVert, sessionToken);
+        }
         return;
     }
 
     try {
-
       const searchPayload = { 
           query: q, 
           lat: currentLat,
@@ -3368,160 +3608,62 @@ async function searchStores() {
           searchSource: 'SEARCH_SUGGESTION',
           searchType: 'GLOBAL_SEARCH'
       };
-        if (typeof scheduleMode !== 'undefined') {
-            if (scheduleMode === 'ASAP') {
-                searchPayload.date = "";
-                searchPayload.startTime = 0;
-                searchPayload.endTime = 0;
-            } else if (scheduleMode === 'SCHEDULE') {
-                const timeSelect = document.getElementById('scheduleTime');
-                if (timeSelect && timeSelect.value) {
-                    try {
-                        const sData = JSON.parse(timeSelect.value);
-                        searchPayload.date = sData.date;
-                        searchPayload.startTime = sData.startTime;
-                        searchPayload.endTime = sData.endTime;
-                    } catch (e) {}
-                }
-            }
-        }
-
-      
-      if (scheduleMode === 'SCHEDULE') {
-          const timeSelect = document.getElementById('scheduleTime');
-          if (timeSelect && timeSelect.value) {
-              try {
-                  const sData = JSON.parse(timeSelect.value);
-                  searchPayload.date = sData.date;
-                  searchPayload.startTime = sData.startTime;
-                  searchPayload.endTime = sData.endTime;
-              } catch (e) {}
+      if (typeof scheduleMode !== 'undefined') {
+          if (scheduleMode === 'ASAP') {
+              searchPayload.date = "";
+              searchPayload.startTime = 0;
+              searchPayload.endTime = 0;
+          } else if (scheduleMode === 'SCHEDULE') {
+              const timeSelect = document.getElementById('scheduleTime');
+              if (timeSelect && timeSelect.value) {
+                  try {
+                      const sData = JSON.parse(timeSelect.value);
+                      searchPayload.date = sData.date;
+                      searchPayload.startTime = sData.startTime;
+                      searchPayload.endTime = sData.endTime;
+                  } catch (e) {}
+              }
           }
       }
 
+      // ⭐【原子性並行：同時發送 DELIVERY 與 PICKUP，齊備後一次性渲染到位，杜絕中間無標籤狀態】
+      const pickupPromise = (currentVert !== 'SHOP') ? fetchPickupDiscountStores(q).catch(() => []) : Promise.resolve([]);
       
-      // 在 F12 顯示預計送往 Uber API 的真實 Payload 以利除錯
-      const expectedUberPayload = {
-          userQuery: q,
-          searchSource: searchPayload.searchSource,
-          searchType: searchPayload.searchType,
-          vertical: searchPayload.vertical,
-          displayType: searchPayload.displayType,
-          overrideLocationDetails: {
-              latitude: currentLat,
-              longitude: currentLng
-          }
-      };
-      if (searchPayload.date) {
-          expectedUberPayload.date = searchPayload.date;
-          expectedUberPayload.startTime = searchPayload.startTime;
-          expectedUberPayload.endTime = searchPayload.endTime;
-      }
-      console.group('🚀 [Uber Eats API] 預計發送的 Payload');
-      console.log(JSON.stringify(expectedUberPayload, null, 2));
-      console.groupEnd();
-
-      // 改為跟 getStoreV1 一樣，直送 Uber Eats 伺服器
-      const uberSearchHeaders = {
-          "accept": "*/*",
-          "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-          "content-type": "application/json",
-          "x-csrf-token": "x",
-          "x-uber-ciid": "c65c5fae-d7e3-44ad-9146-011e930f77dd",
-          "x-uber-client-gitref": "cdeec6f0ad55ef2fc11f85faf00785cd01b5ddf1",
-          "x-uber-request-id": "e2449281-4735-4392-ae07-b803eb404d0a",
-          "x-uber-session-id": "c86ad72f-ecde-4174-9b4f-9121887789cc",
-          "x-uber-device-location-latitude": currentLat.toString(),
-          "x-uber-device-location-longitude": currentLng.toString(),
-          "x-uber-target-location-latitude": currentLat.toString(),
-          "x-uber-target-location-longitude": currentLng.toString()
-      };
-      
-      const uberSearchPayload = {
-          userQuery: q,
-          searchSource: searchPayload.searchSource,
-          searchType: searchPayload.searchType,
-          vertical: searchPayload.vertical,
-          overrideLocationDetails: {
-              latitude: currentLat,
-              longitude: currentLng
-          }
-      };
-      
-      if (searchPayload.date) {
-          uberSearchPayload.date = searchPayload.date;
-          uberSearchPayload.startTime = searchPayload.startTime;
-          uberSearchPayload.endTime = searchPayload.endTime;
-      }
-      
-      console.log('📡 [搜尋餐廳] 直送 Uber Payload:', JSON.stringify(uberSearchPayload, null, 2));
-
-      const res = await fetch(`${API_BASE_URL}/api/search_v4`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(searchPayload)
-      });
-
-      let json;
-
-      try {
-
+      const deliveryPromise = (async () => {
+          const res = await fetch(`${API_BASE_URL}/api/search_v4`, {
+              method: 'POST', 
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(searchPayload)
+          });
           const textRes = await res.text();
+          return JSON.parse(textRes);
+      })();
 
-          try {
+      const [pickupStores, json] = await Promise.all([pickupPromise, deliveryPromise]);
 
-              json = JSON.parse(textRes);
+      if (window._activeSearchSession.token !== sessionToken) return;
 
-          } catch (e) {
-
-              console.error('Non-JSON response from server:', textRes);
-
-              throw new Error('伺服器回傳了非 JSON 格式的錯誤: ' + textRes.substring(0, 50) + '...');
-
-          }
-
-      } catch (e) {
-
-          throw e;
-
+      if (!json || json.status === 'failure' || !json.data) {
+          statusEl.innerHTML = '搜尋失敗';
+          return;
       }
-
-      if (!res.ok || json.status === 'failure') { statusEl.innerHTML = '搜尋失敗'; return; }
-
-      
 
       let stores = [];
-
       (json.data.feedItems || []).forEach(item => {
-
           if ((item.type === 'REGULAR_STORE' || item.type === 'REGULAR_STORE_WITH_ITEMS') && item.store) {
-
               stores.push(item.store);
-
           } else if ((item.type === 'REGULAR_CAROUSEL' || item.type === 'STORE_CAROUSEL') && item.carousel && item.carousel.stores) {
-
               stores.push(...item.carousel.stores);
-
           } else if (item.type === 'MINI_STORE_WITH_ITEMS' && item.miniStoreWithItems && item.miniStoreWithItems.store) {
-
               stores.push(item.miniStoreWithItems.store);
-
           }
-
       });
 
-      // 過濾掉重複的 storeUuid (有時推薦輪播跟一般列表會重複)
-
       const seen = new Set();
-
       stores = stores.filter(s => {
-
           if (seen.has(s.storeUuid)) return false;
-
           seen.add(s.storeUuid);
-
           return true;
-
       });
       // 過濾掉自取(無法外送)的店家
       stores = stores.filter(s => {
@@ -3531,19 +3673,22 @@ async function searchStores() {
           return true;
       });
 
+      window._activeSearchSession.deliveryStores = stores;
+      window._activeSearchSession.pickupStores = pickupStores || [];
 
-      
+      // ⭐ 一次性安全合併免運資訊
+      let finalStores = stores;
+      if (pickupStores && pickupStores.length > 0) {
+          finalStores = applyPickupDiscountToStores(stores, pickupStores);
+      }
 
-      
-      // [優化] 同步完整搜尋的結果到背景快取，若第一次有結果而第二次沒結果，不覆蓋掉第一次的結果
       const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
-      if (stores.length > 0) {
-          window.suggestionStores = stores;
+      if (finalStores.length > 0) {
+          window.suggestionStores = finalStores;
           window.suggestionStoreSource = 'search_v3';
           window.suggestionStoreQuery = q;
       } else if (hasFirstResults) {
-          // 第一次有結果 第二次沒結果：保留第一次的結果，不覆蓋掉
-          stores = window.suggestionStores;
+          finalStores = window.suggestionStores;
       } else {
           window.suggestionStores = [];
           window.suggestionStoreSource = 'search_v3_empty';
@@ -3559,8 +3704,9 @@ async function searchStores() {
       } else {
           window.lastSearchedVertical = currentVert;
       }
-      
-      resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
+
+      // ⭐ 只渲染一次！第一瞬間就是帶有免運費標籤與抵達時間的完整狀態，絕不閃退
+      resultsEl.innerHTML = generateStoreListHTML(finalStores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
       window.scrollTo(0, 0); // 確保每次搜尋完成後，畫面回到最上方優先顯示第一個結果
 
       // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無任何全聯結果 (出現大全聯不算)，自動以即時補搜全聯
@@ -3611,7 +3757,7 @@ async function searchStoresPickup(q) {
 
     const statusEl = document.getElementById('status');
     const resultsEl = document.getElementById('results');
-    statusEl.innerHTML = '<div style="padding: 100px 0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; font-size: 16px; font-weight: bold; color: #666;">搜尋優惠餐廳中...</div></div>'; 
+    statusEl.innerHTML = '<div style="padding: 100px 0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; font-size: 16px; font-weight: bold; color: #666;">搜尋免運餐廳中...</div></div>'; 
     statusEl.className = 'status'; 
     resultsEl.innerHTML = '';
 
@@ -3710,12 +3856,12 @@ async function searchStoresPickup(q) {
         const keyword = (q || '').trim();
         const safeKw = typeof escapeHTML === 'function' ? escapeHTML(keyword) : keyword;
         if (stores.length === 0) {
-            statusEl.innerHTML = keyword ? `找不到與${safeKw}有關的優惠餐廳。` : '找不到相關優惠餐廳。';
+            statusEl.innerHTML = keyword ? `找不到與${safeKw}有關的免運餐廳。` : '找不到相關免運餐廳。';
             return;
         }
 
         const safeQ = (q || '').replace(/'/g, "\\\'").replace(/"/g, '&quot;');
-        const titleText = keyword ? `與${safeKw}有關的優惠餐廳：` : `為您推薦 ${stores.length} 家優惠餐廳：`;
+        const titleText = keyword ? `與${safeKw}有關的免運餐廳：` : `為您推薦 ${stores.length} 家免運餐廳：`;
         statusEl.innerHTML = `<div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                                 <div>${titleText}</div>
                                 <button onclick="searchStores()" style="background:#f43f5e; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">回到一般外送</button>
@@ -3746,19 +3892,20 @@ async function searchStoresPickup(q) {
                 }
             }
             if (!etdText) {
-                etdText = '-$10優惠';
+                etdText = '免運專區';
             }
-            distBadge = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${etdText}</div>`;
+            distBadge = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${etdText}</div>`;
 
             const safeEtdText = (etdText || '').replace(/'/g, "\\'");
             return `
             <div class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${storeUuid}', '${name.replace(/'/g, "\\'")}', '${actionUrl}', false, 'PICKUP', '${safeEtdText}')" style="position:relative;">
                 ${distBadge}
+                <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); color:#00cc66; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">免運費</div>
                 <div class="card-img" style="background-image: url('${imgUrl}');"></div>
                 <div class="card-body">
                   <div class="card-name">${name}</div>
                   <div class="card-meta">
-                      <span style="color:#ff9800; font-weight:bold;">優惠專區每單再折10元</span>
+                      <span style="color:#ff9800; font-weight:bold;">免運專區外送加成$0</span>
                   </div>
                 </div>
             </div>
@@ -3767,7 +3914,7 @@ async function searchStoresPickup(q) {
 
     } catch (e) {
         console.error('Fetch store pickup error:', e);
-        statusEl.innerHTML = '搜尋優惠餐廳失敗';
+        statusEl.innerHTML = '搜尋免運餐廳失敗';
     }
 }
 
@@ -6184,7 +6331,9 @@ origTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">小計:</td><td style="padding:2px 0 2px 4px;">$${total}</td></tr>`;
 origTable += total >= 150 ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$75</td></tr>` : `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$${Math.floor(total/2)}</td></tr>`;
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">代訂費:</td><td style="padding:2px 0 2px 4px;">$${visualSvcFee}</td></tr>`;
+const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
 let aTotalExcess = (function(){
+    if (isDiscount) return 0;
     let te = 0; const sg = {};
     cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
     Object.keys(sg).forEach(s => {
@@ -6193,13 +6342,7 @@ let aTotalExcess = (function(){
     return te;
 })();
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">外送加成:</td><td style="padding:2px 0 2px 4px;">$${aTotalExcess}</td></tr>`;
-
-const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
-const pickupDiscount = isDiscount ? 10 : 0;
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">服務費:</td><td style="padding:2px 0 2px 4px;">$0</td></tr>`;
-if (isDiscount) {
-    origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠專區:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$10</td></tr>`;
-}
 
 const preOrderDisc = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
 if (preOrderDisc > 0) {
@@ -6209,20 +6352,23 @@ origTable += `</table>`;
 origTable += `<div style="font-weight:bold; font-size:16px; margin-top:10px; border-top:1px solid #ccc; padding-top:6px;">`;
 origTable += (function(){
     let totalExcess = 0;
+    if (!isDiscount) {
+        const sg = {};
+        cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+        Object.keys(sg).forEach(s => {
+            totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+        });
+    }
+    let totalOrigExcess = 0;
     const sg = {};
     cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-    Object.keys(sg).forEach(s => {
-        totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
-    });
-    let totalOrigExcess = 0;
     Object.keys(sg).forEach(s => {
         totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0))));
     });
 
     const pd = total >= 150 ? 75 : Math.floor(total/2);
     const pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
-    const pickup = localStorage.getItem("uberCartIsDiscount") === "true" ? 10 : 0;
-    return `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${total + visualSvcFee + totalOrigExcess}</span> <span style="color:#d32f2f; font-size:18px;">$${total - pd + visualSvcFee + totalExcess - pr - pickup}</span>`;
+    return `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${total + visualSvcFee + totalOrigExcess}</span> <span style="color:#d32f2f; font-size:18px;">$${total - pd + visualSvcFee + totalExcess - pr}</span>`;
 })();
 origTable += `</div>`;
 
@@ -6234,9 +6380,11 @@ if (costRes && costRes.shouldSplit) {
         splitPromo += (bin.sum >= 150 ? 75 : Math.floor(bin.sum / 2));
         let bsg = {}; bin.items.forEach(i => { if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[]; bsg[i.storeName||''].push(i); });
         let binEx = 0;
-        Object.keys(bsg).forEach(s => {
-            binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
-        });
+        if (!isDiscount) {
+            Object.keys(bsg).forEach(s => {
+                binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
+            });
+        }
         splitExcess += binEx;
         let pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
         splitPreorder += pr;
@@ -6253,11 +6401,11 @@ sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space
 sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">外送加成:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitExcess}</td></tr>`;
 
 sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">服務費:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$0</td></tr>`;
-const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
-const splitPickupDisc = isDiscount ? 10 * costRes.bins.length : 0;
-if (isDiscount) {
-    sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">優惠專區:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPickupDisc}</td></tr>`;
+
+if (splitPreorder > 0) {
+    sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPreorder}</td></tr>`;
 }
+sumTable += `</table>`;
 
 if (splitPreorder > 0) {
     sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPreorder}</td></tr>`;
@@ -7210,41 +7358,24 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
           let binExcess = 0;
+          if (!isPickup) {
+            Object.keys(binStores).forEach(sName => {
+              binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => item.storeDeliveryFee || 0));
+            });
+          }
 
-          Object.keys(binStores).forEach(sName => {
-            binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => item.storeDeliveryFee || 0));
-          });
-
-
-
-        let binTotal = (binFoodSum - binPromo) + feePerBin + binExcess - preOrderDiscount - (isPickup ? 10 : 0);
-
+          let binTotal = (binFoodSum - binPromo) + feePerBin + binExcess - preOrderDiscount;
           grandTotal += binTotal;
 
-
-
           msgText += `  小計: $${binFoodSum}\n`;
-
           if (binPromo > 0) msgText += `  🎉 半價優惠: -$${binPromo}\n`;
-
           msgText += `  🛵 代訂費: $${feePerBin}\n`;
-
           msgText += `  🛵 外送加成: $${binExcess}\n`;
-
-          if (isPickup) msgText += `  🌟 優惠專區折扣: -$10\n`;
-
           if (preOrderDiscount > 0) msgText += `  🕒 預訂折扣: -$${preOrderDiscount}\n`;
-
           msgText += `  ➡️ 結算: $${binTotal}\n\n`;
-
         });
 
-
-
-
         if (preOrderDiscount > 0) msgText += `🕒 預訂總折扣: -$${preOrderDiscount * costRes.bins.length} (每單已折${preOrderDiscount}元)\n`;
-        if (isPickup) msgText += `🌟 優惠專區總折扣: -$${10 * costRes.bins.length} (每單已折10元)\n`;
-
         msgText += `💰 總結算金額: $${grandTotal}`;
 
 
@@ -7344,10 +7475,10 @@ costRes.bins.forEach((bin, bIdx) => {
 
         
         const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
-let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - preOrderDiscount - (isPickup ? 10 : 0);
-
-
-
+        if (isPickup) {
+            totalExcessDeliveryFee = 0;
+        }
+        let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - preOrderDiscount;
 
       if (false) {
           msgText += `🏷️ [B方案] ($200-$200)\n`;
@@ -7367,7 +7498,6 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
           msgText += `🛵 外送加成: $${totalExcessDeliveryFee}\n`;
           msgText += `🧑‍💼 服務費: $0\n`;
           if (preOrderDiscount > 0) msgText += `📅 預訂折扣: -$${preOrderDiscount}\n`;
-        if (isPickup) msgText += `🌟 優惠專區折扣: -$10\n`;
           msgText += `\n💰 總計: $${grandTotal}`;
       }
       }
@@ -7518,7 +7648,15 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
                   phone: (typeof phoneVal !== 'undefined' && phoneVal) ? phoneVal : '',
                   deliveryMethod: (typeof selectedMethodVal !== 'undefined' && selectedMethodVal) ? selectedMethodVal : '當面點交',
                   notes: (typeof finalNote !== 'undefined' && finalNote) ? finalNote : '',
-                  timeText: (typeof timeText !== 'undefined' && timeText) ? timeText : '盡快送達'
+                  timeText: (typeof timeText !== 'undefined' && timeText) ? timeText : '盡快送達',
+                  schedule_data: (function() {
+                      try {
+                          const schedElem = document.getElementById('scheduleTime');
+                          return (schedElem && schedElem.value) ? JSON.parse(schedElem.value) : null;
+                      } catch(e) { return null; }
+                  })(),
+                  is_scheduled: (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP'),
+                  schedule_mode: (typeof scheduleMode !== 'undefined') ? scheduleMode : 'ASAP'
               }
           })
       });
@@ -7654,82 +7792,79 @@ async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUui
     // 呼叫 API 取得真實客製化選項
 
     try {
-
       if (window.isGroceryStore || hasCustomizations === false) {
-
           window.noOptionsItems.add(menuItemUuid);
-
           document.getElementById('customizationsArea').innerHTML = '<div style="padding:15px;text-align:center;color:#f43f5e;font-weight:bold;">一般商品（無客製化選項）</div>';
-
           if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
-
           return;
-
       }
 
-      const res = await fetch(`${API_BASE_URL}/api/item`, {
-
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-
-        body: JSON.stringify({ storeUuid, sectionUuid, subsectionUuid, menuItemUuid })
-
-      });
+      // 設定 8 秒超時控制器，避免請求卡在網路導致永遠載入中
+      const controller = new AbortController();
+      const timeoutTimer = setTimeout(() => controller.abort(), 8000);
+      let res;
+      try {
+        res = await fetch(`${API_BASE_URL}/api/item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storeUuid, sectionUuid, subsectionUuid, menuItemUuid }),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutTimer);
+      }
 
       let json;
-
       try {
-
           const textRes = await res.text();
-
           try {
-
               json = JSON.parse(textRes);
-
           } catch (e) {
-
               console.error('Non-JSON response from server:', textRes);
-
               throw new Error('伺服器回傳了非 JSON 格式的錯誤: ' + textRes.substring(0, 50) + '...');
-
           }
-
       } catch (e) {
-
           throw e;
-
       }
 
       if (json.status === 'success' && json.data) {
         currentCustomizations = json.data.customizationsList || [];
-        renderCustomizations();
+        if (currentCustomizations.length === 0) {
+          window.noOptionsItems.add(menuItemUuid);
+          document.getElementById('customizationsArea').innerHTML = '<div style="padding:20px;text-align:center;color:#666;font-size:14px;font-weight:500;">此商品目前無自訂選項，可直接加入購物車</div>';
+        } else {
+          renderCustomizations();
+        }
         
         const btn2 = document.getElementById('addToCartBtn');
         if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
       } else {
-        handleModalError(json.data ? json.data.message : '未知錯誤');
+        handleModalError(json.data ? json.data.message : (json.message || '店家未提供選項或已售完'));
       }
 
     } catch (e) {
-      handleModalError('發生錯誤');
+      const isAbort = e.name === 'AbortError';
+      handleModalError(isAbort ? '選項載入超時 (超過 8 秒無回應)' : '網路連線異常或選項加載失敗');
     }
 
     function handleModalError(msg) {
-        if (!window.customizationRetries) window.customizationRetries = {};
-        if (!window.customizationRetries[menuItemUuid]) {
-            window.customizationRetries[menuItemUuid] = true;
-            document.getElementById('customizationsArea').innerHTML = '<div style="padding:100px 15px;text-align:center;color:#666;display:flex;flex-direction:column;align-items:center;justify-content:center;"><div class="spinner" style="margin-bottom:15px;"></div><div style="font-size:16px;font-weight:bold;">網路稍微不穩，自動重試中...</div></div>';
-            setTimeout(() => {
-                openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUuid, titleEnc, descEnc, basePrice, imgUrl, hasCustomizations);
-            }, 1500);
-        } else {
-            document.getElementById('customizationsArea').innerHTML = '<div style="padding:15px;color:#d32f2f;text-align:center;">無法載入客製化選項 (' + escapeHTML(msg) + ')</div>';
-            const btn2 = document.getElementById('addToCartBtn');
-            if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
-        }
+        const area = document.getElementById('customizationsArea');
+        if (!area) return;
+        const btn2 = document.getElementById('addToCartBtn');
+        if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
+
+        area.innerHTML = `
+          <div style="padding:30px 15px;text-align:center;color:#d32f2f;display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div style="font-size:15px;font-weight:bold;">⚠️ 客製化選項暫時無法載入</div>
+            <div style="font-size:13px;color:#666;">(${escapeHTML(msg)})</div>
+            <div style="display:flex;gap:10px;margin-top:6px;">
+              <button type="button" onclick="openItemModal('${storeUuid}','${sectionUuid}','${subsectionUuid}','${menuItemUuid}','${titleEnc}','${descEnc}',${basePrice},'${imgUrl}',${hasCustomizations})" style="padding:8px 18px;background:#06c167;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:14px;box-shadow:0 2px 6px rgba(6,193,103,0.3);">🔄 點此重新載入</button>
+            </div>
+            <div style="font-size:12px;color:#888;margin-top:4px;">您也可以直接在下方點擊「加入購物車」以預設規格點餐</div>
+          </div>
+        `;
     }
   }
-
-
 
   
 
@@ -9326,9 +9461,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
 
 
+      const isPickupDiscount = (localStorage.getItem('uberCartIsDiscount') === 'true') || (diningMode === 'PICKUP');
+
       let fareHtml = '<div id="storeFareArea" style="text-align: center; color: #999; font-size: 13px; margin-bottom: 10px;">運費查詢中...</div>';
 
-      if (d.fareBadge && d.fareBadge.text) {
+      if (isPickupDiscount) {
+          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">免運費 🎉</div>`;
+      } else if (d.fareBadge && d.fareBadge.text) {
 
           const fareText = d.fareBadge.text;
 
@@ -9728,6 +9868,20 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
       // === Background fetch v1 for delivery fee ===
       (async () => {
           try {
+              const isPickupDiscount = (localStorage.getItem('uberCartIsDiscount') === 'true') || (diningMode === 'PICKUP');
+              if (isPickupDiscount) {
+                  currentStoreDeliveryFee = 0;
+                  currentOriginalDeliveryFee = 0;
+                  const fareArea = document.getElementById('storeFareArea');
+                  if (fareArea) {
+                      fareArea.innerHTML = '免運費 🎉';
+                      fareArea.style.color = '#d32f2f';
+                      fareArea.style.fontWeight = 'bold';
+                      fareArea.style.fontSize = '14px';
+                      fareArea.style.display = 'block';
+                  }
+                  return; // ⭐ 免運費店家直接不需要查詢，絕不呼叫 /api/store 且保持固定顯示免運費
+              }
               
 
               const feePayload = {
@@ -10119,20 +10273,19 @@ function normalizeAddress(addr) {
   let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
   const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
 
-  
-
   let totalExcessDeliveryFee = 0;
 
-  const sg = {};
-  items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+  if (!isPickup) {
+    const sg = {};
+    items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
 
-  Object.keys(sg).forEach(s => {
-      totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
-  });
+    Object.keys(sg).forEach(s => {
+        totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+    });
+  }
 
-  
-  let pickupDisc = localStorage.getItem('uberCartIsDiscount') === 'true' ? 10 : 0;
-  let noBinCost = (totalSum - promoDiscount) + 20 + totalExcessDeliveryFee - preOrderDiscount - pickupDisc;
+  let pickupDisc = 0;
+  let noBinCost = (totalSum - promoDiscount) + 20 + totalExcessDeliveryFee - preOrderDiscount;
 
 
 
@@ -10298,14 +10451,16 @@ function normalizeAddress(addr) {
 
         });
 
-        Object.keys(bsg).forEach(s => {
-            binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
-        });
+        if (!isPickup) {
+            Object.keys(bsg).forEach(s => {
+                binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
+            });
+        }
 
         
 
         
-        cost += binFoodCost + feePerBin + binExcess - (localStorage.getItem('uberCartIsDiscount') === 'true' ? 10 : 0) - preOrderDiscount;
+        cost += binFoodCost + feePerBin + binExcess - preOrderDiscount;
 
 
       }
@@ -10614,16 +10769,17 @@ window.renderSplitTab = function(plan) {
         bsg[sn].push(i);
     });
     let binExcess = 0;
-    Object.keys(bsg).forEach(s => {
-        binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee || 0));
-    });
-
     const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
-    const binPickupDisc = isDiscount ? 10 : 0;
+    if (!isDiscount) {
+        Object.keys(bsg).forEach(s => {
+            binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee || 0));
+        });
+    }
+    const binPickupDisc = 0;
     
     let binPreorder = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
     
-    let binTotal = binFood - binPromo + binFee + binExcess - binPickupDisc - binPreorder;
+    let binTotal = binFood - binPromo + binFee + binExcess - binPreorder;
     
     let titleText = '結帳明細 ($150內半價)';
     let html = `
@@ -10635,7 +10791,6 @@ window.renderSplitTab = function(plan) {
             <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">代訂費:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${binFee}</td></tr>
             <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">外送加成:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${binExcess}</td></tr>
             <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">服務費:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$0</td></tr>
-            ${binPickupDisc > 0 ? `<tr><td style="text-align:right; padding:1px 4px 1px 0; color:${color}; white-space:nowrap;">優惠專區:</td><td style="padding:1px 0 1px 4px; color:${color}; white-space:nowrap;">-$${binPickupDisc}</td></tr>` : ''}
             ${binPreorder > 0 ? `<tr><td style="text-align:right; padding:1px 4px 1px 0; color:${color}; white-space:nowrap;">預定折扣:</td><td style="padding:1px 0 1px 4px; color:${color}; white-space:nowrap;">-$${binPreorder}</td></tr>` : ''}
         </table>
         <div style="font-weight:bold; font-size:15px; margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">
@@ -10937,11 +11092,11 @@ function openQueryOverlay() {
     const inputMobile = document.getElementById('globalSearchInputMobile');
     if (mainBtn && inputMobile) {
         if (window.isDiscountZone) {
-            mainBtn.innerText = '尋找優惠';
+            mainBtn.innerText = '尋找免運';
             mainBtn.setAttribute('onclick', 'searchStoresPickup(document.getElementById("globalSearchInputMobile").value.trim())');
             mainBtn.style.background = '#ff9800';
             mainBtn.style.color = '#fff';
-            inputMobile.placeholder = '搜尋優惠餐廳...';
+            inputMobile.placeholder = '搜尋免運餐廳...';
             inputMobile.setAttribute('onkeydown', 'if(event.key==="Enter"){ event.preventDefault(); searchStoresPickup(this.value.trim()); }');
         } else {
             mainBtn.innerText = '尋找食物';
@@ -11370,9 +11525,9 @@ async function fetchStoreSuggestions(q) {
                 window.suggestionStoreQuery = q;
             }
             const resultsEl = document.getElementById('results');
-            if (resultsEl) {
+            // ⭐【關鍵防護】：若使用者已經點擊完整搜尋進入列表 (currentView === 'list')，絕不允許被背景打字預查覆蓋！
+            if (resultsEl && currentView !== 'list') {
                 resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
-                // Status update is now handled inside generateStoreListHTML
             }
 
         // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無全聯結果 (出現大全聯不算)，即時補搜全聯
