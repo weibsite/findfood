@@ -6682,17 +6682,19 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
     clearCart();
     window._orderSent = true;
     const safeOrderText = encodeURIComponent(msgText).replace(/'/g, "%27");
-    
+    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+
     const tipHtml = `
       <div style="text-align:left; font-size:14px; color:#475569; line-height:1.6; margin-bottom:15px; background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
         <div style="font-weight:bold; color:#e11d48; font-size:15px; margin-bottom:6px;">⚠️ LINE 尚未取得傳送訊息權限</div>
         <div>因系統需要您同意<b>「傳送訊息至聊天室」</b>的權限，才能自動為您發送訂單。</div>
         <div style="margin-top:10px; font-size:13px; color:#64748b; border-top:1px dashed #cbd5e1; padding-top:8px;">
           💡 <b>貼心提醒：</b><br>
-          本次請先點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
+          您可直接開啟上方<b>「預載 5折 購物車」</b>，或點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
           下次下單請保留權限（請勿手動關閉），即可享受全自動送單的便利！
         </div>
       </div>
+      ${fastCartBtnHtml}
       <button onclick="copyAndRetrySendOrder(this, decodeURIComponent('${safeOrderText}'))" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 3px 10px rgba(244,63,94,0.3); margin-bottom:10px;">📋 一鍵複製訂單訊息 (貼回聊天室)</button>
       <button onclick="if(typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) { liff.closeWindow(); } else { document.getElementById('errorModalOverlay').style.display='none'; }" style="width:100%; padding:11px; background:#f1f5f9; color:#475569; border:none; border-radius:10px; font-size:14px; font-weight:bold; cursor:pointer;">關閉視窗回到聊天室</button>
     `;
@@ -7370,28 +7372,6 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
 
   if (typeof liffInitPromise !== 'undefined' && liffInitPromise) await liffInitPromise;
 
-  const isLiffClient = !isDesktopDevice && typeof liff !== 'undefined' && liff.isInClient();
-
-  if (isLiffClient) {
-      if (!liff.isLoggedIn()) {
-          liff.login({ redirectUri: window.location.href });
-          return;
-      }
-      try {
-          const perm = await liff.permission.query("chat_message.write");
-          if (perm.state !== 'granted') {
-              await liff.permission.requestAll();
-              const newPerm = await liff.permission.query("chat_message.write");
-              if (newPerm.state !== 'granted') {
-                  showPermissionFailModal(msgText);
-                  return;
-              }
-          }
-      } catch (e) {
-          console.warn("Permission check error", e);
-      }
-  }
-
   const currentUserId = (typeof getLiffUserId === 'function') ? (await getLiffUserId()) : '';
   let submittedOrderId = '';
 
@@ -7445,6 +7425,7 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
       }));
   }
 
+  // 🚀 無論何種環境，一律優先送出訂單資料到後端存檔並啟動 5折 團購注入！
   try {
       const res = await fetch(API_BASE_URL + '/api/store_v3', {
           method: 'POST',
@@ -7478,17 +7459,39 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
   }
   window.lastSubmittedOrderId = submittedOrderId;
 
-  if (isDesktopDevice || (typeof liff !== 'undefined' && !liff.isInClient())) {
+  const isLiffClient = !isDesktopDevice && typeof liff !== 'undefined' && liff.isInClient();
+
+  if (isDesktopDevice || !isLiffClient) {
     if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
       await markGroupBuySubmitted(msgText);
     }
     clearCart();
     window._orderSent = true;
-    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載購物車</button>` : '';
-    const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息</button>`;
+    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+    const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息 (貼回聊天室)</button>`;
 
     showModal('偵測到非手機登入', '', true, copyBtnHtml, true);
     return;
+  }
+
+  if (isLiffClient) {
+      if (!liff.isLoggedIn()) {
+          liff.login({ redirectUri: window.location.href });
+          return;
+      }
+      try {
+          const perm = await liff.permission.query("chat_message.write");
+          if (perm.state !== 'granted') {
+              await liff.permission.requestAll();
+              const newPerm = await liff.permission.query("chat_message.write");
+              if (newPerm.state !== 'granted') {
+                  showPermissionFailModal(msgText);
+                  return;
+              }
+          }
+      } catch (e) {
+          console.warn("Permission check error", e);
+      }
   }
 
   // --- 若為生鮮雜貨訂單，在手機 LINE (LIFF) 環境下，進入等待配對讀取畫面並自動轉址 ---
@@ -7500,7 +7503,6 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
   // --- 一般餐點訂單，使用等待配對與進度網址轉址邏輯 ---
   await handleFoodOrderSubmit(msgText);
   return;
-
 }
 
 async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUuid, titleEnc, descEnc, basePrice, imgUrl, hasCustomizations) {
