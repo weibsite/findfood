@@ -873,7 +873,8 @@ function getSelectedScheduleTimestamp() {
       }
   }
 
-  let API_BASE_URL = 'https://api.9ysong.shop';
+  const isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  let API_BASE_URL = isLocalEnv ? window.location.origin : 'https://api.9ysong.shop';
 
   let WS_URL = 'wss://api.9ysong.shop/ws';
 
@@ -1166,14 +1167,13 @@ let isAddressSet = false;
 
         const configData = await configRes.json();
 
-        if (configData.api_url) {
-
+        const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocalHost) {
+          API_BASE_URL = window.location.origin;
+        } else if (configData.api_url) {
           API_BASE_URL = configData.api_url.replace(/\/$/, '');
-
         } else if (configData.line_url) {
-
           API_BASE_URL = configData.line_url.replace(/\/$/, '');
-
         }
 
         if (configData.ws_url) WS_URL = configData.ws_url;
@@ -7792,82 +7792,79 @@ async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUui
     // 呼叫 API 取得真實客製化選項
 
     try {
-
       if (window.isGroceryStore || hasCustomizations === false) {
-
           window.noOptionsItems.add(menuItemUuid);
-
           document.getElementById('customizationsArea').innerHTML = '<div style="padding:15px;text-align:center;color:#f43f5e;font-weight:bold;">一般商品（無客製化選項）</div>';
-
           if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
-
           return;
-
       }
 
-      const res = await fetch(`${API_BASE_URL}/api/item`, {
-
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-
-        body: JSON.stringify({ storeUuid, sectionUuid, subsectionUuid, menuItemUuid })
-
-      });
+      // 設定 8 秒超時控制器，避免請求卡在網路導致永遠載入中
+      const controller = new AbortController();
+      const timeoutTimer = setTimeout(() => controller.abort(), 8000);
+      let res;
+      try {
+        res = await fetch(`${API_BASE_URL}/api/item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storeUuid, sectionUuid, subsectionUuid, menuItemUuid }),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutTimer);
+      }
 
       let json;
-
       try {
-
           const textRes = await res.text();
-
           try {
-
               json = JSON.parse(textRes);
-
           } catch (e) {
-
               console.error('Non-JSON response from server:', textRes);
-
               throw new Error('伺服器回傳了非 JSON 格式的錯誤: ' + textRes.substring(0, 50) + '...');
-
           }
-
       } catch (e) {
-
           throw e;
-
       }
 
       if (json.status === 'success' && json.data) {
         currentCustomizations = json.data.customizationsList || [];
-        renderCustomizations();
+        if (currentCustomizations.length === 0) {
+          window.noOptionsItems.add(menuItemUuid);
+          document.getElementById('customizationsArea').innerHTML = '<div style="padding:20px;text-align:center;color:#666;font-size:14px;font-weight:500;">此商品目前無自訂選項，可直接加入購物車</div>';
+        } else {
+          renderCustomizations();
+        }
         
         const btn2 = document.getElementById('addToCartBtn');
         if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
       } else {
-        handleModalError(json.data ? json.data.message : '未知錯誤');
+        handleModalError(json.data ? json.data.message : (json.message || '店家未提供選項或已售完'));
       }
 
     } catch (e) {
-      handleModalError('發生錯誤');
+      const isAbort = e.name === 'AbortError';
+      handleModalError(isAbort ? '選項載入超時 (超過 8 秒無回應)' : '網路連線異常或選項加載失敗');
     }
 
     function handleModalError(msg) {
-        if (!window.customizationRetries) window.customizationRetries = {};
-        if (!window.customizationRetries[menuItemUuid]) {
-            window.customizationRetries[menuItemUuid] = true;
-            document.getElementById('customizationsArea').innerHTML = '<div style="padding:100px 15px;text-align:center;color:#666;display:flex;flex-direction:column;align-items:center;justify-content:center;"><div class="spinner" style="margin-bottom:15px;"></div><div style="font-size:16px;font-weight:bold;">網路稍微不穩，自動重試中...</div></div>';
-            setTimeout(() => {
-                openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUuid, titleEnc, descEnc, basePrice, imgUrl, hasCustomizations);
-            }, 1500);
-        } else {
-            document.getElementById('customizationsArea').innerHTML = '<div style="padding:15px;color:#d32f2f;text-align:center;">無法載入客製化選項 (' + escapeHTML(msg) + ')</div>';
-            const btn2 = document.getElementById('addToCartBtn');
-            if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
-        }
+        const area = document.getElementById('customizationsArea');
+        if (!area) return;
+        const btn2 = document.getElementById('addToCartBtn');
+        if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; btn2.style.cursor = 'pointer'; }
+
+        area.innerHTML = `
+          <div style="padding:30px 15px;text-align:center;color:#d32f2f;display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div style="font-size:15px;font-weight:bold;">⚠️ 客製化選項暫時無法載入</div>
+            <div style="font-size:13px;color:#666;">(${escapeHTML(msg)})</div>
+            <div style="display:flex;gap:10px;margin-top:6px;">
+              <button type="button" onclick="openItemModal('${storeUuid}','${sectionUuid}','${subsectionUuid}','${menuItemUuid}','${titleEnc}','${descEnc}',${basePrice},'${imgUrl}',${hasCustomizations})" style="padding:8px 18px;background:#06c167;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:14px;box-shadow:0 2px 6px rgba(6,193,103,0.3);">🔄 點此重新載入</button>
+            </div>
+            <div style="font-size:12px;color:#888;margin-top:4px;">您也可以直接在下方點擊「加入購物車」以預設規格點餐</div>
+          </div>
+        `;
     }
   }
-
-
 
   
 
