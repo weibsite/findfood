@@ -7455,6 +7455,14 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
           const d = await res.json();
           if (d && d.order_id) submittedOrderId = d.order_id;
           if (d && d.join_url) window.lastFastGroupOrderUrl = d.join_url;
+          if (d && d.order_uuid) {
+              window.lastGroupOrderUuid = d.order_uuid;
+              console.log("✅ [點餐團購] 開團成功，UUID:", d.order_uuid, "網址:", d.join_url);
+          }
+          if (d && d.group_order_error) {
+              window.lastGroupOrderError = d.group_order_error;
+              console.warn("⚠️ [點餐團購] 開團未成功原因:", d.group_order_error);
+          }
       }
   } catch(e) {
       console.error("Upload order failed", e);
@@ -7910,7 +7918,7 @@ function recalcCustomizations() {
 
 
 
-    const collectSelections = (container, currentPrefix = '') => {
+    const collectSelections = (container, currentPrefix = '', currentKeyChain = [], currentOptChain = []) => {
         container.querySelectorAll(':scope > .cust-group').forEach(groupDiv => {
             const rawGTitle = groupDiv.getAttribute('data-title') || '';
             const gTitle = cleanGroupTitle(rawGTitle);
@@ -7941,9 +7949,25 @@ function recalcCustomizations() {
                     const optGroupUuid = groupDiv.getAttribute('data-group-uuid') || '';
                     const optOptionUuid = radio ? radio.getAttribute('data-opt-uuid') : (qtySpan ? qtySpan.getAttribute('data-opt-uuid') : '');
                     if (optGroupUuid && optOptionUuid) {
-                        const gKey = optGroupUuid + '+0';
-                        if (!currentItem.rawCustomizations[gKey]) currentItem.rawCustomizations[gKey] = [];
-                        currentItem.rawCustomizations[gKey].push({
+                        const gKeySuffix = optGroupUuid + '+0';
+                        let fullGroupKey;
+                        if (currentKeyChain.length === 0) {
+                            fullGroupKey = gKeySuffix;
+                        } else {
+                            // Uber Eats 原生巢狀格式：交錯拼接 [母群組+0, 母選項UUID, 子群組+0]
+                            let parts = [];
+                            for (let i = 0; i < currentKeyChain.length; i++) {
+                                parts.push(currentKeyChain[i]);
+                                if (i < currentOptChain.length) {
+                                    parts.push(currentOptChain[i]);
+                                }
+                            }
+                            parts.push(gKeySuffix);
+                            fullGroupKey = parts.join(',');
+                        }
+
+                        if (!currentItem.rawCustomizations[fullGroupKey]) currentItem.rawCustomizations[fullGroupKey] = [];
+                        currentItem.rawCustomizations[fullGroupKey].push({
                             uuid: optOptionUuid,
                             price: Math.round(price * 100),
                             quantity: qty
@@ -7978,7 +8002,8 @@ function recalcCustomizations() {
                             } else {
                                 nextPrefix = optText;
                             }
-                            collectSelections(childrenDiv, nextPrefix);
+                            const gKeySuffix = optGroupUuid + '+0';
+                            collectSelections(childrenDiv, nextPrefix, [...currentKeyChain, gKeySuffix], [...currentOptChain, optOptionUuid]);
                         }
                     }
                     
@@ -12811,6 +12836,10 @@ async function handleFoodOrderSubmit(msgText) {
 }
 
 function onFastFoodCartSuccess(joinUrl, storeName, itemsCount, cookieSerial, progressUrl) {
+    if (cookieSerial) {
+        window.lastFastGroupOrderSerial = cookieSerial;
+        console.log('[點餐團購] 背景取得序號:', cookieSerial);
+    }
     const titleEl = document.getElementById('owTitle');
     if (titleEl) {
         titleEl.innerText = '🎉 專屬 5折 購物車建立成功！';
@@ -12827,7 +12856,7 @@ function onFastFoodCartSuccess(joinUrl, storeName, itemsCount, cookieSerial, pro
           <div style="text-align:center; padding:6px 0;">
             <div style="font-weight:bold; color:#059669; font-size:16px; margin-bottom:4px;">餐點已全部預載至購物車！</div>
             <div style="color:#64748B; font-size:12px; margin-bottom:8px;">${cntText} 已套用 5折半價優惠，外送地址請忽略</div>
-            ${cookieSerial ? `<div style="display:inline-block; background:#ECFDF5; border:1px solid #A7F3D0; color:#065F46; padding:3px 12px; border-radius:20px; font-size:12px; font-weight:bold; font-family:monospace;">提取序號: ${cookieSerial}</div>` : ''}
+            
           </div>
         `;
     }
