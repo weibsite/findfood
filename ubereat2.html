@@ -14,7 +14,7 @@
 
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<title>點餐系統 21.3</title>
+<title>點餐系統 22.1</title>
 
 <style>
   * { touch-action: manipulation; }
@@ -2915,7 +2915,10 @@ function generateStoreListHTML(stores, q, currentVertical) {
       let openWeak = [], closedWeak = [];
       let openNone = [], closedNone = [];
 
-      stores.forEach(s => {
+      const stage1Stores = stores.filter(s => !s._fromPickupSupplement);
+      const stage2Stores = stores.filter(s => s._fromPickupSupplement);
+
+      stage1Stores.forEach(s => {
           const name = (s.title && s.title.text) ? s.title.text.toLowerCase() : (typeof s.title === 'string' ? s.title.toLowerCase() : '');
           const state = s.storeAvailablityState || '';
           
@@ -2957,6 +2960,9 @@ function generateStoreListHTML(stores, q, currentVertical) {
       // 6. 無關聯 (沒開) - 垃圾桶墊底
       finalList = finalList.concat(closedNone);
 
+      if (stage2Stores.length > 0) {
+          finalList = finalList.concat(stage2Stores);
+      }
       stores.length = 0; finalList.forEach(x => stores.push(x));
 
 
@@ -2991,7 +2997,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
               const safeQ = (q || '').replace(/'/g, "\\\'").replace(/"/g, '&quot;');
               t = `<div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
                      <div>${t}</div>
-                     <button onclick="searchStoresPickup('${safeQ}')" style="background:#ff9800; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">前往優惠專區</button>
+                     <button onclick="searchStoresPickup('${safeQ}')" style="background:#ff9800; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">前往免運專區</button>
                    </div>`;
           }
           statusEl.innerHTML = t;
@@ -3088,32 +3094,64 @@ function generateStoreListHTML(stores, q, currentVertical) {
             overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; letter-spacing:1px; z-index:2;">無法接單</div>`;
         }
 
+        const isPickup = s._isPickupDiscount === true;
+
+        let etdText = '';
+        const metaSource = s._pickupMeta || s.meta;
+        if (metaSource && Array.isArray(metaSource)) {
+            const etdMeta = metaSource.find(m => m.badgeType === 'ETD');
+            if (etdMeta) {
+                if (etdMeta.accessibilityText) {
+                    const match = etdMeta.accessibilityText.match(/(\d+)\s*(?:to|到)\s*(\d+)/);
+                    if (match) {
+                        etdText = `${match[1]}-${match[2]} 分鐘`;
+                    } else {
+                        etdText = etdMeta.accessibilityText;
+                    }
+                } else if (etdMeta.text) {
+                    etdText = etdMeta.text.replace('min', '分鐘');
+                }
+            }
+        }
+        if (!etdText && metaText) {
+            etdText = metaText.replace('預計 ', '');
+        }
+        if (!etdText) {
+            etdText = '免運專區';
+        }
+
         let etaBadgeHtml = '';
-        if (metaText && !isClosed && !isBad) {
-            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
+        let freeDeliveryBadge = '';
+
+        if (isPickup) {
+            // 左上增加綠色字 免運費
+            freeDeliveryBadge = `<div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); color:#00cc66; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">免運費</div>`;
+            // 右上按照優惠專區格式 (顯示抵達時間)
+            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${escapeHTML(etdText)}</div>`;
+        } else {
+            if (metaText && !isClosed && !isBad) {
+                etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
+            }
         }
 
         let metaDisplay = `⭐ ${escapeHTML(rating)}`;
-
-        // 原本在下方的文字保留，也可以考慮拿掉，為了保險先留著
-
-        if (metaText) {
-
+        if (isPickup) {
+            metaDisplay += ` &nbsp;|&nbsp; <span style="color:#ff9800; font-weight:bold;">免運專區外送加成$0</span>`;
+        } else if (metaText) {
             metaDisplay += ` &nbsp;|&nbsp; <span style="color:#e67e22; font-weight:bold;">${escapeHTML(metaText)}</span>`;
-
         }
 
-        
+        const safeMetaText = (metaText || '').replace(/'/g, "\\'");
+        const safeEtdText = (etdText || metaText || '免運專區').replace(/'/g, "\\'");
+        const cardOnclick = isPickup
+            ? `localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'PICKUP', '${safeEtdText}')`
+            : `localStorage.setItem('uberCartIsDiscount', 'false'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'DELIVERY', '${safeMetaText}')`;
 
-          const safeMetaText = (metaText || '').replace(/'/g, "\\'");
-          return `
-
-          <div id="card_${s.storeUuid}" class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'false'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'DELIVERY', '${safeMetaText}')">
-
+        return `
+          <div id="card_${s.storeUuid}" class="card" onclick="${cardOnclick}">
             <div class="card-img" style="position:relative; overflow:hidden; ${style}">
-
                 ${imgUrl ? `<img src="${imgUrl}" loading="lazy" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:0;" />` : ''}
-
+                ${freeDeliveryBadge}
                 ${etaBadgeHtml}
                 <div style="position:relative; z-index:1; width:100%; height:100%;">
 
@@ -3192,6 +3230,158 @@ async function fetchPxmartAsapStores(q) {
     } catch (e) {
         console.error('fetchPxmartAsapStores error:', e);
         return [];
+    }
+}
+
+window._pickupSearchToken = 0;
+
+async function fetchPickupDiscountStores(q) {
+    if (!isAddressSet) return [];
+    try {
+        const searchPayload = { 
+            query: q, 
+            lat: currentLat,
+            lng: currentLng,
+            vertical: 'RESTAURANTS',
+            searchSource: 'SEARCH_SUGGESTION',
+            searchType: 'GLOBAL_SEARCH',
+            mapContext: {
+                northEast: { latitude: currentLat + 0.09, longitude: currentLng + 0.09 },
+                southWest: { latitude: currentLat - 0.09, longitude: currentLng - 0.09 }
+            },
+            diningMode: 'PICKUP'
+        };
+
+        if (typeof scheduleMode !== 'undefined') {
+            if (scheduleMode === 'ASAP') {
+                searchPayload.date = "";
+                searchPayload.startTime = 0;
+                searchPayload.endTime = 0;
+            } else if (scheduleMode === 'SCHEDULE') {
+                const timeSelect = document.getElementById('scheduleTime');
+                if (timeSelect && timeSelect.value) {
+                    try {
+                        const sData = JSON.parse(timeSelect.value);
+                        searchPayload.date = sData.date;
+                        searchPayload.startTime = sData.startTime;
+                        searchPayload.endTime = sData.endTime;
+                    } catch (e) {}
+                }
+            }
+        }
+
+        const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+        const res = await fetch(`${apiBase}/api/search_v4`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(searchPayload)
+        });
+
+        const textRes = await res.text();
+        const json = JSON.parse(textRes);
+
+        if (!res.ok || json.status === 'failure') { 
+            return [];
+        }
+
+        let stores = [];
+        (json.data.feedItems || []).forEach(item => {
+            if ((item.type === 'REGULAR_STORE' || item.type === 'REGULAR_STORE_WITH_ITEMS') && item.store) {
+                stores.push(item.store);
+            } else if ((item.type === 'REGULAR_CAROUSEL' || item.type === 'STORE_CAROUSEL') && item.carousel && item.carousel.stores) {
+                stores.push(...item.carousel.stores);
+            } else if (item.type === 'MINI_STORE_WITH_ITEMS' && item.miniStoreWithItems && item.miniStoreWithItems.store) {
+                stores.push(item.miniStoreWithItems.store);
+            }
+        });
+
+        const seen = new Set();
+        stores = stores.filter(s => {
+            if (seen.has(s.storeUuid)) return false;
+            seen.add(s.storeUuid);
+            return true;
+        });
+
+        const getDist = (s) => {
+            if (s.location && s.location.distanceToUser) return s.location.distanceToUser;
+            if (s.meta && Array.isArray(s.meta)) {
+                const distMeta = s.meta.find(m => m.badgeType === 'DISTANCE');
+                if (distMeta && distMeta.text) {
+                    const match = distMeta.text.match(/[\d.]+/);
+                    if (match) return parseFloat(match[0]);
+                }
+            }
+            return 99999;
+        };
+
+        stores = stores.filter(s => getDist(s) <= 5.0);
+        stores.sort((a, b) => getDist(a) - getDist(b));
+
+        if (q) {
+            const qLower = q.toLowerCase();
+            const exactMatches = stores.filter(s => s.title && s.title.text && s.title.text.toLowerCase().includes(qLower));
+            const others = stores.filter(s => !(s.title && s.title.text && s.title.text.toLowerCase().includes(qLower)));
+            stores = [...exactMatches, ...others];
+        }
+
+        return stores;
+    } catch (e) {
+        console.warn('fetchPickupDiscountStores error:', e);
+        return [];
+    }
+}
+
+async function triggerPickupSupplement(query, currentStores, vertical) {
+    const currentToken = ++window._pickupSearchToken;
+    try {
+        const pickupStores = await fetchPickupDiscountStores(query);
+        if (currentToken !== window._pickupSearchToken) return;
+        if (!pickupStores || pickupStores.length === 0) return;
+
+        const pickupMap = new Map();
+        pickupStores.forEach(ps => pickupMap.set(ps.storeUuid, ps));
+
+        const existingUuids = new Set();
+        let matchedCount = 0;
+
+        // 1. 階段一已有店家：直接加上右上(ETD)與左上(免運費)
+        currentStores.forEach(s => {
+            existingUuids.add(s.storeUuid);
+            if (pickupMap.has(s.storeUuid)) {
+                s._isPickupDiscount = true;
+                const ps = pickupMap.get(s.storeUuid);
+                if (ps.meta && Array.isArray(ps.meta)) {
+                    s._pickupMeta = ps.meta;
+                }
+                matchedCount++;
+            }
+        });
+
+        // 2. 階段一未有的店家：標記後穿插追加進後面排序
+        const newStores = [];
+        pickupStores.forEach(ps => {
+            if (!existingUuids.has(ps.storeUuid)) {
+                existingUuids.add(ps.storeUuid);
+                ps._isPickupDiscount = true;
+                ps._fromPickupSupplement = true;
+                ps._pickupMeta = ps.meta;
+                newStores.push(ps);
+            }
+        });
+
+        if (newStores.length > 0) {
+            currentStores.push(...newStores);
+        }
+
+        // 3. 重新渲染列表（保持當前畫面捲動位置，不晃動跳轉）
+        const resultsEl = document.getElementById('results');
+        if (resultsEl) {
+            const currentScroll = window.scrollY;
+            resultsEl.innerHTML = generateStoreListHTML(currentStores, query, vertical);
+            window.scrollTo(0, currentScroll);
+        }
+    } catch (err) {
+        console.warn('triggerPickupSupplement error:', err);
     }
 }
 
@@ -3355,6 +3545,9 @@ async function searchStores() {
         statusEl.className = 'status success';
         resultsEl.innerHTML = generateStoreListHTML(window.suggestionStores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
         window.scrollTo(0, 0);
+        if (currentVert !== 'SHOP') {
+            triggerPickupSupplement(q, window.suggestionStores, currentVert);
+        }
         return;
     }
 
@@ -3563,6 +3756,11 @@ async function searchStores() {
       resultsEl.innerHTML = generateStoreListHTML(stores, q, typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS');
       window.scrollTo(0, 0); // 確保每次搜尋完成後，畫面回到最上方優先顯示第一個結果
 
+      // ⭐ [優惠/免運專區即時穿插] 顯示階段一餐廳時，立刻在背景送出優惠專區(PICKUP)要求，不換頁並穿插進後面排序
+      if (currentVert !== 'SHOP') {
+          triggerPickupSupplement(q, stores, currentVert);
+      }
+
       // [全聯預約自動轉即時補全] 針對生鮮雜貨包含「全聯」關鍵字 (排除「大全聯」)，若預約模式無任何全聯結果 (出現大全聯不算)，自動以即時補搜全聯
       const vertCheck = typeof currentVertical !== 'undefined' ? currentVertical : 'RESTAURANTS';
       if (vertCheck === 'SHOP' && q.includes('全聯') && !q.includes('大全聯') && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
@@ -3611,7 +3809,7 @@ async function searchStoresPickup(q) {
 
     const statusEl = document.getElementById('status');
     const resultsEl = document.getElementById('results');
-    statusEl.innerHTML = '<div style="padding: 100px 0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; font-size: 16px; font-weight: bold; color: #666;">搜尋優惠餐廳中...</div></div>'; 
+    statusEl.innerHTML = '<div style="padding: 100px 0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;"><div class="spinner" style="margin: 0 auto;"></div><div style="margin-top: 15px; font-size: 16px; font-weight: bold; color: #666;">搜尋免運餐廳中...</div></div>'; 
     statusEl.className = 'status'; 
     resultsEl.innerHTML = '';
 
@@ -3710,12 +3908,12 @@ async function searchStoresPickup(q) {
         const keyword = (q || '').trim();
         const safeKw = typeof escapeHTML === 'function' ? escapeHTML(keyword) : keyword;
         if (stores.length === 0) {
-            statusEl.innerHTML = keyword ? `找不到與${safeKw}有關的優惠餐廳。` : '找不到相關優惠餐廳。';
+            statusEl.innerHTML = keyword ? `找不到與${safeKw}有關的免運餐廳。` : '找不到相關免運餐廳。';
             return;
         }
 
         const safeQ = (q || '').replace(/'/g, "\\\'").replace(/"/g, '&quot;');
-        const titleText = keyword ? `與${safeKw}有關的優惠餐廳：` : `為您推薦 ${stores.length} 家優惠餐廳：`;
+        const titleText = keyword ? `與${safeKw}有關的免運餐廳：` : `為您推薦 ${stores.length} 家免運餐廳：`;
         statusEl.innerHTML = `<div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                                 <div>${titleText}</div>
                                 <button onclick="searchStores()" style="background:#f43f5e; color:#fff; border:none; padding:5px 12px; border-radius:15px; font-weight:bold; cursor:pointer; font-size:13px; margin-left:10px; flex-shrink:0;">回到一般外送</button>
@@ -3746,7 +3944,7 @@ async function searchStoresPickup(q) {
                 }
             }
             if (!etdText) {
-                etdText = '-$10優惠';
+                etdText = '免運專區';
             }
             distBadge = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${etdText}</div>`;
 
@@ -3758,7 +3956,7 @@ async function searchStoresPickup(q) {
                 <div class="card-body">
                   <div class="card-name">${name}</div>
                   <div class="card-meta">
-                      <span style="color:#ff9800; font-weight:bold;">優惠專區每單再折10元</span>
+                      <span style="color:#ff9800; font-weight:bold;">免運專區外送加成$0</span>
                   </div>
                 </div>
             </div>
@@ -3767,7 +3965,7 @@ async function searchStoresPickup(q) {
 
     } catch (e) {
         console.error('Fetch store pickup error:', e);
-        statusEl.innerHTML = '搜尋優惠餐廳失敗';
+        statusEl.innerHTML = '搜尋免運餐廳失敗';
     }
 }
 
@@ -5921,21 +6119,47 @@ window.selectedPlan = 'A';
 window.selectPlan = function(p) {};
 
 window.submitSelectedPlan = async function() {
-    if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+    if (window.isSubmittingOrder || window._orderSent) return;
+
+    // 🚀 立即給予使用者反饋：先跳出處理中視窗與鎖定按鈕
+    const sName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : (document.getElementById('currentStoreName') ? document.getElementById('currentStoreName').innerText : '');
+    const submitBtn = document.getElementById('checkoutSubmitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = '處理中...';
+        submitBtn.style.opacity = '0.7';
+    }
+
+    if (window.isGroceryStore) {
+        showGroceryWaitingOverlay(sName || '生鮮雜貨門市');
+    } else {
+        showOrderWaitingOverlay(sName || '線上餐點門市');
+    }
+
+    if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.status && window.lastServerStoreStatus.status.toLowerCase() === 'closed'))) {
+        hideOrderWaitingOverlay();
+        hideGroceryWaitingOverlay();
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
         showModal('目前暫時無法接單', '', false, '', true);
         return;
     }
+
     if (window.isGroceryStore) {
-        const sName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : '';
         const is150 = sName.includes('優市');
         const typeTitle = is150 ? '優市' : '雜貨';
         if (window._groceryDisabled) {
+            hideOrderWaitingOverlay();
+            hideGroceryWaitingOverlay();
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
             showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
             return;
         }
         if (typeof checkGroceryStatus === 'function') {
             const isDisabled = await checkGroceryStatus(sName);
             if (isDisabled) {
+                hideOrderWaitingOverlay();
+                hideGroceryWaitingOverlay();
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
                 if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(sName);
                 showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
                 return;
@@ -5944,6 +6168,7 @@ window.submitSelectedPlan = async function() {
         sendOrderToLine();
         return;
     }
+
     let costRes = typeof calcOrderCost === 'function' ? calcOrderCost(cart) : null;
     let isSplit = costRes && costRes.shouldSplit;
     sendOrderToLine(isSplit ? 'split' : 'planA');
@@ -6142,7 +6367,7 @@ function openCheckoutSummary() {
       let storeCountUI = 0;
       const sCounts = {};
       cart.forEach(it => { if(!sCounts[it.storeName]) { sCounts[it.storeName]=true; storeCountUI++; }});
-      const visualSvcFee = storeCountUI >= 2 ? 30 : 50;
+      const visualSvcFee = 20;
 
       
 
@@ -6152,12 +6377,14 @@ function openCheckoutSummary() {
 // Plan A
 html += `<div id="planACard" style="background:#f9f9f9; padding:10px; border-radius:8px; border:2px solid #f43f5e; text-align:center; font-size:14px; position:relative;">`;
 
-let origTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($300內5折)</div>`;
+let origTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($150內半價)</div>`;
 origTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left; margin-top:10px;">`;
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">小計:</td><td style="padding:2px 0 2px 4px;">$${total}</td></tr>`;
-origTable += total >= 300 ? `<tr><td style=\"text-align:right; padding:2px 4px 2px 0; color:#f43f5e;\">優惠折抵:</td><td style=\"padding:2px 0 2px 4px; color:#f43f5e;\">-$150</td></tr>` : (total > 0 ? `<tr><td style=\"text-align:right; padding:2px 4px 2px 0; color:#f43f5e;\">優惠折抵:</td><td style=\"padding:2px 0 2px 4px; color:#f43f5e;\">-$${Math.floor(total/2)}</td></tr>` : '');
+origTable += total >= 150 ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$75</td></tr>` : `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$${Math.floor(total/2)}</td></tr>`;
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">代訂費:</td><td style="padding:2px 0 2px 4px;">$${visualSvcFee}</td></tr>`;
+const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
 let aTotalExcess = (function(){
+    if (isDiscount) return 0;
     let te = 0; const sg = {};
     cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
     Object.keys(sg).forEach(s => {
@@ -6166,13 +6393,7 @@ let aTotalExcess = (function(){
     return te;
 })();
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">外送加成:</td><td style="padding:2px 0 2px 4px;">$${aTotalExcess}</td></tr>`;
-
-const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
-const pickupDiscount = isDiscount ? 10 : 0;
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">服務費:</td><td style="padding:2px 0 2px 4px;">$0</td></tr>`;
-if (isDiscount) {
-    origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠專區:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$10</td></tr>`;
-}
 
 const preOrderDisc = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
 if (preOrderDisc > 0) {
@@ -6182,34 +6403,39 @@ origTable += `</table>`;
 origTable += `<div style="font-weight:bold; font-size:16px; margin-top:10px; border-top:1px solid #ccc; padding-top:6px;">`;
 origTable += (function(){
     let totalExcess = 0;
+    if (!isDiscount) {
+        const sg = {};
+        cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+        Object.keys(sg).forEach(s => {
+            totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+        });
+    }
+    let totalOrigExcess = 0;
     const sg = {};
     cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-    Object.keys(sg).forEach(s => {
-        totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
-    });
-    let totalOrigExcess = 0;
     Object.keys(sg).forEach(s => {
         totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0))));
     });
 
-    const pd = total >= 300 ? 150 : Math.floor(total/2);
+    const pd = total >= 150 ? 75 : Math.floor(total/2);
     const pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
-    const pickup = localStorage.getItem("uberCartIsDiscount") === "true" ? 10 : 0;
-    return `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${total + visualSvcFee + totalOrigExcess}</span> <span style="color:#d32f2f; font-size:18px;">$${total - pd + visualSvcFee + totalExcess - pr - pickup}</span>`;
+    return `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${total + visualSvcFee + totalOrigExcess}</span> <span style="color:#d32f2f; font-size:18px;">$${total - pd + visualSvcFee + totalExcess - pr}</span>`;
 })();
 origTable += `</div>`;
 
 let costRes = typeof calcOrderCost === 'function' ? calcOrderCost(cart) : null;
 if (costRes && costRes.shouldSplit) {
-    let splitFood = 0; let splitPromo = 0; let splitExcess = 0; let splitPreorder = 0; let splitFee = costRes.bins.length * 50;
+    let splitFood = 0; let splitPromo = 0; let splitExcess = 0; let splitPreorder = 0; let splitFee = costRes.bins.length * 20;
     costRes.bins.forEach(bin => {
         splitFood += bin.sum;
-        splitPromo += (bin.sum >= 300 ? 150 : Math.floor(bin.sum / 2));
+        splitPromo += (bin.sum >= 150 ? 75 : Math.floor(bin.sum / 2));
         let bsg = {}; bin.items.forEach(i => { if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[]; bsg[i.storeName||''].push(i); });
         let binEx = 0;
-        Object.keys(bsg).forEach(s => {
-            binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
-        });
+        if (!isDiscount) {
+            Object.keys(bsg).forEach(s => {
+                binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
+            });
+        }
         splitExcess += binEx;
         let pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
         splitPreorder += pr;
@@ -6217,7 +6443,7 @@ if (costRes && costRes.shouldSplit) {
 
     let originalBaseStr = total + visualSvcFee + (function(){ let te = 0; const ssg = {}; cart.forEach(it => { if(!ssg[it.storeName||'']) ssg[it.storeName||'']=[]; ssg[it.storeName||''].push(it); }); Object.keys(ssg).forEach(s => { te += Math.max(0, ...ssg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0)))); }); return te; })();
 
-    let sumTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($300內5折)</div>`;
+    let sumTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($150內半價)</div>`;
     sumTable += `<div style="margin-bottom:8px; color:#666; font-size:12px; font-weight:bold;">(共拆成 ${costRes.bins.length} 單)</div>`;
     sumTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left;">`;
 sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">小計:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitFood}</td></tr>`;
@@ -6226,11 +6452,11 @@ sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space
 sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">外送加成:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitExcess}</td></tr>`;
 
 sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">服務費:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$0</td></tr>`;
-const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
-const splitPickupDisc = isDiscount ? 10 * costRes.bins.length : 0;
-if (isDiscount) {
-    sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">優惠專區:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPickupDisc}</td></tr>`;
+
+if (splitPreorder > 0) {
+    sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPreorder}</td></tr>`;
 }
+sumTable += `</table>`;
 
 if (splitPreorder > 0) {
     sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPreorder}</td></tr>`;
@@ -6682,17 +6908,19 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
     clearCart();
     window._orderSent = true;
     const safeOrderText = encodeURIComponent(msgText).replace(/'/g, "%27");
-    
+    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+
     const tipHtml = `
       <div style="text-align:left; font-size:14px; color:#475569; line-height:1.6; margin-bottom:15px; background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
         <div style="font-weight:bold; color:#e11d48; font-size:15px; margin-bottom:6px;">⚠️ LINE 尚未取得傳送訊息權限</div>
         <div>因系統需要您同意<b>「傳送訊息至聊天室」</b>的權限，才能自動為您發送訂單。</div>
         <div style="margin-top:10px; font-size:13px; color:#64748b; border-top:1px dashed #cbd5e1; padding-top:8px;">
           💡 <b>貼心提醒：</b><br>
-          本次請先點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
+          您可直接開啟上方<b>「預載 5折 購物車」</b>，或點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
           下次下單請保留權限（請勿手動關閉），即可享受全自動送單的便利！
         </div>
       </div>
+      ${fastCartBtnHtml}
       <button onclick="copyAndRetrySendOrder(this, decodeURIComponent('${safeOrderText}'))" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 3px 10px rgba(244,63,94,0.3); margin-bottom:10px;">📋 一鍵複製訂單訊息 (貼回聊天室)</button>
       <button onclick="if(typeof liff !== 'undefined' && liff.isInClient && liff.isInClient()) { liff.closeWindow(); } else { document.getElementById('errorModalOverlay').style.display='none'; }" style="width:100%; padding:11px; background:#f1f5f9; color:#475569; border:none; border-radius:10px; font-size:14px; font-weight:bold; cursor:pointer;">關閉視窗回到聊天室</button>
     `;
@@ -6702,26 +6930,54 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
 }
 
 async function sendOrderToLine(forceSubmit = false) {
-  if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.text && window.lastServerStoreStatus.text.includes('無法接單')))) {
+  if (!isClosedStatusBypassed() && window.lastServerStoreStatus && (window.lastServerStoreStatus.type === 'closed' || (window.lastServerStoreStatus.status && window.lastServerStoreStatus.status.toLowerCase() === 'closed'))) {
+    hideOrderWaitingOverlay();
+    hideGroceryWaitingOverlay();
     showModal('目前暫時無法接單', '', false, '', true);
     return;
   }
+
   if (window.isGroupBuyClosed) {
+    hideOrderWaitingOverlay();
+    hideGroceryWaitingOverlay();
     showToast('⚠️ 本團購訂單已送出結帳，團購已截止！');
     return;
   }
+
   if (window.isSubmittingOrder || window._orderSent) return;
   window.isSubmittingOrder = true;
+
+  // 確保送出時必定開啟等待視窗
+  const sName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : (document.getElementById('currentStoreName') ? document.getElementById('currentStoreName').innerText : '');
+  const submitBtn = document.getElementById('checkoutSubmitBtn');
+  if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerText = '處理中...';
+      submitBtn.style.opacity = '0.7';
+  }
+  if (window.isGroceryStore) {
+      showGroceryWaitingOverlay(sName || '生鮮雜貨門市');
+  } else {
+      showOrderWaitingOverlay(sName || '線上餐點門市');
+  }
+
   try {
       await _sendOrderToLine(forceSubmit);
   } finally {
       window.isSubmittingOrder = false;
+      if (submitBtn && !window._orderSent) {
+          submitBtn.disabled = false;
+          submitBtn.innerText = '送出訂單';
+          submitBtn.style.opacity = '1';
+      }
   }
 }
 
 async function _sendOrderToLine(forceSubmit = false) {
       const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
       if (!schedCheck.valid) {
+          hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+
           window.currentStoreClosed = true;
           window.mustSelectScheduleBeforeCheckout = true;
           if (typeof showStoreScheduleModal === 'function') {
@@ -6745,6 +7001,8 @@ async function _sendOrderToLine(forceSubmit = false) {
           : (isStoreCanPickup ? '🏷️' : '');
 
   let msgText = '';
+  let addr = '';
+  let timeText = '盡快送達';
 
       if (forceSubmit === 'planA' ) {
           window.selectedPlan = forceSubmit;
@@ -6757,6 +7015,8 @@ async function _sendOrderToLine(forceSubmit = false) {
   if (phoneInput) {
       const phoneVal = phoneInput.value.trim();
       if (!phoneVal) {
+          hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+
           phoneInput.style.border = '2px solid #d32f2f';
           phoneInput.focus();
           setTimeout(() => { phoneInput.style.border = '1px solid #ccc'; }, 2000);
@@ -6783,6 +7043,8 @@ async function _sendOrderToLine(forceSubmit = false) {
     const hasDoorKeywords = /放|外送桌|桌上/.test(deliveryNotesVal);
 
     if (hasDoorKeywords && selectedMethodVal === '當面點交') {
+       hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+
 
        const safeNotes = deliveryNotesVal.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -6828,14 +7090,14 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       let addrEl = document.getElementById(prefix + 'AddrInput');
 
-      let addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
+      addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
       addr = normalizeAddress(addr);
 
       if (addr.startsWith('📍 ')) addr = addr.substring(3).trim();
 
 
 
-            let timeText = '盡快送達';
+            timeText = '盡快送達';
       let isAdvanceBooking = false; // 179分鐘以上: 專人代訂費 45 元
       let isThreeHourSlot = false;  // 三小時時段: 優惠時段折扣 -$25
 
@@ -6925,6 +7187,8 @@ async function _sendOrderToLine(forceSubmit = false) {
       let minOrderLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 99;
 
       if (minOrderLimit > 0 && foodTotal < minOrderLimit) {
+        hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+
 
         showModal('金額過低', `訂單小計低於$${minOrderLimit}，建議再加個東西吧！`);
 
@@ -6945,6 +7209,8 @@ async function _sendOrderToLine(forceSubmit = false) {
       if (!forceSubmit || forceSubmit === 'overrideMethod') {
 
         if (costRes.shouldSplit && costRes.savings > 0) {
+          hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+
 
           const suggestHtml = buildSplitSuggestionHtml(costRes);
 
@@ -6970,7 +7236,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       let addrEl = document.getElementById(prefix + 'AddrInput');
 
-      let addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
+      addr = addrEl ? addrEl.value.trim() : (document.getElementById('addrInput') ? document.getElementById('addrInput').value.trim() : '');
       if (!addr && window.currentGroupBuyId && window.groupBuyData?.address) {
           addr = window.groupBuyData.address;
       }
@@ -7010,7 +7276,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       }
 
-      let timeText = '盡快送達';
+      timeText = '盡快送達';
 
       let isPreOrder = false;
 
@@ -7040,7 +7306,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
       if (forceSubmit === 'split' && costRes.bins) {
 
-      msgText = `🛵 UberEats 揪團訂單${priceKeyText} \n$300內5折\n`;
+      msgText = `🛵 UberEats 揪團訂單${priceKeyText} \n$150內半價\n`;
 
         if (addr) msgText += `📍 地址: ${addr}${coordsText}\n`;
 
@@ -7056,7 +7322,7 @@ async function _sendOrderToLine(forceSubmit = false) {
             isASAP = true; // 3小時內的預約單視同即時單標準
         }
     }
-      let feePerBin = 50;
+      let feePerBin = 20;
 
       let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
 
@@ -7138,46 +7404,29 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-          let binPromo = binFoodSum >= 300 ? 150 : Math.floor(binFoodSum / 2);
+          let binPromo = binFoodSum >= 150 ? 75 : Math.floor(binFoodSum / 2);
 
 
 
           let binExcess = 0;
+          if (!isPickup) {
+            Object.keys(binStores).forEach(sName => {
+              binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => item.storeDeliveryFee || 0));
+            });
+          }
 
-          Object.keys(binStores).forEach(sName => {
-            binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => item.storeDeliveryFee || 0));
-          });
-
-
-
-        let binTotal = (binFoodSum - binPromo) + feePerBin + binExcess - preOrderDiscount - (isPickup ? 10 : 0);
-
+          let binTotal = (binFoodSum - binPromo) + feePerBin + binExcess - preOrderDiscount;
           grandTotal += binTotal;
 
-
-
           msgText += `  小計: $${binFoodSum}\n`;
-
           if (binPromo > 0) msgText += `  🎉 半價優惠: -$${binPromo}\n`;
-
           msgText += `  🛵 代訂費: $${feePerBin}\n`;
-
           msgText += `  🛵 外送加成: $${binExcess}\n`;
-
-          if (isPickup) msgText += `  🌟 優惠專區折扣: -$10\n`;
-
           if (preOrderDiscount > 0) msgText += `  🕒 預訂折扣: -$${preOrderDiscount}\n`;
-
           msgText += `  ➡️ 結算: $${binTotal}\n\n`;
-
         });
 
-
-
-
         if (preOrderDiscount > 0) msgText += `🕒 預訂總折扣: -$${preOrderDiscount * costRes.bins.length} (每單已折${preOrderDiscount}元)\n`;
-        if (isPickup) msgText += `🌟 優惠專區總折扣: -$${10 * costRes.bins.length} (每單已折10元)\n`;
-
         msgText += `💰 總結算金額: $${grandTotal}`;
 
 
@@ -7267,9 +7516,9 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-        let promoDiscount = total >= 300 ? 150 : Math.floor(total / 2);
+        let promoDiscount = total >= 150 ? 75 : Math.floor(total / 2);
 
-        let serviceFee = storeCount >= 2 ? 30 : 50;
+        let serviceFee = 20;
 
 
 
@@ -7277,10 +7526,10 @@ costRes.bins.forEach((bin, bIdx) => {
 
         
         const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
-let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - preOrderDiscount - (isPickup ? 10 : 0);
-
-
-
+        if (isPickup) {
+            totalExcessDeliveryFee = 0;
+        }
+        let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - preOrderDiscount;
 
       if (false) {
           msgText += `🏷️ [B方案] ($200-$200)\n`;
@@ -7293,14 +7542,13 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
           let maxTotal = total - 200 + 130 + totalExcessDeliveryFee + 60;
           msgText += `\n💰 總計: $${minTotal} ~ $${maxTotal}\n`;
       } else {
-          msgText += `🏷️ ($300內5折)\n`;
+          msgText += `🏷️ ($150內半價)\n`;
           msgText += `💵 小計: $${total}\n`;
           if (promoDiscount > 0) msgText += `🎉 優惠半價折抵: -$${promoDiscount}\n`;
           msgText += `🏍️ 代訂費: $${serviceFee}\n`;
           msgText += `🛵 外送加成: $${totalExcessDeliveryFee}\n`;
           msgText += `🧑‍💼 服務費: $0\n`;
           if (preOrderDiscount > 0) msgText += `📅 預訂折扣: -$${preOrderDiscount}\n`;
-        if (isPickup) msgText += `🌟 優惠專區折扣: -$10\n`;
           msgText += `\n💰 總計: $${grandTotal}`;
       }
       }
@@ -7370,28 +7618,6 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
 
   if (typeof liffInitPromise !== 'undefined' && liffInitPromise) await liffInitPromise;
 
-  const isLiffClient = !isDesktopDevice && typeof liff !== 'undefined' && liff.isInClient();
-
-  if (isLiffClient) {
-      if (!liff.isLoggedIn()) {
-          liff.login({ redirectUri: window.location.href });
-          return;
-      }
-      try {
-          const perm = await liff.permission.query("chat_message.write");
-          if (perm.state !== 'granted') {
-              await liff.permission.requestAll();
-              const newPerm = await liff.permission.query("chat_message.write");
-              if (newPerm.state !== 'granted') {
-                  showPermissionFailModal(msgText);
-                  return;
-              }
-          }
-      } catch (e) {
-          console.warn("Permission check error", e);
-      }
-  }
-
   const currentUserId = (typeof getLiffUserId === 'function') ? (await getLiffUserId()) : '';
   let submittedOrderId = '';
 
@@ -7445,7 +7671,16 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
       }));
   }
 
+  // 🚀 無論何種環境，一律優先送出訂單資料到後端存檔並啟動 5折 團購注入！
   try {
+      const owStep1 = document.getElementById('owStep1');
+      if (owStep1) owStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
+      const owStep2 = document.getElementById('owStep2');
+      if (owStep2) owStep2.innerHTML = '<span>⏳</span> 正在連線伺服器建立訂單...';
+      const gwStep1 = document.getElementById('gwStep1');
+      if (gwStep1) gwStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
+      const gwStep2 = document.getElementById('gwStep2');
+      if (gwStep2) gwStep2.innerHTML = '<span>⏳</span> 正在連線伺服器建立訂單...';
       const res = await fetch(API_BASE_URL + '/api/store_v3', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -7458,13 +7693,21 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
               items: structuredItems,
               bins: splitBins,
               delivery_info: {
-                  address: addr,
+                  address: (typeof addr !== 'undefined' && addr) ? addr : '',
                   lat: (typeof currentLat !== 'undefined') ? currentLat : null,
                   lng: (typeof currentLng !== 'undefined') ? currentLng : null,
-                  phone: phoneVal,
-                  deliveryMethod: selectedMethodVal,
-                  notes: finalNote,
-                  timeText: timeText
+                  phone: (typeof phoneVal !== 'undefined' && phoneVal) ? phoneVal : '',
+                  deliveryMethod: (typeof selectedMethodVal !== 'undefined' && selectedMethodVal) ? selectedMethodVal : '當面點交',
+                  notes: (typeof finalNote !== 'undefined' && finalNote) ? finalNote : '',
+                  timeText: (typeof timeText !== 'undefined' && timeText) ? timeText : '盡快送達',
+                  schedule_data: (function() {
+                      try {
+                          const schedElem = document.getElementById('scheduleTime');
+                          return (schedElem && schedElem.value) ? JSON.parse(schedElem.value) : null;
+                      } catch(e) { return null; }
+                  })(),
+                  is_scheduled: (typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP'),
+                  schedule_mode: (typeof scheduleMode !== 'undefined') ? scheduleMode : 'ASAP'
               }
           })
       });
@@ -7472,23 +7715,54 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
           const d = await res.json();
           if (d && d.order_id) submittedOrderId = d.order_id;
           if (d && d.join_url) window.lastFastGroupOrderUrl = d.join_url;
+          if (d && d.order_uuid) {
+              window.lastGroupOrderUuid = d.order_uuid;
+              console.log("✅ [點餐團購] 開團成功，UUID:", d.order_uuid, "網址:", d.join_url);
+          }
+          if (d && d.group_order_error) {
+              window.lastGroupOrderError = d.group_order_error;
+              console.warn("⚠️ [點餐團購] 開團未成功原因:", d.group_order_error);
+          }
       }
   } catch(e) {
       console.error("Upload order failed", e);
   }
   window.lastSubmittedOrderId = submittedOrderId;
 
-  if (isDesktopDevice || (typeof liff !== 'undefined' && !liff.isInClient())) {
+  const isLiffClient = !isDesktopDevice && typeof liff !== 'undefined' && liff.isInClient();
+
+  if (isDesktopDevice || !isLiffClient) {
     if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
       await markGroupBuySubmitted(msgText);
     }
     clearCart();
     window._orderSent = true;
-    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載購物車</button>` : '';
-    const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息</button>`;
+    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+    const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息 (貼回聊天室)</button>`;
 
+    hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
     showModal('偵測到非手機登入', '', true, copyBtnHtml, true);
     return;
+  }
+
+  if (isLiffClient) {
+      if (!liff.isLoggedIn()) {
+          liff.login({ redirectUri: window.location.href });
+          return;
+      }
+      try {
+          const perm = await liff.permission.query("chat_message.write");
+          if (perm.state !== 'granted') {
+              await liff.permission.requestAll();
+              const newPerm = await liff.permission.query("chat_message.write");
+              if (newPerm.state !== 'granted') {
+                  showPermissionFailModal(msgText);
+                  return;
+              }
+          }
+      } catch (e) {
+          console.warn("Permission check error", e);
+      }
   }
 
   // --- 若為生鮮雜貨訂單，在手機 LINE (LIFF) 環境下，進入等待配對讀取畫面並自動轉址 ---
@@ -7500,7 +7774,6 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
   // --- 一般餐點訂單，使用等待配對與進度網址轉址邏輯 ---
   await handleFoodOrderSubmit(msgText);
   return;
-
 }
 
 async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUuid, titleEnc, descEnc, basePrice, imgUrl, hasCustomizations) {
@@ -8746,7 +9019,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           strictScheduleCheck = false;
       }
 
-      if (isTooFar || strictScheduleCheck || (!isGrocery && !hasValidPriceItem)) {
+      if (isTooFar || strictScheduleCheck) {
 
           const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
 
@@ -8761,7 +9034,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           
 
           const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : (!isSchedulable ? `此${tType}不能使用折價券，無法為您代購。請選擇其他${tType}。` : `此${tType}無法使用折扣券，無法為您代購。請選擇其他${tType}。`);
+          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}不能使用折價券，無法為您代購。請選擇其他${tType}。`;
 
           showModal('無法接單', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
 
@@ -10030,25 +10303,24 @@ function normalizeAddress(addr) {
 
   
 
-  let promoDiscount = totalSum >= 300 ? 150 : Math.floor(totalSum / 2);
+  let promoDiscount = totalSum >= 150 ? 75 : Math.floor(totalSum / 2);
 
   let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
   const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
 
-  
-
   let totalExcessDeliveryFee = 0;
 
-  const sg = {};
-  items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+  if (!isPickup) {
+    const sg = {};
+    items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
 
-  Object.keys(sg).forEach(s => {
-      totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
-  });
+    Object.keys(sg).forEach(s => {
+        totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+    });
+  }
 
-  
-  let pickupDisc = localStorage.getItem('uberCartIsDiscount') === 'true' ? 10 : 0;
-  let noBinCost = (totalSum - promoDiscount) + 50 + totalExcessDeliveryFee - preOrderDiscount - pickupDisc;
+  let pickupDisc = 0;
+  let noBinCost = (totalSum - promoDiscount) + 20 + totalExcessDeliveryFee - preOrderDiscount;
 
 
 
@@ -10114,7 +10386,7 @@ function normalizeAddress(addr) {
 
       for (let bin of bins) {
 
-        if (bin.sum + item.price <= 300) {
+        if (bin.sum + item.price <= 150) {
 
           bin.items.push(item);
 
@@ -10136,9 +10408,9 @@ function normalizeAddress(addr) {
 
         for (let bin of bins) {
 
-          if (bin.sum < 300 && (300 - bin.sum) > maxGap) {
+          if (bin.sum < 150 && (150 - bin.sum) > maxGap) {
 
-            maxGap = 300 - bin.sum;
+            maxGap = 150 - bin.sum;
 
             bestBin = bin;
 
@@ -10146,7 +10418,7 @@ function normalizeAddress(addr) {
 
         }
 
-        if (bestBin && (bestBin.sum + item.price <= 300 || Math.random() < 0.3)) {
+        if (bestBin && (bestBin.sum + item.price <= 150 || Math.random() < 0.3)) {
 
           bestBin.items.push(item);
 
@@ -10192,11 +10464,11 @@ function normalizeAddress(addr) {
 
       let cost = 0;
 
-        let feePerBin = 50;
+        let feePerBin = 20;
 
       for (let bin of bins) {
 
-        let binPromo = bin.sum >= 300 ? 150 : Math.floor(bin.sum / 2);
+        let binPromo = bin.sum >= 150 ? 75 : Math.floor(bin.sum / 2);
 
         let binFoodCost = bin.sum - binPromo;
 
@@ -10214,14 +10486,16 @@ function normalizeAddress(addr) {
 
         });
 
-        Object.keys(bsg).forEach(s => {
-            binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
-        });
+        if (!isPickup) {
+            Object.keys(bsg).forEach(s => {
+                binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
+            });
+        }
 
         
 
         
-        cost += binFoodCost + feePerBin + binExcess - (localStorage.getItem('uberCartIsDiscount') === 'true' ? 10 : 0) - preOrderDiscount;
+        cost += binFoodCost + feePerBin + binExcess - preOrderDiscount;
 
 
       }
@@ -10245,7 +10519,7 @@ function normalizeAddress(addr) {
 
   return {
 
-    shouldSplit: totalSum >= 350 && bestBins && bestBins.length > 1 && bestCost < noBinCost,
+    shouldSplit: totalSum >= 280 && expanded.length > 1 && bestBins && bestBins.length > 1 && bestCost < noBinCost,
 
     noBinCost,
 
@@ -10520,8 +10794,8 @@ window.renderSplitTab = function(plan) {
     for (let key in counts) itemStrs.push(counts[key] > 1 ? `${key} x${counts[key]}` : key);
     
     let binFood = bin.sum;
-    let binPromo = (bin.sum >= 300 ? 150 : Math.floor(bin.sum / 2));
-    let binFee = 50;
+    let binPromo = (bin.sum >= 150 ? 75 : Math.floor(bin.sum / 2));
+    let binFee = 20;
     
     let bsg = {};
     bin.items.forEach(i => {
@@ -10530,18 +10804,19 @@ window.renderSplitTab = function(plan) {
         bsg[sn].push(i);
     });
     let binExcess = 0;
-    Object.keys(bsg).forEach(s => {
-        binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee || 0));
-    });
-
     const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
-    const binPickupDisc = isDiscount ? 10 : 0;
+    if (!isDiscount) {
+        Object.keys(bsg).forEach(s => {
+            binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee || 0));
+        });
+    }
+    const binPickupDisc = 0;
     
     let binPreorder = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
     
-    let binTotal = binFood - binPromo + binFee + binExcess - binPickupDisc - binPreorder;
+    let binTotal = binFood - binPromo + binFee + binExcess - binPreorder;
     
-    let titleText = '結帳明細 ($300內5折)';
+    let titleText = '結帳明細 ($150內半價)';
     let html = `
         <div style="font-weight:bold; color:${color}; margin-bottom:2px;">${titleText}</div>
         <div style="margin-bottom:6px; color:#666; font-size:12px; font-weight:bold;">第 ${currentIndex + 1} 單 / 共 ${bins.length} 單</div>
@@ -10551,7 +10826,6 @@ window.renderSplitTab = function(plan) {
             <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">代訂費:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${binFee}</td></tr>
             <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">外送加成:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${binExcess}</td></tr>
             <tr><td style="text-align:right; padding:1px 4px 1px 0; white-space:nowrap;">服務費:</td><td style="padding:1px 0 1px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$0</td></tr>
-            ${binPickupDisc > 0 ? `<tr><td style="text-align:right; padding:1px 4px 1px 0; color:${color}; white-space:nowrap;">優惠專區:</td><td style="padding:1px 0 1px 4px; color:${color}; white-space:nowrap;">-$${binPickupDisc}</td></tr>` : ''}
             ${binPreorder > 0 ? `<tr><td style="text-align:right; padding:1px 4px 1px 0; color:${color}; white-space:nowrap;">預定折扣:</td><td style="padding:1px 0 1px 4px; color:${color}; white-space:nowrap;">-$${binPreorder}</td></tr>` : ''}
         </table>
         <div style="font-weight:bold; font-size:15px; margin-top:6px; border-top:1px solid #ccc; padding-top:4px;">
@@ -10853,11 +11127,11 @@ function openQueryOverlay() {
     const inputMobile = document.getElementById('globalSearchInputMobile');
     if (mainBtn && inputMobile) {
         if (window.isDiscountZone) {
-            mainBtn.innerText = '尋找優惠';
+            mainBtn.innerText = '尋找免運';
             mainBtn.setAttribute('onclick', 'searchStoresPickup(document.getElementById("globalSearchInputMobile").value.trim())');
             mainBtn.style.background = '#ff9800';
             mainBtn.style.color = '#fff';
-            inputMobile.placeholder = '搜尋優惠餐廳...';
+            inputMobile.placeholder = '搜尋免運餐廳...';
             inputMobile.setAttribute('onkeydown', 'if(event.key==="Enter"){ event.preventDefault(); searchStoresPickup(this.value.trim()); }');
         } else {
             mainBtn.innerText = '尋找食物';
@@ -12700,22 +12974,37 @@ let orderPollAttempts = 0;
 function showOrderWaitingOverlay(storeName) {
     const el = document.getElementById('orderWaitingOverlay');
     if (!el) return;
-    document.getElementById('owTitle').innerText = '🚀 正在建立專屬 5折 購物車...';
-    document.getElementById('owTitle').style.color = '#1E293B';
-    document.getElementById('owStore').innerText = '🏪 ' + (storeName || '線上餐點門市');
-    document.getElementById('owEmoji').innerText = '🍽️';
-    document.getElementById('owSpinner').style.display = 'block';
-    document.getElementById('owSpinner').style.borderTopColor = '#f43f5e';
-    document.getElementById('owContent').style.display = 'block';
-    document.getElementById('owContent').innerHTML = `
-      <div id="owStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span><span>訂單餐點資料已接收</span></div>
-      <div id="owStep2" style="display:flex; align-items:center; gap:6px; color:#f43f5e; font-weight:bold; margin-top:4px;"><span>⏳</span><span>正在配對 5折 帳號並將餐點注入購物車...</span></div>
-      <div id="owStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span><span>完成後將自動為您開啟官方購物車</span></div>
-    `;
-    document.getElementById('owTip').innerText = '💡 取得訂單進度後將自動為您開啟頁面';
-    document.getElementById('owActions').innerHTML = `
-      <button onclick="closeOrderWaitingOverlay()" style="background:transparent; border:none; color:#64748B; font-size:13px; cursor:pointer; padding:6px; text-decoration:underline;">回到聊天室等候</button>
-    `;
+    const titleEl = document.getElementById('owTitle');
+    if (titleEl) {
+        titleEl.innerText = '🚀 正在為您送出訂單...';
+        titleEl.style.color = '#1E293B';
+    }
+    const storeEl = document.getElementById('owStore');
+    if (storeEl) storeEl.innerText = '🏪 ' + (storeName || '線上餐點門市');
+    const emojiEl = document.getElementById('owEmoji');
+    if (emojiEl) emojiEl.innerText = '🍽️';
+    const spinnerEl = document.getElementById('owSpinner');
+    if (spinnerEl) {
+        spinnerEl.style.display = 'block';
+        spinnerEl.style.borderTopColor = '#f43f5e';
+    }
+    const contentEl = document.getElementById('owContent');
+    if (contentEl) {
+        contentEl.style.display = 'block';
+        contentEl.innerHTML = `
+          <div id="owStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span> 訂單內容已確認</div>
+          <div id="owStep2" style="display:flex; align-items:center; gap:6px; color:#f43f5e; font-weight:bold; margin-top:4px;"><span>⏳</span> 正在連線伺服器建立訂單...</div>
+          <div id="owStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span> 即將建立外送追蹤進度</div>
+        `;
+    }
+    const tipEl = document.getElementById('owTip');
+    if (tipEl) tipEl.innerText = '💡 請稍候片刻，系統正在即時處理中...';
+    const actionsEl = document.getElementById('owActions');
+    if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button id="owCancelBtn" onclick="closeOrderWaitingOverlay()" style="background:transparent; border:none; color:#64748B; font-size:13px; cursor:pointer; padding:6px;">取消返回</button>
+        `;
+    }
     el.style.display = 'flex';
 }
 
@@ -12730,7 +13019,7 @@ function hideOrderWaitingOverlay() {
 
 function closeOrderWaitingOverlay() {
     hideOrderWaitingOverlay();
-    if (typeof liff !== 'undefined' && liff.closeWindow) {
+    if (window._orderSent && typeof liff !== 'undefined' && liff.closeWindow) {
         try { liff.closeWindow(); } catch(e) {}
     }
 }
@@ -12807,6 +13096,10 @@ async function handleFoodOrderSubmit(msgText) {
 }
 
 function onFastFoodCartSuccess(joinUrl, storeName, itemsCount, cookieSerial, progressUrl) {
+    if (cookieSerial) {
+        window.lastFastGroupOrderSerial = cookieSerial;
+        console.log('[點餐團購] 背景取得序號:', cookieSerial);
+    }
     const titleEl = document.getElementById('owTitle');
     if (titleEl) {
         titleEl.innerText = '🎉 專屬 5折 購物車建立成功！';
@@ -12823,7 +13116,7 @@ function onFastFoodCartSuccess(joinUrl, storeName, itemsCount, cookieSerial, pro
           <div style="text-align:center; padding:6px 0;">
             <div style="font-weight:bold; color:#059669; font-size:16px; margin-bottom:4px;">餐點已全部預載至購物車！</div>
             <div style="color:#64748B; font-size:12px; margin-bottom:8px;">${cntText} 已套用 5折半價優惠，外送地址請忽略</div>
-            ${cookieSerial ? `<div style="display:inline-block; background:#ECFDF5; border:1px solid #A7F3D0; color:#065F46; padding:3px 12px; border-radius:20px; font-size:12px; font-weight:bold; font-family:monospace;">提取序號: ${cookieSerial}</div>` : ''}
+            
           </div>
         `;
     }
