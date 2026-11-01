@@ -6921,8 +6921,8 @@ async function _sendOrderToLine(forceSubmit = false) {
               isASAPCheckout = true; // 3小時內的預約單視同即時單標準
           }
       }
-      // 🌟 連續點擊圖片輸入密碼 5318 解鎖之使用者，不限制金額滿 199
-      let minOrderLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 199;
+      // 🌟 連續點擊圖片輸入密碼 5318 解鎖之使用者，不限制金額（0元），一般使用者滿 99
+      let minOrderLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 99;
 
       if (minOrderLimit > 0 && foodTotal < minOrderLimit) {
 
@@ -7394,15 +7394,84 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
 
   const currentUserId = (typeof getLiffUserId === 'function') ? (await getLiffUserId()) : '';
   let submittedOrderId = '';
+
+  // 整理結構化商品清單 (包含 MenuItemUUID, SectionUUID, 客製化選項, 數量, 備註等)
+  const structuredItems = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => ({
+      uuid: it.menuItemUuid || it.uuid,
+      menuItemUuid: it.menuItemUuid || it.uuid,
+      sectionUuid: it.sectionUuid || '',
+      subsectionUuid: it.subsectionUuid || '',
+      price: it.price || 0,
+      title: it.title || it.name || '',
+      quantity: it.qty || it.quantity || 1,
+      qty: it.qty || it.quantity || 1,
+      rawCustomizations: it.rawCustomizations || it.customizations || {},
+      customizations: it.rawCustomizations || it.customizations || {},
+      note: it.note || '',
+      specialInstructions: it.note || '',
+      storeUuid: it.storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : '') || '',
+      storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || '',
+      imgUrl: it.imgUrl || ''
+  })) : [];
+
+  let mainStoreUuid = (typeof currentStoreUuid !== 'undefined' && currentStoreUuid) ? currentStoreUuid : '';
+  if (!mainStoreUuid && structuredItems.length > 0 && structuredItems[0].storeUuid) {
+      mainStoreUuid = structuredItems[0].storeUuid;
+  }
+  if (!mainStoreUuid && window.currentStoreRawData && window.currentStoreRawData.storeUuid) {
+      mainStoreUuid = window.currentStoreRawData.storeUuid;
+  }
+
+  // 多單拆單支援 (Split Bins)
+  let splitBins = null;
+  if (forceSubmit === 'split' && costRes && costRes.bins) {
+      splitBins = costRes.bins.map((bin, bIdx) => ({
+          binIndex: bIdx + 1,
+          sum: bin.sum,
+          items: (bin.items || []).map(it => ({
+              uuid: it.menuItemUuid || it.uuid,
+              menuItemUuid: it.menuItemUuid || it.uuid,
+              sectionUuid: it.sectionUuid || '',
+              subsectionUuid: it.subsectionUuid || '',
+              price: it.price || 0,
+              title: it.title || it.name || '',
+              quantity: it.qty || it.quantity || 1,
+              qty: it.qty || it.quantity || 1,
+              rawCustomizations: it.rawCustomizations || it.customizations || {},
+              note: it.note || '',
+              storeUuid: it.storeUuid || mainStoreUuid,
+              storeName: it.storeName || ''
+          }))
+      }));
+  }
+
   try {
       const res = await fetch(API_BASE_URL + '/api/store_v3', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ action: 'submit_order', order_text: msgText, user_id: currentUserId })
+          body: JSON.stringify({
+              action: 'submit_order',
+              order_text: msgText,
+              user_id: currentUserId,
+              coupon_type: 'A',
+              store_uuid: mainStoreUuid,
+              items: structuredItems,
+              bins: splitBins,
+              delivery_info: {
+                  address: addr,
+                  lat: (typeof currentLat !== 'undefined') ? currentLat : null,
+                  lng: (typeof currentLng !== 'undefined') ? currentLng : null,
+                  phone: phoneVal,
+                  deliveryMethod: selectedMethodVal,
+                  notes: finalNote,
+                  timeText: timeText
+              }
+          })
       });
       if (res.ok) {
           const d = await res.json();
           if (d && d.order_id) submittedOrderId = d.order_id;
+          if (d && d.join_url) window.lastFastGroupOrderUrl = d.join_url;
       }
   } catch(e) {
       console.error("Upload order failed", e);
@@ -7415,7 +7484,8 @@ let grandTotal = total - promoDiscount + serviceFee + totalExcessDeliveryFee - p
     }
     clearCart();
     window._orderSent = true;
-    const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 20px;">無法自動為您送出訂單</div><button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息</button>`;
+    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載購物車</button>` : '';
+    const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息</button>`;
 
     showModal('偵測到非手機登入', '', true, copyBtnHtml, true);
     return;
@@ -7454,7 +7524,18 @@ async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUui
 
   const desc = decodeURIComponent(descEnc);
 
-    currentItem = { title, desc, basePrice, imgUrl, selectedOptions: [], menuItemUuid: menuItemUuid };
+    currentItem = {
+      title,
+      desc,
+      basePrice,
+      imgUrl,
+      selectedOptions: [],
+      menuItemUuid: menuItemUuid,
+      storeUuid: storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
+      sectionUuid: sectionUuid || '',
+      subsectionUuid: subsectionUuid || '',
+      rawCustomizations: {}
+    };
 
     currentQty = 1;
 
@@ -7608,7 +7689,7 @@ function renderGroups(groups, pathPrefix) {
 
         html += `
 
-        <div id="${gPath}" class="modal-section cust-group" data-min="${group.minPermitted || 0}" data-max="${group.maxPermitted || 0}" data-title="${escapeHTML(gTitle)}" style="background:#f9f9f9; padding:12px; border-radius:8px; border:1px solid #eee; margin-bottom:10px; transition: border 0.3s;">
+        <div id="${gPath}" class="modal-section cust-group" data-min="${group.minPermitted || 0}" data-max="${group.maxPermitted || 0}" data-title="${escapeHTML(gTitle)}" data-group-uuid="${group.uuid || ''}" style="background:#f9f9f9; padding:12px; border-radius:8px; border:1px solid #eee; margin-bottom:10px; transition: border 0.3s;">
 
             <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;">
 
@@ -7637,7 +7718,7 @@ function renderGroups(groups, pathPrefix) {
 
             if (isRadio) {
 
-                inputHtml = `<input type="radio" class="cust-input cust-radio" name="${gPath}" data-path="${oPath}" data-title="${escapeHTML(oTitle)}" data-price="${(opt.price || 0) / 100}" onchange="recalcCustomizations()" style="width:18px;height:18px;" ${isSoldOut ? 'disabled' : ''}>`;
+                inputHtml = `<input type="radio" class="cust-input cust-radio" name="${gPath}" data-path="${oPath}" data-group-uuid="${group.uuid || ''}" data-opt-uuid="${opt.uuid || ''}" data-title="${escapeHTML(oTitle)}" data-price="${(opt.price || 0) / 100}" onchange="recalcCustomizations()" style="width:18px;height:18px;" ${isSoldOut ? 'disabled' : ''}>`;
 
             } else {
 
@@ -7649,7 +7730,7 @@ function renderGroups(groups, pathPrefix) {
 
                     <button type="button" onclick="${isSoldOut ? '' : `changeCustQty(event, '${oPath}', -1, ${optMax})`}" style="width:28px;height:28px;border-radius:14px;border:1px solid #ccc;background:#fff;font-weight:bold;cursor:${isSoldOut ? 'not-allowed' : 'pointer'};color:#111;display:flex;align-items:center;justify-content:center;" ${isSoldOut ? 'disabled' : ''}>-</button>
 
-                    <span id="qty_${oPath}" class="cust-qty cust-input" data-path="${oPath}" data-qty="0" data-title="${escapeHTML(oTitle)}" data-price="${(opt.price || 0) / 100}" style="font-size:15px;font-weight:bold;min-width:16px;text-align:center;">0</span>
+                    <span id="qty_${oPath}" class="cust-qty cust-input" data-path="${oPath}" data-group-uuid="${group.uuid || ''}" data-opt-uuid="${opt.uuid || ''}" data-qty="0" data-title="${escapeHTML(oTitle)}" data-price="${(opt.price || 0) / 100}" style="font-size:15px;font-weight:bold;min-width:16px;text-align:center;">0</span>
 
                     <button type="button" onclick="${isSoldOut ? '' : `changeCustQty(event, '${oPath}', 1, ${optMax})`}" style="width:28px;height:28px;border-radius:14px;border:1px solid #ccc;background:#fff;font-weight:bold;cursor:${isSoldOut ? 'not-allowed' : 'pointer'};color:#111;display:flex;align-items:center;justify-content:center;" ${isSoldOut ? 'disabled' : ''}>+</button>
 
@@ -7793,6 +7874,7 @@ function recalcCustomizations() {
     let extraPrice = 0;
 
     currentItem.selectedOptions = [];
+    currentItem.rawCustomizations = {};
 
     
 
@@ -7852,6 +7934,17 @@ function recalcCustomizations() {
                     oTitle = oTitle.replace(/^\(\+\)\s*/, '').trim();
                     
                     extraPrice += (price * qty);
+                    const optGroupUuid = groupDiv.getAttribute('data-group-uuid') || '';
+                    const optOptionUuid = radio ? radio.getAttribute('data-opt-uuid') : (qtySpan ? qtySpan.getAttribute('data-opt-uuid') : '');
+                    if (optGroupUuid && optOptionUuid) {
+                        const gKey = optGroupUuid + '+0';
+                        if (!currentItem.rawCustomizations[gKey]) currentItem.rawCustomizations[gKey] = [];
+                        currentItem.rawCustomizations[gKey].push({
+                            uuid: optOptionUuid,
+                            price: Math.round(price * 100),
+                            quantity: qty
+                        });
+                    }
                     const priceTag = price > 0 ? ` (+$${price})` : '';
                     const optText = (qty > 1) ? `${oTitle}${priceTag} x${qty}` : `${oTitle}${priceTag}`;
                     
@@ -8099,6 +8192,11 @@ const note = document.getElementById('modalNote').value.trim();
       storeUrl: typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '',
 
       menuItemUuid: currentItem.menuItemUuid,
+      storeUuid: currentItem.storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
+      sectionUuid: currentItem.sectionUuid || '',
+      subsectionUuid: currentItem.subsectionUuid || '',
+      rawCustomizations: currentItem.rawCustomizations || {},
+      imgUrl: currentItem.imgUrl || '',
 
         title: currentItem.title,
 
@@ -10072,7 +10170,7 @@ function normalizeAddress(addr) {
             isASAP = true; // 3小時內的預約單視同即時單標準
         }
     }
-    let binLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 199;
+    let binLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 99;
     
     let validSplit = true;
 
@@ -12602,7 +12700,7 @@ let orderPollAttempts = 0;
 function showOrderWaitingOverlay(storeName) {
     const el = document.getElementById('orderWaitingOverlay');
     if (!el) return;
-    document.getElementById('owTitle').innerText = '正在傳送訂單...';
+    document.getElementById('owTitle').innerText = '🚀 正在建立專屬 5折 購物車...';
     document.getElementById('owTitle').style.color = '#1E293B';
     document.getElementById('owStore').innerText = '🏪 ' + (storeName || '線上餐點門市');
     document.getElementById('owEmoji').innerText = '🍽️';
@@ -12610,9 +12708,9 @@ function showOrderWaitingOverlay(storeName) {
     document.getElementById('owSpinner').style.borderTopColor = '#f43f5e';
     document.getElementById('owContent').style.display = 'block';
     document.getElementById('owContent').innerHTML = `
-      <div id="owStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span><span>訂單明細已送達聊天室</span></div>
-      <div id="owStep2" style="display:flex; align-items:center; gap:6px; color:#f43f5e; font-weight:bold; margin-top:4px;"><span>⏳</span><span>系統正在建立即時訂單進度...</span></div>
-      <div id="owStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span><span>完成後將自動開啟「查看訂單進度」</span></div>
+      <div id="owStep1" style="display:flex; align-items:center; gap:6px; color:#16A34A; font-weight:bold;"><span>✅</span><span>訂單餐點資料已接收</span></div>
+      <div id="owStep2" style="display:flex; align-items:center; gap:6px; color:#f43f5e; font-weight:bold; margin-top:4px;"><span>⏳</span><span>正在配對 5折 帳號並將餐點注入購物車...</span></div>
+      <div id="owStep3" style="display:flex; align-items:center; gap:6px; color:#94A3B8; margin-top:4px;"><span>🔜</span><span>完成後將自動為您開啟官方購物車</span></div>
     `;
     document.getElementById('owTip').innerText = '💡 取得訂單進度後將自動為您開啟頁面';
     document.getElementById('owActions').innerHTML = `
@@ -12677,11 +12775,18 @@ async function handleFoodOrderSubmit(msgText) {
             const res = await fetch(checkUrl);
             if (res.ok) {
                 const data = await res.json();
-                if (data.status === 'success' && data.progress_url) {
-                    clearInterval(orderPollTimer);
-                    orderPollTimer = null;
-                    onOrderProgressSuccess(data.progress_url, data.store_name || storeName);
-                    return;
+                if (data.status === 'success') {
+                    if (data.join_url) {
+                        clearInterval(orderPollTimer);
+                        orderPollTimer = null;
+                        onFastFoodCartSuccess(data.join_url, data.store_name || storeName, data.items_count, data.cookie_serial, data.progress_url);
+                        return;
+                    } else if (data.progress_url) {
+                        clearInterval(orderPollTimer);
+                        orderPollTimer = null;
+                        onOrderProgressSuccess(data.progress_url, data.store_name || storeName);
+                        return;
+                    }
                 } else if (data.status === 'error' || data.status === 'cancelled') {
                     clearInterval(orderPollTimer);
                     orderPollTimer = null;
@@ -12698,6 +12803,44 @@ async function handleFoodOrderSubmit(msgText) {
             orderPollTimer = null;
             onOrderProgressTimeout();
         }
+    }, 1200);
+}
+
+function onFastFoodCartSuccess(joinUrl, storeName, itemsCount, cookieSerial, progressUrl) {
+    const titleEl = document.getElementById('owTitle');
+    if (titleEl) {
+        titleEl.innerText = '🎉 專屬 5折 購物車建立成功！';
+        titleEl.style.color = '#059669';
+    }
+    const emojiEl = document.getElementById('owEmoji');
+    if (emojiEl) emojiEl.innerText = '🛒';
+    const spinnerEl = document.getElementById('owSpinner');
+    if (spinnerEl) spinnerEl.style.display = 'none';
+    const contentEl = document.getElementById('owContent');
+    if (contentEl) {
+        const cntText = itemsCount ? `（共預載 ${itemsCount} 項商品）` : '';
+        contentEl.innerHTML = `
+          <div style="text-align:center; padding:6px 0;">
+            <div style="font-weight:bold; color:#059669; font-size:16px; margin-bottom:4px;">餐點已全部預載至購物車！</div>
+            <div style="color:#64748B; font-size:12px; margin-bottom:8px;">${cntText} 已套用 5折半價優惠，外送地址請忽略</div>
+            ${cookieSerial ? `<div style="display:inline-block; background:#ECFDF5; border:1px solid #A7F3D0; color:#065F46; padding:3px 12px; border-radius:20px; font-size:12px; font-weight:bold; font-family:monospace;">提取序號: ${cookieSerial}</div>` : ''}
+          </div>
+        `;
+    }
+    const tipEl = document.getElementById('owTip');
+    if (tipEl) tipEl.innerText = '若未自動前往，請點擊下方按鈕：';
+    const actionsEl = document.getElementById('owActions');
+    if (actionsEl) {
+        actionsEl.innerHTML = `
+          <button onclick="window.location.href='${joinUrl}'" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 4px 12px rgba(5,150,105,0.3); margin-bottom:8px;">🛒 立即前往 Uber Eats 官方預裝購物車</button>
+          <div style="display:flex; gap:8px;">
+            <button onclick="copyToClipboardFallback('${joinUrl}', this)" style="flex:1; padding:10px; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; border-radius:10px; font-size:13px; font-weight:bold; cursor:pointer;">📋 複製邀請網址</button>
+            ${progressUrl ? `<button onclick="window.location.href='${progressUrl}'" style="flex:1; padding:10px; background:#F8FAFC; color:#64748B; border:1px solid #E2E8F0; border-radius:10px; font-size:13px; font-weight:bold; cursor:pointer;">🔍 查看進度</button>` : ''}
+          </div>
+        `;
+    }
+    setTimeout(() => {
+        window.location.href = joinUrl;
     }, 1200);
 }
 
