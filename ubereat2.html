@@ -3127,10 +3127,10 @@ function generateStoreListHTML(stores, q, currentVertical) {
             // 左上增加綠色字 免運費
             freeDeliveryBadge = `<div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); color:#00cc66; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">免運費</div>`;
             // 右上按照優惠專區格式 (顯示抵達時間)
-            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${escapeHTML(etdText)}</div>`;
+            etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${escapeHTML(etdText)}</div>`;
         } else {
             if (metaText && !isClosed && !isBad) {
-                etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
+                etaBadgeHtml = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-1px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${escapeHTML(metaText.replace('預計 ', ''))}</div>`;
             }
         }
 
@@ -3894,7 +3894,7 @@ async function searchStoresPickup(q) {
             if (!etdText) {
                 etdText = '免運專區';
             }
-            distBadge = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:22px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${etdText}</div>`;
+            distBadge = `<div style="position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.75); color:#fff; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${etdText}</div>`;
 
             const safeEtdText = (etdText || '').replace(/'/g, "\\'");
             return `
