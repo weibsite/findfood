@@ -1874,6 +1874,22 @@ function validateStoreSchedule() {
         window.currentStoreAvailableWindows = windows;
     }
 
+    const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+    // 嚴格規範：除全聯生鮮雜貨即時單特殊允許外，所有餐廳無論是即時單還是預約單，都「必須是能預約的餐廳」才允許下單！
+    if (rawData) {
+        const isSched = Boolean(
+            rawData.scheduledOrderInfo &&
+            rawData.scheduledOrderInfo.isSchedulable === true &&
+            rawData.timeWindowPicker &&
+            Array.isArray(rawData.timeWindowPicker.dates) &&
+            rawData.timeWindowPicker.dates.length > 0
+        );
+        const allowWithoutSched = isGr && scheduleMode === 'ASAP';
+        if (!allowWithoutSched && !isSched) {
+            return { valid: false, reason: 'NOT_SCHEDULABLE', text: '此餐廳不支援預約，無法代購' };
+        }
+    }
+
     if (scheduleMode === 'ASAP') {
         const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : !window.currentStoreClosed;
         if (window.currentStoreClosed || !isCurrentlyOpen) {
@@ -6284,6 +6300,10 @@ function openCheckoutSummary() {
 
     const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
     if (!schedCheck.valid) {
+        if (schedCheck.reason === 'NOT_SCHEDULABLE') {
+            showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+            return;
+        }
         window.currentStoreClosed = true;
         window.mustSelectScheduleBeforeCheckout = true;
         if (typeof showStoreScheduleModal === 'function') {
@@ -7094,6 +7114,11 @@ async function _sendOrderToLine(forceSubmit = false) {
       const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
       if (!schedCheck.valid) {
           hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+
+          if (schedCheck.reason === 'NOT_SCHEDULABLE') {
+              showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+              return;
+          }
 
           window.currentStoreClosed = true;
           window.mustSelectScheduleBeforeCheckout = true;
@@ -8868,6 +8893,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         showModal('無法代購', '此店家無法使用折價券，無法代購請見諒', true);
         return;
     } // Reset retries state on store entry
+
+    // 嚴格規範：不可預約之店家 (已知不支援預約) 即時與預約皆不允許進入與下單
+    const unSchedulableStoresQuick = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
+    if (uuid && unSchedulableStoresQuick.includes(uuid)) {
+        const tTypeQuick = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
+        showModal('無法為您代購', '', true, `<div style="text-align:center;">此${tTypeQuick}不支援預約訂單，無法為您代購。請選擇其他${tTypeQuick}。</div>`);
+        return;
+    }
     
     if (typeof originalAppHeaderHtml !== 'undefined' && originalAppHeaderHtml) {
         const appHeaderEl = document.querySelector('.app-header');
@@ -9171,40 +9204,36 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
 
 
-      const isSchedulable = (d.scheduledOrderInfo && d.scheduledOrderInfo.isSchedulable && d.timeWindowPicker && d.timeWindowPicker.dates);
+      const isSchedulable = Boolean(
+          d.scheduledOrderInfo &&
+          d.scheduledOrderInfo.isSchedulable === true &&
+          d.timeWindowPicker &&
+          Array.isArray(d.timeWindowPicker.dates) &&
+          d.timeWindowPicker.dates.length > 0
+      );
 
       // 生鮮雜貨與餐廳皆需通過可接單檢查
-
-      const isGrocery = window.isGroceryStore;
-
-
+      const isGrocery = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
 
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
       
-      // 店家必須支援預約排程 (能預約未來時段)；僅對全聯等生鮮雜貨 (isGrocery) 的即時單放寬限制
+      // 核心業務規定：除生鮮雜貨 (isGrocery) 的即時單特殊允許外，所有餐廳無論是即時單還是預約單，都「必須是能預約的餐廳」才允許代購與下單！
       let strictScheduleCheck = !isSchedulable;
       if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && isGrocery) {
           strictScheduleCheck = false;
       }
 
       if (isTooFar || strictScheduleCheck) {
-
           const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
-
           if (!unSchedulableStores.includes(storeUuid)) {
-
               unSchedulableStores.push(storeUuid);
-
               localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
-
           }
 
-          
+          const tType = isGrocery ? '商店' : '餐廳';
+          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}不支援預約訂單，無法為您代購。請選擇其他${tType}。`;
 
-          const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}不能使用折價券，無法為您代購。請選擇其他${tType}。`;
-
-          showModal('無法接單', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
+          showModal('無法為您代購', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
 
           
 
@@ -10834,7 +10863,7 @@ function buildSplitSuggestionHtml(result) {
   window.handleSleepIconClick = function(e) {
     if (e && e.stopPropagation) e.stopPropagation();
     const title = document.getElementById('errorModalTitle')?.innerText || '';
-    if (title !== '目前暫時無法接單' && !title.includes('無法接單')) {
+    if (title !== '目前暫時無法接單' && title !== '代訂睡覺中') {
         return;
     }
     window._sleepIconClickCount = (window._sleepIconClickCount || 0) + 1;
@@ -10894,7 +10923,7 @@ function buildSplitSuggestionHtml(result) {
 
   function closeErrorModal() {
     const title = document.getElementById('errorModalTitle')?.innerText || '';
-    if (title === '代訂睡覺中' || ((title === '目前暫時無法接單' || title.includes('無法接單')) && !isClosedStatusBypassed())) {
+    if ((title === '代訂睡覺中' || title === '目前暫時無法接單') && !isClosedStatusBypassed()) {
         return;
     }
     const cb = window.errorModalCloseCallback;
@@ -10907,7 +10936,7 @@ function buildSplitSuggestionHtml(result) {
   }
 
   function showModal(title, text, isError = true, htmlContent = '', hideBtn = false, onClose = null) {
-    if ((title === '目前暫時無法接單' || title.includes('無法接單')) && isClosedStatusBypassed()) {
+    if ((title === '目前暫時無法接單' || title === '代訂睡覺中') && isClosedStatusBypassed()) {
         return;
     }
     window.errorModalCloseCallback = (typeof onClose === 'function') ? onClose : null;
@@ -10916,7 +10945,7 @@ function buildSplitSuggestionHtml(result) {
         text = '';
     }
 
-    if (title === '代訂睡覺中' || title === '目前暫時無法接單' || title.includes('無法接單')) {
+    if (title === '代訂睡覺中' || title === '目前暫時無法接單') {
         document.getElementById('errorModalIcon').innerHTML = '<img class="sleep-icon-img" src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1)); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
@@ -10926,7 +10955,7 @@ function buildSplitSuggestionHtml(result) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">🔒</div>';
     } else if (title.includes('團購')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">👥</div>';
-    } else if (title.includes('時段') || title.includes('預約') || title.includes('尚未營業') || title.includes('無法預約')) {
+    } else if (title.includes('時段') || title.includes('預約') || title.includes('尚未營業') || title.includes('無法預約') || title.includes('代購')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">⏰</div>';
     } else if (title.includes('地址') || title.includes('送達')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">📍</div>';
@@ -12066,7 +12095,7 @@ async function loadServerStatusDot() {
                 // 已被使用者以密碼 5318 解鎖，若畫面上正好有無法接單彈窗則自動隱藏
                 const overlay = document.getElementById('errorModalOverlay');
                 const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
-                if (overlay && overlay.style.display !== 'none' && (modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+                if (overlay && overlay.style.display !== 'none' && (modalTitle === '目前暫時無法接單' || modalTitle === '代訂睡覺中')) {
                     overlay.style.display = 'none';
                 }
             }
@@ -12075,7 +12104,7 @@ async function loadServerStatusDot() {
         // 伺服器狀態正常 (非 closed 且非 offline)，若目前正開啟睡覺或無法接單彈窗，則自動關閉解除鎖定
         const overlay = document.getElementById('errorModalOverlay');
         const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
-        if (overlay && overlay.style.display !== 'none' && (modalTitle === '代訂睡覺中' || modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+        if (overlay && overlay.style.display !== 'none' && (modalTitle === '代訂睡覺中' || modalTitle === '目前暫時無法接單')) {
             overlay.style.display = 'none';
         }
 
