@@ -5253,6 +5253,16 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             menuItemUuid: menuItemUuid,
 
+            storeUuid: storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
+
+            sectionUuid: sectionUuid || '',
+
+            subsectionUuid: subsectionUuid || '',
+
+            imgUrl: imgUrl || '',
+
+            rawCustomizations: {},
+
             user_name: window.currentGroupBuyId ? getOrPromptGroupBuyUserName() : '',
 
             device_fp: getGroupBuyDeviceFp(),
@@ -7571,11 +7581,13 @@ costRes.bins.forEach((bin, bIdx) => {
   let submittedOrderId = '';
 
   // 整理結構化商品清單 (包含 MenuItemUUID, SectionUUID, 客製化選項, 數量, 備註等)
+  const fallbackSec = (typeof cart !== 'undefined' && Array.isArray(cart)) ? (cart.find(x => x.sectionUuid)?.sectionUuid || '') : '';
+  const fallbackSubsec = (typeof cart !== 'undefined' && Array.isArray(cart)) ? (cart.find(x => x.subsectionUuid)?.subsectionUuid || '') : '';
   const structuredItems = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => ({
       uuid: it.menuItemUuid || it.uuid,
       menuItemUuid: it.menuItemUuid || it.uuid,
-      sectionUuid: it.sectionUuid || '',
-      subsectionUuid: it.subsectionUuid || '',
+      sectionUuid: it.sectionUuid || fallbackSec || '',
+      subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
       price: it.price || 0,
       title: it.title || it.name || '',
       quantity: it.qty || it.quantity || 1,
@@ -7606,8 +7618,8 @@ costRes.bins.forEach((bin, bIdx) => {
           items: (bin.items || []).map(it => ({
               uuid: it.menuItemUuid || it.uuid,
               menuItemUuid: it.menuItemUuid || it.uuid,
-              sectionUuid: it.sectionUuid || '',
-              subsectionUuid: it.subsectionUuid || '',
+              sectionUuid: it.sectionUuid || fallbackSec || '',
+              subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
               price: it.price || 0,
               title: it.title || it.name || '',
               quantity: it.qty || it.quantity || 1,
