@@ -6231,12 +6231,12 @@ window.submitSelectedPlan = async function() {
 
     if (window.isGroceryStore) {
         const is150 = sName.includes('優市');
-        const typeTitle = is150 ? '優市' : '雜貨';
+        const typeTitle = is150 ? '優市' : '生鮮雜貨';
         if (window._groceryDisabled) {
             hideOrderWaitingOverlay();
             hideGroceryWaitingOverlay();
             if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
-            showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
+            showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
             return;
         }
         if (typeof checkGroceryStatus === 'function') {
@@ -6245,8 +6245,7 @@ window.submitSelectedPlan = async function() {
                 hideOrderWaitingOverlay();
                 hideGroceryWaitingOverlay();
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
-                if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(sName);
-                showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
+                if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(sName, true);
                 return;
             }
         }
@@ -6635,15 +6634,19 @@ function toggleSummaryItem(idx) {
 
 
 function openGroceryCheckoutSummary() {
+  const is150 = (currentStoreName && currentStoreName.includes('優市'));
+  const typeTitle = is150 ? '優市' : '生鮮雜貨';
+  if (window._groceryDisabled) {
+      showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
+      return;
+  }
+
   const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
   if (!schedCheck.valid) {
       window.currentStoreClosed = true;
       window.mustSelectScheduleBeforeCheckout = true;
-      if (typeof showStoreScheduleModal === 'function') {
-          showStoreScheduleModal({ invalidScheduleText: (scheduleMode === 'SCHEDULE' ? schedCheck.text : ''), isCheckout: true });
-      } else if (typeof showScheduleSelectModalForClosedStore === 'function') {
-          showScheduleSelectModalForClosedStore();
-      }
+      const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
+      showModal('目前暫停營業', `此${tType}目前尚未營業（暫停營業），無法以「盡快送達」接單，請稍候再試。`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
       return;
   }
 
@@ -6688,8 +6691,6 @@ function openGroceryCheckoutSummary() {
       }
     }
   }
-
-  const is150 = (currentStoreName && currentStoreName.includes('優市'));
 
   const minSpend = is150 ? 399 : 449;
   const promoDiscount = is150 ? 150 : 180;
@@ -7785,6 +7786,9 @@ costRes.bins.forEach((bin, bIdx) => {
       if (gwStep1) gwStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
       const gwStep2 = document.getElementById('gwStep2');
       if (gwStep2) gwStep2.innerHTML = '<span>⏳</span> 正在連線伺服器建立訂單...';
+      const isGrocerySub = Boolean(window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') || (currentStoreName && (currentStoreName.includes('優市') || currentStoreName.includes('全聯') || currentStoreName.includes('家樂福') || currentStoreName.includes('大潤發') || currentStoreName.includes('愛買') || currentStoreName.includes('美廉社'))));
+      const is150Sub = (currentStoreName && currentStoreName.includes('優市'));
+      const cTypeSub = isGrocerySub ? (is150Sub ? '150' : '225') : 'A';
       const res = await fetch(API_BASE_URL + '/api/store_v3', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -7792,7 +7796,8 @@ costRes.bins.forEach((bin, bIdx) => {
               action: 'submit_order',
               order_text: msgText,
               user_id: currentUserId,
-              coupon_type: 'A',
+              coupon_type: cTypeSub,
+              is_grocery: isGrocerySub,
               store_uuid: mainStoreUuid,
               items: structuredItems,
               bins: splitBins,
@@ -9044,7 +9049,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           return;
       }
 
-      window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP');
+      const isGroceryName = checkStoreName && (checkStoreName.includes('優市') || checkStoreName.includes('全聯') || checkStoreName.includes('家樂福') || checkStoreName.includes('大潤發') || checkStoreName.includes('愛買') || checkStoreName.includes('美廉社'));
+      window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP') || Boolean(isGroceryName);
       window._groceryDisabled = false;
       const is150StoreName = currentStoreName && currentStoreName.includes('優市');
       if (window.isGroceryStore) {
@@ -9054,6 +9060,17 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
               }
           } else if (!currentStoreName.includes('不需外送費、服務費') && !currentStoreName.includes('不需外送費、需要服務費')) {
               currentStoreName += ' (不需外送費、需要服務費)';
+          }
+
+          if (typeof checkGroceryStatus === 'function') {
+              checkGroceryStatus(currentStoreName).then(isDisabled => {
+                  if (isDisabled) {
+                      window._groceryDisabled = true;
+                      if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(currentStoreName, false);
+                      const typeTitle = is150StoreName ? '優市' : '生鮮雜貨';
+                      showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
+                  }
+              });
           }
       }
 
@@ -12821,18 +12838,18 @@ async function checkGroceryStatus(storeName) {
     return false;
 }
 
-function applyGroceryDisabledUI(storeName) {
+function applyGroceryDisabledUI(storeName, popModal = false) {
     window._groceryDisabled = true;
     const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
     const is150 = (sName && sName.includes('優市'));
-    const typeTitle = is150 ? '優市' : '雜貨';
+    const typeTitle = is150 ? '優市' : '生鮮雜貨';
     const couponTitle = is150 ? '優市 150' : '生鮮雜貨 225';
     const noticeEl = document.getElementById('groceryCheckoutNotice');
     if (noticeEl) {
         noticeEl.innerHTML = `
           <div style="background:#FEE2E2; border:1px solid #EF4444; color:#B91C1C; padding:14px; border-radius:10px; font-weight:bold; font-size:15px; text-align:center; box-shadow:0 2px 6px rgba(239,68,68,0.15);">
             ⚠️ 目前已售完 請等待補貨<br>
-            <span style="font-size:13px; font-weight:normal; color:#7F1D1D; margin-top:4px; display:inline-block;">目前已售完 請等待補貨</span>
+            <span style="font-size:13px; font-weight:normal; color:#7F1D1D; margin-top:4px; display:inline-block;">目前${typeTitle}暫停營業，請等待補貨</span>
           </div>
         `;
     }
@@ -12842,8 +12859,11 @@ function applyGroceryDisabledUI(storeName) {
         submitBtn.style.background = '#94A3B8';
         submitBtn.style.cursor = 'not-allowed';
         submitBtn.onclick = function() {
-            showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
+            showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
         };
+    }
+    if (popModal && typeof showModal === 'function') {
+        showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
     }
 }
 
@@ -12864,11 +12884,11 @@ function restoreGroceryEnabledUI() {
     }
 }
 
-async function checkAndApplyGroceryDisabledUI(storeName) {
+async function checkAndApplyGroceryDisabledUI(storeName, popModal = true) {
     const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
     const isDisabled = await checkGroceryStatus(sName);
     if (isDisabled) {
-        applyGroceryDisabledUI(sName);
+        applyGroceryDisabledUI(sName, popModal);
     } else {
         restoreGroceryEnabledUI();
     }
