@@ -7803,24 +7803,55 @@ costRes.bins.forEach((bin, bIdx) => {
   }
   const splitBinsData = (costRes && costRes.bins) ? costRes.bins : (window._splitBinsA || null);
   if (forceSubmit === 'split' && splitBinsData) {
-      splitBins = splitBinsData.map((bin, bIdx) => ({
-          binIndex: bIdx + 1,
-          sum: bin.sum,
-          items: (bin.items || []).map(it => ({
-              uuid: it.menuItemUuid || it.uuid,
-              menuItemUuid: it.menuItemUuid || it.uuid,
-              sectionUuid: it.sectionUuid || fallbackSec || '',
-              subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
-              price: it.price || 0,
-              title: it.title || it.name || '',
-              quantity: it.qty || it.quantity || 1,
-              qty: it.qty || it.quantity || 1,
-              rawCustomizations: it.rawCustomizations || it.customizations || {},
-              note: it.note || '',
-              storeUuid: it.storeUuid || mainStoreUuid,
-              storeName: it.storeName || ''
-          }))
-      }));
+      splitBins = splitBinsData.map((bin, bIdx) => {
+          const mergedMap = {};
+          (bin.items || []).forEach(it => {
+              const u = it.menuItemUuid || it.uuid || '';
+              const cust = it.rawCustomizations || it.customizations || {};
+              let custKey = '';
+              try {
+                  const sortedKeys = Object.keys(cust).sort();
+                  const sortedObj = {};
+                  for (const k of sortedKeys) sortedObj[k] = cust[k];
+                  custKey = JSON.stringify(sortedObj);
+              } catch(e) {
+                  custKey = '';
+              }
+              const note = (it.note || '').trim();
+              const price = it.price || 0;
+              const key = `${u}__${price}__${custKey}__${note}`;
+              const itQty = parseInt(it.qty || it.quantity || 1, 10) || 1;
+
+              if (!mergedMap[key]) {
+                  mergedMap[key] = {
+                      uuid: u,
+                      menuItemUuid: u,
+                      sectionUuid: it.sectionUuid || fallbackSec || '',
+                      subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
+                      price: price,
+                      title: it.title || it.name || '',
+                      quantity: itQty,
+                      qty: itQty,
+                      rawCustomizations: cust,
+                      customizations: cust,
+                      note: note,
+                      specialInstructions: note,
+                      storeUuid: it.storeUuid || mainStoreUuid,
+                      storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || '',
+                      imgUrl: it.imgUrl || ''
+                  };
+              } else {
+                  mergedMap[key].quantity += itQty;
+                  mergedMap[key].qty += itQty;
+              }
+          });
+
+          return {
+              binIndex: bIdx + 1,
+              sum: bin.sum,
+              items: Object.values(mergedMap)
+          };
+      });
   }
 
   // 🚀 無論何種環境，一律優先送出訂單資料到後端存檔並啟動 5折 團購注入！
