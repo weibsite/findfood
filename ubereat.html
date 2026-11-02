@@ -6987,6 +6987,14 @@ function copyAndRetrySendOrder(btn, orderText) {
     }
 }
 
+function formatOrderStatusUrl(url) {
+    if (!url) return '';
+    // 去除 group- 與 /join
+    // 例: https://www.ubereats.com/tw/group-orders/29dc81b5-cf1c-433f-8c59-69daa1af8866/join
+    // 轉為: https://www.ubereats.com/tw/orders/29dc81b5-cf1c-433f-8c59-69daa1af8866
+    return url.replace(/\/group-orders\//g, '/orders/').replace(/\/join(?:\/|\?.*)?$/g, '');
+}
+
 function showPermissionFailModal(msgText, originalErrorMsg = '') {
     if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
         markGroupBuySubmitted(msgText);
@@ -6998,12 +7006,18 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
     if (window.lastSubOrders && window.lastSubOrders.length > 0) {
         window.lastSubOrders.forEach((sub, sIdx) => {
             const bNum = sub.binIndex || (sIdx + 1);
-            if (sub.join_url) {
-                fastCartBtnHtml += `<button onclick="window.open('${sub.join_url}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🛒 立即開啟【多單 ${bNum}】預載 5折 購物車</button>`;
+            const rawUrl = sub.join_url || (sub.order_uuid ? `https://www.ubereats.com/tw/orders/${sub.order_uuid}` : '');
+            const statusUrl = formatOrderStatusUrl(rawUrl);
+            if (statusUrl) {
+                const btnLabel = (bNum === 1) ? '立即查詢訂單狀態1' : `查詢訂單狀態${bNum}`;
+                fastCartBtnHtml += `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🔍 ${btnLabel}</button>`;
             }
         });
     } else if (window.lastFastGroupOrderUrl) {
-        fastCartBtnHtml = `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>`;
+        const statusUrl = formatOrderStatusUrl(window.lastFastGroupOrderUrl);
+        if (statusUrl) {
+            fastCartBtnHtml = `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🔍 立即查詢訂單狀態</button>`;
+        }
     }
 
     const tipHtml = `
@@ -7012,7 +7026,7 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
         <div>因系統需要您同意<b>「傳送訊息至聊天室」</b>的權限，才能自動為您發送訂單。</div>
         <div style="margin-top:10px; font-size:13px; color:#64748b; border-top:1px dashed #cbd5e1; padding-top:8px;">
           💡 <b>貼心提醒：</b><br>
-          您可直接開啟上方<b>「預載 5折 購物車」</b>，或點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
+          您可直接點擊上方<b>「查詢訂單狀態」</b>，或點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
           下次下單請保留權限（請勿手動關閉），即可享受全自動送單的便利！
         </div>
       </div>
@@ -7870,12 +7884,18 @@ costRes.bins.forEach((bin, bIdx) => {
     if (window.lastSubOrders && window.lastSubOrders.length > 0) {
         window.lastSubOrders.forEach((sub, sIdx) => {
             const bNum = sub.binIndex || (sIdx + 1);
-            if (sub.join_url) {
-                fastCartBtnHtml += `<button onclick="window.open('${sub.join_url}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🛒 立即開啟【多單 ${bNum}】預載 5折 購物車</button>`;
+            const rawUrl = sub.join_url || (sub.order_uuid ? `https://www.ubereats.com/tw/orders/${sub.order_uuid}` : '');
+            const statusUrl = formatOrderStatusUrl(rawUrl);
+            if (statusUrl) {
+                const btnLabel = (bNum === 1) ? '立即查詢訂單狀態1' : `查詢訂單狀態${bNum}`;
+                fastCartBtnHtml += `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🔍 ${btnLabel}</button>`;
             }
         });
     } else if (window.lastFastGroupOrderUrl) {
-        fastCartBtnHtml = `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>`;
+        const statusUrl = formatOrderStatusUrl(window.lastFastGroupOrderUrl);
+        if (statusUrl) {
+            fastCartBtnHtml = `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🔍 立即查詢訂單狀態</button>`;
+        }
     }
     const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息 (貼回聊天室)</button>`;
 
