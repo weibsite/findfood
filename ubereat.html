@@ -7070,6 +7070,13 @@ async function sendOrderToLine(forceSubmit = false) {
 }
 
 async function _sendOrderToLine(forceSubmit = false) {
+      let costRes = (typeof calcOrderCost === 'function' && typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0)
+          ? calcOrderCost(cart)
+          : (window._lastCostRes || null);
+      if (costRes) {
+          window._lastCostRes = costRes;
+      }
+
       const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
       if (!schedCheck.valid) {
           hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
@@ -7298,13 +7305,16 @@ async function _sendOrderToLine(forceSubmit = false) {
 
 
 
-      const costRes = calcOrderCost(cart);
+      if (typeof calcOrderCost === 'function' && typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0) {
+        costRes = calcOrderCost(cart);
+        window._lastCostRes = costRes;
+      }
 
 
 
       if (!forceSubmit || forceSubmit === 'overrideMethod') {
 
-        if (costRes.shouldSplit && costRes.savings > 0) {
+        if (costRes && costRes.shouldSplit && costRes.savings > 0) {
           hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
 
 
@@ -7400,7 +7410,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
 
 
-      if (forceSubmit === 'split' && costRes.bins) {
+      if (forceSubmit === 'split' && costRes && costRes.bins) {
 
       msgText = `🛵 UberEats 揪團訂單${priceKeyText} \n$150內半價\n`;
 
@@ -7748,8 +7758,13 @@ costRes.bins.forEach((bin, bIdx) => {
 
   // 多單拆單支援 (Split Bins)
   let splitBins = null;
-  if (forceSubmit === 'split' && costRes && costRes.bins) {
-      splitBins = costRes.bins.map((bin, bIdx) => ({
+  if (!costRes && typeof calcOrderCost === 'function' && typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0) {
+      costRes = calcOrderCost(cart);
+      window._lastCostRes = costRes;
+  }
+  const splitBinsData = (costRes && costRes.bins) ? costRes.bins : (window._splitBinsA || null);
+  if (forceSubmit === 'split' && splitBinsData) {
+      splitBins = splitBinsData.map((bin, bIdx) => ({
           binIndex: bIdx + 1,
           sum: bin.sum,
           items: (bin.items || []).map(it => ({
