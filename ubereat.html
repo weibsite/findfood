@@ -13030,17 +13030,17 @@ async function handleFoodOrderSubmit(msgText) {
             if (res.ok) {
                 const data = await res.json();
                 if (data.status === 'success') {
-                    if (data.join_url) {
-                        clearInterval(orderPollTimer);
-                        orderPollTimer = null;
-                        onFastFoodCartSuccess(data.join_url, data.store_name || storeName, data.items_count, data.cookie_serial, data.progress_url);
-                        return;
-                    } else if (data.progress_url) {
-                        clearInterval(orderPollTimer);
-                        orderPollTimer = null;
-                        onOrderProgressSuccess(data.progress_url, data.store_name || storeName);
-                        return;
+                    if (data.cookie_serial) window.lastFastGroupOrderSerial = data.cookie_serial;
+                    if (data.join_url) window.lastFastGroupOrderUrl = data.join_url;
+                    clearInterval(orderPollTimer);
+                    orderPollTimer = null;
+                    const finalProgressUrl = data.progress_url || (submittedOrderId ? `https://liff.line.me/2011657436-QfTNNMU8?id=${submittedOrderId}` : (data.order_id ? `https://liff.line.me/2011657436-QfTNNMU8?id=${data.order_id}` : ''));
+                    if (finalProgressUrl) {
+                        onOrderProgressSuccess(finalProgressUrl, data.store_name || storeName);
+                    } else if (data.join_url) {
+                        onOrderProgressSuccess(data.join_url, data.store_name || storeName);
                     }
+                    return;
                 } else if (data.status === 'error' || data.status === 'cancelled') {
                     clearInterval(orderPollTimer);
                     orderPollTimer = null;
@@ -13098,7 +13098,7 @@ function onFastFoodCartSuccess(joinUrl, storeName, itemsCount, cookieSerial, pro
         `;
     }
     setTimeout(() => {
-        window.location.href = joinUrl;
+        window.location.href = progressUrl || joinUrl;
     }, 1200);
 }
 
