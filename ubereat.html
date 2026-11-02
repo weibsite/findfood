@@ -6993,7 +6993,17 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
     clearCart();
     window._orderSent = true;
     const safeOrderText = encodeURIComponent(msgText).replace(/'/g, "%27");
-    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+    let fastCartBtnHtml = '';
+    if (window.lastSubOrders && window.lastSubOrders.length > 0) {
+        window.lastSubOrders.forEach((sub, sIdx) => {
+            const bNum = sub.binIndex || (sIdx + 1);
+            if (sub.join_url) {
+                fastCartBtnHtml += `<button onclick="window.open('${sub.join_url}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🛒 立即開啟【多單 ${bNum}】預載 5折 購物車</button>`;
+            }
+        });
+    } else if (window.lastFastGroupOrderUrl) {
+        fastCartBtnHtml = `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>`;
+    }
 
     const tipHtml = `
       <div style="text-align:left; font-size:14px; color:#475569; line-height:1.6; margin-bottom:15px; background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
@@ -7809,6 +7819,11 @@ costRes.bins.forEach((bin, bIdx) => {
           const d = await res.json();
           if (d && d.order_id) submittedOrderId = d.order_id;
           if (d && d.join_url) window.lastFastGroupOrderUrl = d.join_url;
+          if (d && d.sub_orders && d.sub_orders.length > 0) {
+              window.lastSubOrders = d.sub_orders;
+          } else {
+              window.lastSubOrders = null;
+          }
           if (d && d.order_uuid) {
               window.lastGroupOrderUuid = d.order_uuid;
               console.log("✅ [點餐團購] 開團成功，UUID:", d.order_uuid, "網址:", d.join_url);
@@ -7831,7 +7846,17 @@ costRes.bins.forEach((bin, bIdx) => {
     }
     clearCart();
     window._orderSent = true;
-    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+    let fastCartBtnHtml = '';
+    if (window.lastSubOrders && window.lastSubOrders.length > 0) {
+        window.lastSubOrders.forEach((sub, sIdx) => {
+            const bNum = sub.binIndex || (sIdx + 1);
+            if (sub.join_url) {
+                fastCartBtnHtml += `<button onclick="window.open('${sub.join_url}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🛒 立即開啟【多單 ${bNum}】預載 5折 購物車</button>`;
+            }
+        });
+    } else if (window.lastFastGroupOrderUrl) {
+        fastCartBtnHtml = `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>`;
+    }
     const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息 (貼回聊天室)</button>`;
 
     hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
@@ -10442,8 +10467,11 @@ function normalizeAddress(addr) {
     for (let j = 0; j < it.qty; j++) {
 
       expanded.push({ 
-        name: it.title, 
+        ...it,
+        name: it.title || it.name, 
         price: it.price, 
+        qty: 1,
+        quantity: 1,
         storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '未命名餐廳'), 
         note: it.note || '', 
         storeDeliveryFee: it.storeDeliveryFee || 0, 
