@@ -979,6 +979,19 @@ let isAddressSet = false;
 
     addressHistory = JSON.parse(localStorage.getItem('finddog_history_address')) || [];
 
+    // ⭐ 兼容讀取 Cookie 或歷史快取中可能存在的舊版地址
+    if (!addressHistory || addressHistory.length === 0) {
+      try {
+        const cMatch = document.cookie.match(/(?:^|;\s*)(?:user_address|address|last_address|saved_address)=([^;]+)/);
+        if (cMatch) {
+          const cAddr = decodeURIComponent(cMatch[1]).trim();
+          if (cAddr) {
+            addressHistory = [{ title: cAddr, lat: null, lng: null, uberVerified: false }];
+          }
+        }
+      } catch (e) {}
+    }
+
     const addrDatalist = document.getElementById('addr-list');
 
     if (addrDatalist) {
@@ -999,7 +1012,11 @@ let isAddressSet = false;
 
         scrollAddrToEnd();
         revealSubSections();
-        setAddress(lastAddr.lat, lastAddr.lng, lastAddr.title);
+        if (lastAddr.lat && lastAddr.lng) {
+          setAddress(lastAddr.lat, lastAddr.lng, lastAddr.title);
+        }
+        // ⭐ 開啟網頁讀取地址時，自動向 UBER EAT 重新偵測與修正校準
+        autoRefreshAndVerifyAddressFromUber(lastAddr.title, lastAddr);
 
       } else {
 
@@ -1013,6 +1030,115 @@ let isAddressSet = false;
 
   }
 
+  // ⭐ [自動地址校準機制] 開啟網頁讀取地址時，或地址未完整認證時，自動向 Uber Eats 重新偵測與修正校準
+  async function autoRefreshAndVerifyAddressFromUber(rawTitle, fallbackItem) {
+    if (!rawTitle) return;
+    const cleanTitle = (rawTitle || '').replace(/^📍\s*/, '').trim();
+    if (!cleanTitle) return;
+
+    try {
+      const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+      const splitFn = window.splitAddressForUber || function(t) { return { searchQuery: t, extraSuffix: '' }; };
+      const { searchQuery, extraSuffix } = splitFn(cleanTitle);
+      const queryToSearch = searchQuery || cleanTitle;
+      if (!queryToSearch) return;
+
+      console.log('[自動地址校準] 正在向 Uber Eats 重新偵測地址:', queryToSearch);
+
+      // 1. 向 Uber Eats 搜尋候選地址 mapsSearchV1
+      const fallbackLat = (fallbackItem && fallbackItem.lat) ? fallbackItem.lat : (typeof currentLat !== 'undefined' && currentLat ? currentLat : 24.9665);
+      const fallbackLng = (fallbackItem && fallbackItem.lng) ? fallbackItem.lng : (typeof currentLng !== 'undefined' && currentLng ? currentLng : 121.2646);
+
+      const searchRes = await fetch(`${apiBase}/api/mapsSearchV1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: queryToSearch,
+          lat: fallbackLat,
+          lng: fallbackLng
+        })
+      });
+
+      if (!searchRes.ok) {
+        console.warn('[自動地址校準] mapsSearchV1 回應異常:', searchRes.status);
+        return;
+      }
+
+      const searchData = await searchRes.json();
+      const candidates = (searchData && searchData.candidates) ? searchData.candidates : [];
+      if (!candidates || candidates.length === 0) {
+        console.log('[自動地址校準] Uber 未找到匹配地址，維持現有設定');
+        return;
+      }
+
+      // 2. 取第一筆最相符之候選 (Uber 官方標準地址)
+      const bestCandidate = candidates[0];
+      const placeId = bestCandidate.id;
+      if (!placeId) return;
+
+      // 3. 取得座標
+      const reqInit = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          placeId: placeId,
+          provider: bestCandidate.provider || 'google_places',
+          lat: fallbackLat,
+          lng: fallbackLng
+        })
+      };
+
+      let locRes = await fetch(`${apiBase}/api/getDeliveryLocationV2`, reqInit);
+      if (locRes.status === 404) {
+        locRes = await fetch(`${apiBase}/api/getDeliveryLocationV1`, reqInit);
+      }
+
+      if (locRes.ok) {
+        const locData = await locRes.json();
+        if (locData.status === 'success' && locData.lat && locData.lng) {
+          const baseFullAddr = (locData.title || bestCandidate.fullAddress || bestCandidate.addressLine1 || '').trim();
+          let finalResolvedTitle = baseFullAddr;
+          if (extraSuffix && !finalResolvedTitle.endsWith(extraSuffix)) {
+            finalResolvedTitle = `${finalResolvedTitle}${extraSuffix}`;
+          }
+
+          console.log('✅ [自動地址校準] 成功自 Uber Eats 重新偵測取得精準座標與標準門牌:', finalResolvedTitle, locData.lat, locData.lng);
+
+          // 更新全域變數與後端 session
+          await setAddress(locData.lat, locData.lng, finalResolvedTitle);
+
+          // 更新輸入框文字
+          const addrInput = document.getElementById('addrInput');
+          if (addrInput) {
+            addrInput.value = finalResolvedTitle;
+            if (typeof scrollAddrToEnd === 'function') scrollAddrToEnd();
+          }
+
+          // 寫入 localStorage 儲存
+          let history = [];
+          try {
+            history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
+          } catch(e) { history = []; }
+          history = history.filter(item => item && item.title !== finalResolvedTitle && item.title !== cleanTitle);
+          history.unshift({
+            lat: locData.lat,
+            lng: locData.lng,
+            title: finalResolvedTitle,
+            savedAt: Date.now(),
+            uberVerified: true
+          });
+          if (history.length > 5) history = history.slice(0, 5);
+          localStorage.setItem('finddog_history_address', JSON.stringify(history));
+
+          if (typeof updateAddrTitleState === 'function') updateAddrTitleState('ok');
+          if (typeof fetchDeliveryTimes === 'function') fetchDeliveryTimes();
+        }
+      }
+    } catch (e) {
+      console.warn('[自動地址校準] 發生錯誤，保留目前地址:', e);
+    }
+  }
+  window.autoRefreshAndVerifyAddressFromUber = autoRefreshAndVerifyAddressFromUber;
 
 
   function saveSimpleHistory(field) {
@@ -7634,6 +7760,13 @@ costRes.bins.forEach((bin, bIdx) => {
 
   // 🚀 無論何種環境，一律優先送出訂單資料到後端存檔並啟動 5折 團購注入！
   try {
+      // 🛡️ 地址終極防禦：若送單時尚未取得 Uber Eats 座標，即時自動從 Uber 重新取得
+      if ((!currentLat || !currentLng) && addr) {
+          if (typeof autoRefreshAndVerifyAddressFromUber === 'function') {
+              await autoRefreshAndVerifyAddressFromUber(addr, { title: addr });
+          }
+      }
+
       const owStep1 = document.getElementById('owStep1');
       if (owStep1) owStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
       const owStep2 = document.getElementById('owStep2');
