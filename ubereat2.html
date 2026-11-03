@@ -2813,8 +2813,11 @@ window.addrDebounceTimer = null;
 
 
 
-  async function setAddress(lat, lng, title) {
-
+  async function setAddress(lat, lng, title, placeId) {
+    if (placeId) {
+      window.currentPlaceId = placeId;
+      try { localStorage.setItem('finddog_current_place_id', placeId); } catch(e){}
+    }
     const statusEl = document.getElementById('addrStatus');
 
     statusEl.innerText = ''; 
@@ -6535,9 +6538,9 @@ function openCheckoutSummary() {
       }
 
       const cardHeaderHtml = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
-          <div style="font-weight:bold; color:${planThemeColor}; font-size:15px;">結帳明細 ($${promoCap}內半價)</div>
-          <div>${switchBtnHtml}</div>
+        <div style="position:relative; text-align:center; margin-bottom:4px; min-height:24px; display:flex; align-items:center; justify-content:center;">
+          <div style="font-weight:bold; color:${planThemeColor}; font-size:15px; text-align:center;">結帳明細 ($${promoCap}內半價)</div>
+          <div style="position:absolute; right:0; top:50%; transform:translateY(-50%);">${switchBtnHtml}</div>
         </div>
       `;
 
@@ -7512,9 +7515,10 @@ async function _sendOrderToLine(forceSubmit = false) {
       if (forceSubmit === 'split' && costRes && costRes.bins) {
 
       const isPlan300Sub = (window.currentSelectedPlan === '300');
+        const planTag = isPlan300Sub ? '[300]' : '';
         const promoCapSub = isPlan300Sub ? 300 : 150;
         const maxPromoSub = isPlan300Sub ? 150 : 75;
-        msgText = `🛵 UberEats 揪團訂單${priceKeyText} 
+        msgText = `🛵 UberEats 揪團訂單${planTag}${priceKeyText} 
 $${promoCapSub}內半價
 `;
 
@@ -7663,7 +7667,9 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-      msgText = `🛵 UberEats 揪團訂單${priceKeyText}\n`;
+      const isPlan300SubSingle = (window.currentSelectedPlan === '300');
+      const planTagSingle = isPlan300SubSingle ? '[300]' : '';
+      msgText = `🛵 UberEats 揪團訂單${planTagSingle}${priceKeyText}\n`;
 
         if (addr) msgText += `📍 地址: ${addr}${coordsText}\n`;
 
@@ -7839,23 +7845,27 @@ costRes.bins.forEach((bin, bIdx) => {
   // 整理結構化商品清單 (包含 MenuItemUUID, SectionUUID, 客製化選項, 數量, 備註等)
   const fallbackSec = (typeof cart !== 'undefined' && Array.isArray(cart)) ? (cart.find(x => x.sectionUuid)?.sectionUuid || '') : '';
   const fallbackSubsec = (typeof cart !== 'undefined' && Array.isArray(cart)) ? (cart.find(x => x.subsectionUuid)?.subsectionUuid || '') : '';
-  const structuredItems = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => ({
-      uuid: it.menuItemUuid || it.uuid,
-      menuItemUuid: it.menuItemUuid || it.uuid,
-      sectionUuid: it.sectionUuid || fallbackSec || '',
-      subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
-      price: it.price || 0,
-      title: it.title || it.name || '',
-      quantity: it.qty || it.quantity || 1,
-      qty: it.qty || it.quantity || 1,
-      rawCustomizations: it.rawCustomizations || it.customizations || {},
-      customizations: it.rawCustomizations || it.customizations || {},
-      note: it.note || '',
-      specialInstructions: it.note || '',
-      storeUuid: it.storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : '') || '',
-      storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || '',
-      imgUrl: it.imgUrl || ''
-  })) : [];
+  const structuredItems = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => {
+      const baseNote = (it.note || '').trim();
+      const combinedNote = foodNotes ? (baseNote ? `${baseNote} | 備註: ${foodNotes}` : `備註: ${foodNotes}`) : baseNote;
+      return {
+          uuid: it.menuItemUuid || it.uuid,
+          menuItemUuid: it.menuItemUuid || it.uuid,
+          sectionUuid: it.sectionUuid || fallbackSec || '',
+          subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
+          price: it.price || 0,
+          title: it.title || it.name || '',
+          quantity: it.qty || it.quantity || 1,
+          qty: it.qty || it.quantity || 1,
+          rawCustomizations: it.rawCustomizations || it.customizations || {},
+          customizations: it.rawCustomizations || it.customizations || {},
+          note: combinedNote,
+          specialInstructions: combinedNote,
+          storeUuid: it.storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : '') || '',
+          storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || '',
+          imgUrl: it.imgUrl || ''
+      };
+  }) : [];
 
   let mainStoreUuid = (typeof currentStoreUuid !== 'undefined' && currentStoreUuid) ? currentStoreUuid : '';
   if (!mainStoreUuid && structuredItems.length > 0 && structuredItems[0].storeUuid) {
@@ -7887,7 +7897,8 @@ costRes.bins.forEach((bin, bIdx) => {
               } catch(e) {
                   custKey = '';
               }
-              const note = (it.note || '').trim();
+              const baseNote = (it.note || '').trim();
+              const note = foodNotes ? (baseNote ? `${baseNote} | 備註: ${foodNotes}` : `備註: ${foodNotes}`) : baseNote;
               const price = it.price || 0;
               const key = `${u}__${price}__${custKey}__${note}`;
               const itQty = parseInt(it.qty || it.quantity || 1, 10) || 1;
@@ -7956,16 +7967,21 @@ costRes.bins.forEach((bin, bIdx) => {
               plan_type: currentPlanType,
               is_grocery: isGrocerySub,
               store_uuid: mainStoreUuid,
+              food_notes: foodNotes,
               items: structuredItems,
               bins: splitBins,
               delivery_info: {
                   address: (typeof addr !== 'undefined' && addr) ? addr : '',
                   lat: (typeof currentLat !== 'undefined') ? currentLat : null,
                   lng: (typeof currentLng !== 'undefined') ? currentLng : null,
+                  place_id: (typeof window.currentPlaceId !== 'undefined' && window.currentPlaceId) ? window.currentPlaceId : (function(){ try { return localStorage.getItem('finddog_current_place_id') || ''; } catch(e){ return ''; } })(),
                   phone: (typeof phoneVal !== 'undefined' && phoneVal) ? phoneVal : '',
                   deliveryMethod: (typeof selectedMethodVal !== 'undefined' && selectedMethodVal) ? selectedMethodVal : '當面點交',
                   notes: (typeof finalNote !== 'undefined' && finalNote) ? finalNote : '',
                   timeText: (typeof timeText !== 'undefined' && timeText) ? timeText : '盡快送達',
+                  food_notes: foodNotes,
+                  plan_type: currentPlanType,
+                  coupon_type: cTypeSub,
                   schedule_data: (function() {
                       try {
                           const schedElem = document.getElementById('scheduleTime');
@@ -8512,7 +8528,12 @@ function recalcCustomizations() {
                         currentItem.rawCustomizations[gKey].push({
                             uuid: optOptionUuid,
                             price: Math.round(price * 100),
-                            quantity: qty
+                            quantity: qty,
+                            title: oTitle,
+                            customizationMeta: {
+                                title: gTitle,
+                                isPickOne: !!radio
+                            }
                         });
                     }
                     const priceTag = price > 0 ? ` (+$${price})` : '';
@@ -8530,8 +8551,9 @@ function recalcCustomizations() {
                             const normTitle = s => (s || '').replace(/[●·\s\-_()（）]/g, '').toLowerCase();
                             const curTitle = currentItem && currentItem.title ? normTitle(currentItem.title) : '';
                             const cleanO = normTitle(oTitle);
-                            const isSameAsMainDish = !currentPrefix && curTitle && (cleanO === curTitle || cleanO.includes(curTitle) || curTitle.includes(cleanO));
-                            const isWrapperOption = isSameAsMainDish || (isRedundantRootGroup && groupDiv.querySelectorAll(':scope > .cust-option-row').length === 1);
+                            const numOptionsInGroup = groupDiv.querySelectorAll(':scope > .cust-option-row').length;
+                            const isSameAsMainDish = !currentPrefix && curTitle && cleanO === curTitle;
+                            const isWrapperOption = (numOptionsInGroup === 1) && (isSameAsMainDish || isRedundantRootGroup);
 
                             // 若此選項有子選項：
                             // 1. 若為單品項的包裝層（如 50嵐的大●紅茶拿鐵），不傳遞 prefix，直接讓子選項 (溫度:去冰, 甜度:無糖) 成為自然的一級選項
@@ -12619,7 +12641,8 @@ window.selectUberAddrCandidate = async function(idx) {
                     resolvedTitle = `${resolvedTitle}${extraSuffix}`;
                 }
                 window.lastSearchedAddr = resolvedTitle;
-                await setAddress(localHit.lat, localHit.lng, resolvedTitle);
+                window.currentPlaceId = item.id;
+                await setAddress(localHit.lat, localHit.lng, resolvedTitle, item.id);
                 window.syncAddrFloatingPopup(true);
                 window.checkAddressMismatchAndPrompt(rawUserText, item, resolvedTitle);
                 return;
@@ -12660,7 +12683,8 @@ window.selectUberAddrCandidate = async function(idx) {
                         resolvedTitle = `${resolvedTitle}${extraSuffix}`;
                     }
                     window.lastSearchedAddr = resolvedTitle;
-                    await setAddress(data.lat, data.lng, resolvedTitle);
+                    window.currentPlaceId = item.id;
+                    await setAddress(data.lat, data.lng, resolvedTitle, item.id);
                     window.syncAddrFloatingPopup(true);
                     window.checkAddressMismatchAndPrompt(rawUserText, item, resolvedTitle);
                     return;
