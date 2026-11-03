@@ -8427,7 +8427,12 @@ function recalcCustomizations() {
                         currentItem.rawCustomizations[gKey].push({
                             uuid: optOptionUuid,
                             price: Math.round(price * 100),
-                            quantity: qty
+                            quantity: qty,
+                            title: oTitle,
+                            customizationMeta: {
+                                title: gTitle,
+                                isPickOne: !!radio
+                            }
                         });
                     }
                     const priceTag = price > 0 ? ` (+$${price})` : '';
@@ -8445,8 +8450,9 @@ function recalcCustomizations() {
                             const normTitle = s => (s || '').replace(/[●·\s\-_()（）]/g, '').toLowerCase();
                             const curTitle = currentItem && currentItem.title ? normTitle(currentItem.title) : '';
                             const cleanO = normTitle(oTitle);
-                            const isSameAsMainDish = !currentPrefix && curTitle && (cleanO === curTitle || cleanO.includes(curTitle) || curTitle.includes(cleanO));
-                            const isWrapperOption = isSameAsMainDish || (isRedundantRootGroup && groupDiv.querySelectorAll(':scope > .cust-option-row').length === 1);
+                            const numOptionsInGroup = groupDiv.querySelectorAll(':scope > .cust-option-row').length;
+                            const isSameAsMainDish = !currentPrefix && curTitle && cleanO === curTitle;
+                            const isWrapperOption = (numOptionsInGroup === 1) && (isSameAsMainDish || isRedundantRootGroup);
 
                             // 若此選項有子選項：
                             // 1. 若為單品項的包裝層（如 50嵐的大●紅茶拿鐵），不傳遞 prefix，直接讓子選項 (溫度:去冰, 甜度:無糖) 成為自然的一級選項
