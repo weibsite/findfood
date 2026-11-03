@@ -733,6 +733,27 @@
 
 <script>
 
+// ========== 雙方案全域狀態管理 (150內半價 vs 300內半價) ==========
+  window.currentSelectedPlan = '150'; // 預設使用 150 方案
+  window.couponBEnabled = true;       // 300 方案 (B券) 開啟狀態
+  window._userManuallySelectedPlan = false; // 是否由使用者手動切換方案
+
+  window.switchPlanTab = function(newPlan) {
+    if (window.isGroceryStore) return;
+    if (newPlan === '300' && !window.couponBEnabled) {
+      if (typeof showToast === 'function') showToast('⚠️ 300 方案今日配額已滿，請使用 150 方案！');
+      return;
+    }
+    window._userManuallySelectedPlan = true;
+    window.currentSelectedPlan = newPlan;
+    if (typeof openCheckoutSummary === 'function') {
+      openCheckoutSummary();
+    }
+    if (typeof showToast === 'function') {
+      showToast(newPlan === '300' ? '✨ 已切換至「🌟 300內半價」' : '✨ 已切換至「⚡ 150內半價」');
+    }
+  };
+
 function showToast(msg) {
     if (!document.body) {
         window.addEventListener('DOMContentLoaded', () => showToast(msg));
@@ -5182,6 +5203,7 @@ let originalAppHeaderHtml = "";
   }
 
   function clearCart() {
+    window._userManuallySelectedPlan = false;
     cart = [];
     window.cart = [];
     try {
@@ -6207,6 +6229,7 @@ function goBackToStore() {
 
 
 function backToCart() {
+  window._userManuallySelectedPlan = false;
   currentView = 'cart';
   document.getElementById('checkoutView').style.display = 'none';
   viewCart();
@@ -6481,33 +6504,13 @@ function openCheckoutSummary() {
 
 
 
-// ========== 雙軌方案切換 Tabs 與 結帳明細卡片 (150內半價 vs 300內半價) ==========
-      if (!window.isGroceryStore) {
-        const comparison = typeof getPlanComparison === 'function' ? getPlanComparison(cart) : null;
-        const curPlan = window.currentSelectedPlan || '150';
-
-        html += `
-          <div style="margin: 12px 0 10px 0; background: #f3f4f6; padding: 4px; border-radius: 12px; display: flex; gap: 6px;">
-            <button type="button" onclick="switchPlanTab('150')" style="flex:1; padding: 10px 6px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; ${curPlan === '150' ? 'background:#f43f5e; color:#fff; box-shadow:0 2px 6px rgba(244,63,94,0.3);' : 'background:transparent; color:#4b5563;'}">
-              ⚡ 150 內半價 (代訂$20) ${comparison && comparison.recommended === '150' && comparison.diff > 0 ? '<span style="font-size:11px; background:#fff; color:#f43f5e; padding:1px 5px; border-radius:10px; margin-left:2px;">推薦省$' + comparison.diff + '</span>' : ''}
-            </button>
-            <button type="button" onclick="switchPlanTab('300')" style="flex:1; padding: 10px 6px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; ${curPlan === '300' ? 'background:#276ef1; color:#fff; box-shadow:0 2px 6px rgba(39,110,241,0.3);' : 'background:transparent; color:#4b5563;'} ${!window.couponBEnabled ? 'opacity:0.6;' : ''}">
-              🌟 300 內半價 (代訂$50) ${!window.couponBEnabled ? '<span style="font-size:11px; background:#e5e7eb; color:#6b7280; padding:1px 5px; border-radius:10px; margin-left:2px;">額滿</span>' : (comparison && comparison.recommended === '300' && comparison.diff > 0 ? '<span style="font-size:11px; background:#fff; color:#276ef1; padding:1px 5px; border-radius:10px; margin-left:2px;">推薦省$' + comparison.diff + '</span>' : '')}
-            </button>
-          </div>
-        `;
-
-        if (comparison && comparison.diff > 0) {
-          const isBest = (comparison.recommended === curPlan);
-          html += `
-            <div style="background: ${isBest ? '#f0fdf4' : '#fffbeb'}; border: 1px solid ${isBest ? '#86efac' : '#fde047'}; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; display: flex; align-items: center; justify-content: space-between;">
-              <div style="color: ${isBest ? '#166534' : '#854d0e'};">
-                ${isBest ? '✨ <b>當前已是最佳方案！</b>' : '💡 <b>建議切換至「' + (comparison.recommended === '300' ? '🌟 300內半價' : '⚡ 150內半價') + '」</b>'}
-                <span style="color:#e11d48; font-weight:bold;">省 $${comparison.diff}</span> (150方案: $${comparison.final150} vs 300方案: $${comparison.final300})
-              </div>
-              ${!isBest ? '<button onclick="switchPlanTab(\'' + comparison.recommended + '\')" style="background:#f43f5e; color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:12px; font-weight:bold; cursor:pointer; white-space:nowrap; margin-left:8px;">立即切換</button>' : ''}
-            </div>
-          `;
+// ========== 雙軌方案智慧預設與單行緊湊結帳卡片 (150內半價 vs 300內半價) ==========
+      const comparison = (!window.isGroceryStore && typeof getPlanComparison === 'function') ? getPlanComparison(cart) : null;
+      if (!window.isGroceryStore && !window._userManuallySelectedPlan) {
+        if (comparison && comparison.recommended === '300' && window.couponBEnabled) {
+          window.currentSelectedPlan = '300';
+        } else {
+          window.currentSelectedPlan = '150';
         }
       }
 
@@ -6517,10 +6520,38 @@ function openCheckoutSummary() {
       const visualSvcFee = isPlan300 ? 50 : 20;
       const promoCap = isPlan300 ? 300 : 150;
       const maxPromoVal = isPlan300 ? 150 : 75;
+      const otherPlan = isPlan300 ? '150' : '300';
+      const otherCap = isPlan300 ? 150 : 300;
+
+      let switchBtnHtml = '';
+      if (!window.isGroceryStore) {
+        if (!window.couponBEnabled && otherPlan === '300') {
+          switchBtnHtml = `<span style="font-size:12px; color:#9ca3af; background:#f3f4f6; padding:2px 8px; border-radius:12px;">300方案額滿</span>`;
+        } else {
+          const isOtherBest = comparison && (comparison.recommended === otherPlan) && comparison.diff > 0;
+          const savingTxt = isOtherBest ? ` (省$${comparison.diff})` : '';
+          switchBtnHtml = `
+            <button type="button" onclick="switchPlanTab('${otherPlan}')" style="background:#fff; border:1px solid ${planThemeColor}; color:${planThemeColor}; font-size:12px; font-weight:bold; padding:2px 8px; border-radius:14px; cursor:pointer; display:inline-flex; align-items:center; gap:2px; box-shadow:0 1px 2px rgba(0,0,0,0.06); outline:none; -webkit-tap-highlight-color:transparent;">
+              <span>切換至$${otherCap}方案${savingTxt}</span>
+              <span style="font-size:13px; line-height:1;">⇄</span>
+            </button>
+          `;
+        }
+      }
+
+      const cardHeaderHtml = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; padding:0 2px;">
+          <div style="font-weight:bold; color:${planThemeColor}; font-size:15px; display:flex; align-items:center; gap:4px;">
+            <span>結帳明細 ($${promoCap}內半價)</span>
+            ${(comparison && comparison.recommended === activePlan && comparison.diff > 0) ? `<span style="background:#10b981; color:#fff; font-size:10px; padding:1px 5px; border-radius:8px; font-weight:bold;">最優惠</span>` : ''}
+          </div>
+          <div>${switchBtnHtml}</div>
+        </div>
+      `;
 
       html += `<div id="planACard" style="background:#f9f9f9; padding:10px; border-radius:8px; border:2px solid ${planThemeColor}; text-align:center; font-size:14px; position:relative;">`;
 
-      let origTable = `<div style="font-weight:bold; margin-bottom:2px; color:${planThemeColor};">結帳明細 ($${promoCap}內半價)</div>`;
+      let origTable = cardHeaderHtml;
       origTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left; margin-top:10px;">`;
       origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">小計:</td><td style="padding:2px 0 2px 4px;">$${total}</td></tr>`;
       origTable += total >= promoCap ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor};">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor};">-$${maxPromoVal}</td></tr>` : `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor};">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor};">-$${Math.floor(total/2)}</td></tr>`;
@@ -6586,7 +6617,7 @@ function openCheckoutSummary() {
 
           let originalBaseStr = total + visualSvcFee + (function(){ let te = 0; const ssg = {}; cart.forEach(it => { if(!ssg[it.storeName||'']) ssg[it.storeName||'']=[]; ssg[it.storeName||''].push(it); }); Object.keys(ssg).forEach(s => { te += Math.max(0, ...ssg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0)))); }); return te; })();
 
-          let sumTable = `<div style="font-weight:bold; margin-bottom:2px; color:${planThemeColor};">結帳明細 ($${promoCap}內半價)</div>`;
+          let sumTable = cardHeaderHtml;
           sumTable += `<div style="margin-bottom:8px; color:#666; font-size:12px; font-weight:bold;">(共拆成 ${costRes.bins.length} 單)</div>`;
           sumTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left;">`;
           sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">小計:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitFood}</td></tr>`;
