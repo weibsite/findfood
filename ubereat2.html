@@ -446,7 +446,7 @@
           <div id="triggerTimeText" style="font-size:17px; font-weight:700; color:#f43f5e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🚀 即時訂單</div>
           <select id="scheduleTime" style="display:none;"></select>
         </div>
-        <span id="asapPromoTag" style="color:#01B468; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折20元</span>
+        <span id="asapPromoTag" style="color:#01B468; font-size:13px; font-weight:700; white-space:nowrap; flex-shrink:0;">預約最高每單折10元</span>
         <svg aria-hidden="true" fill="none" height="20" stroke="#78716c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" viewBox="0 0 24 24" width="20" style="flex-shrink:0;"><path d="M6 9l6 6 6-6"></path></svg>
       </div>
     </div>
@@ -817,6 +817,9 @@ switchVertical = function(v) {
 
 // Restore visual state on load for delivery method
 document.addEventListener("DOMContentLoaded", () => {
+    if (typeof checkCouponSettings === 'function') {
+        checkCouponSettings();
+    }
     setTimeout(() => {
         const savedMethod = localStorage.getItem('userDeliveryMethod') || '當面點交';
         setDeliveryMethod(savedMethod);
@@ -979,6 +982,19 @@ let isAddressSet = false;
 
     addressHistory = JSON.parse(localStorage.getItem('finddog_history_address')) || [];
 
+    // ⭐ 兼容讀取 Cookie 或歷史快取中可能存在的舊版地址
+    if (!addressHistory || addressHistory.length === 0) {
+      try {
+        const cMatch = document.cookie.match(/(?:^|;\s*)(?:user_address|address|last_address|saved_address)=([^;]+)/);
+        if (cMatch) {
+          const cAddr = decodeURIComponent(cMatch[1]).trim();
+          if (cAddr) {
+            addressHistory = [{ title: cAddr, lat: null, lng: null, uberVerified: false }];
+          }
+        }
+      } catch (e) {}
+    }
+
     const addrDatalist = document.getElementById('addr-list');
 
     if (addrDatalist) {
@@ -999,7 +1015,11 @@ let isAddressSet = false;
 
         scrollAddrToEnd();
         revealSubSections();
-        setAddress(lastAddr.lat, lastAddr.lng, lastAddr.title);
+        if (lastAddr.lat && lastAddr.lng) {
+          setAddress(lastAddr.lat, lastAddr.lng, lastAddr.title);
+        }
+        // ⭐ 開啟網頁讀取地址時，自動向 UBER EAT 重新偵測與修正校準
+        autoRefreshAndVerifyAddressFromUber(lastAddr.title, lastAddr);
 
       } else {
 
@@ -1013,6 +1033,115 @@ let isAddressSet = false;
 
   }
 
+  // ⭐ [自動地址校準機制] 開啟網頁讀取地址時，或地址未完整認證時，自動向 Uber Eats 重新偵測與修正校準
+  async function autoRefreshAndVerifyAddressFromUber(rawTitle, fallbackItem) {
+    if (!rawTitle) return;
+    const cleanTitle = (rawTitle || '').replace(/^📍\s*/, '').trim();
+    if (!cleanTitle) return;
+
+    try {
+      const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+      const splitFn = window.splitAddressForUber || function(t) { return { searchQuery: t, extraSuffix: '' }; };
+      const { searchQuery, extraSuffix } = splitFn(cleanTitle);
+      const queryToSearch = searchQuery || cleanTitle;
+      if (!queryToSearch) return;
+
+      console.log('[自動地址校準] 正在向 Uber Eats 重新偵測地址:', queryToSearch);
+
+      // 1. 向 Uber Eats 搜尋候選地址 mapsSearchV1
+      const fallbackLat = (fallbackItem && fallbackItem.lat) ? fallbackItem.lat : (typeof currentLat !== 'undefined' && currentLat ? currentLat : 24.9665);
+      const fallbackLng = (fallbackItem && fallbackItem.lng) ? fallbackItem.lng : (typeof currentLng !== 'undefined' && currentLng ? currentLng : 121.2646);
+
+      const searchRes = await fetch(`${apiBase}/api/mapsSearchV1`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: queryToSearch,
+          lat: fallbackLat,
+          lng: fallbackLng
+        })
+      });
+
+      if (!searchRes.ok) {
+        console.warn('[自動地址校準] mapsSearchV1 回應異常:', searchRes.status);
+        return;
+      }
+
+      const searchData = await searchRes.json();
+      const candidates = (searchData && searchData.candidates) ? searchData.candidates : [];
+      if (!candidates || candidates.length === 0) {
+        console.log('[自動地址校準] Uber 未找到匹配地址，維持現有設定');
+        return;
+      }
+
+      // 2. 取第一筆最相符之候選 (Uber 官方標準地址)
+      const bestCandidate = candidates[0];
+      const placeId = bestCandidate.id;
+      if (!placeId) return;
+
+      // 3. 取得座標
+      const reqInit = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          placeId: placeId,
+          provider: bestCandidate.provider || 'google_places',
+          lat: fallbackLat,
+          lng: fallbackLng
+        })
+      };
+
+      let locRes = await fetch(`${apiBase}/api/getDeliveryLocationV2`, reqInit);
+      if (locRes.status === 404) {
+        locRes = await fetch(`${apiBase}/api/getDeliveryLocationV1`, reqInit);
+      }
+
+      if (locRes.ok) {
+        const locData = await locRes.json();
+        if (locData.status === 'success' && locData.lat && locData.lng) {
+          const baseFullAddr = (locData.title || bestCandidate.fullAddress || bestCandidate.addressLine1 || '').trim();
+          let finalResolvedTitle = baseFullAddr;
+          if (extraSuffix && !finalResolvedTitle.endsWith(extraSuffix)) {
+            finalResolvedTitle = `${finalResolvedTitle}${extraSuffix}`;
+          }
+
+          console.log('✅ [自動地址校準] 成功自 Uber Eats 重新偵測取得精準座標與標準門牌:', finalResolvedTitle, locData.lat, locData.lng);
+
+          // 更新全域變數與後端 session
+          await setAddress(locData.lat, locData.lng, finalResolvedTitle);
+
+          // 更新輸入框文字
+          const addrInput = document.getElementById('addrInput');
+          if (addrInput) {
+            addrInput.value = finalResolvedTitle;
+            if (typeof scrollAddrToEnd === 'function') scrollAddrToEnd();
+          }
+
+          // 寫入 localStorage 儲存
+          let history = [];
+          try {
+            history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
+          } catch(e) { history = []; }
+          history = history.filter(item => item && item.title !== finalResolvedTitle && item.title !== cleanTitle);
+          history.unshift({
+            lat: locData.lat,
+            lng: locData.lng,
+            title: finalResolvedTitle,
+            savedAt: Date.now(),
+            uberVerified: true
+          });
+          if (history.length > 5) history = history.slice(0, 5);
+          localStorage.setItem('finddog_history_address', JSON.stringify(history));
+
+          if (typeof updateAddrTitleState === 'function') updateAddrTitleState('ok');
+          if (typeof fetchDeliveryTimes === 'function') fetchDeliveryTimes();
+        }
+      }
+    } catch (e) {
+      console.warn('[自動地址校準] 發生錯誤，保留目前地址:', e);
+    }
+  }
+  window.autoRefreshAndVerifyAddressFromUber = autoRefreshAndVerifyAddressFromUber;
 
 
   function saveSimpleHistory(field) {
@@ -1748,6 +1877,22 @@ function validateStoreSchedule() {
         window.currentStoreAvailableWindows = windows;
     }
 
+    const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+    // 嚴格規範：除全聯生鮮雜貨即時單特殊允許外，所有餐廳無論是即時單還是預約單，都「必須是能預約的餐廳」才允許下單！
+    if (rawData) {
+        const isSched = Boolean(
+            rawData.scheduledOrderInfo &&
+            rawData.scheduledOrderInfo.isSchedulable === true &&
+            rawData.timeWindowPicker &&
+            Array.isArray(rawData.timeWindowPicker.dates) &&
+            rawData.timeWindowPicker.dates.length > 0
+        );
+        const allowWithoutSched = isGr && scheduleMode === 'ASAP';
+        if (!allowWithoutSched && !isSched) {
+            return { valid: false, reason: 'NOT_SCHEDULABLE', text: '此餐廳不支援預約，無法代購' };
+        }
+    }
+
     if (scheduleMode === 'ASAP') {
         const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : !window.currentStoreClosed;
         if (window.currentStoreClosed || !isCurrentlyOpen) {
@@ -2002,7 +2147,7 @@ function updateTriggerText() {
         trigger.style.color = '#f43f5e';
         if (promoTag) {
             promoTag.style.display = 'inline';
-            promoTag.innerText = '預約最高每單折20元';
+            promoTag.innerText = '預約最高每單折10元';
             promoTag.style.color = '#01B468';
         }
     } else {
@@ -5253,6 +5398,16 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             menuItemUuid: menuItemUuid,
 
+            storeUuid: storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
+
+            sectionUuid: sectionUuid || '',
+
+            subsectionUuid: subsectionUuid || '',
+
+            imgUrl: imgUrl || '',
+
+            rawCustomizations: {},
+
             user_name: window.currentGroupBuyId ? getOrPromptGroupBuyUserName() : '',
 
             device_fp: getGroupBuyDeviceFp(),
@@ -6095,12 +6250,12 @@ window.submitSelectedPlan = async function() {
 
     if (window.isGroceryStore) {
         const is150 = sName.includes('優市');
-        const typeTitle = is150 ? '優市' : '雜貨';
+        const typeTitle = is150 ? '優市' : '生鮮雜貨';
         if (window._groceryDisabled) {
             hideOrderWaitingOverlay();
             hideGroceryWaitingOverlay();
             if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
-            showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
+            showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
             return;
         }
         if (typeof checkGroceryStatus === 'function') {
@@ -6109,8 +6264,7 @@ window.submitSelectedPlan = async function() {
                 hideOrderWaitingOverlay();
                 hideGroceryWaitingOverlay();
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
-                if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(sName);
-                showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
+                if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(sName, true);
                 return;
             }
         }
@@ -6118,7 +6272,7 @@ window.submitSelectedPlan = async function() {
         return;
     }
 
-    let costRes = typeof calcOrderCost === 'function' ? calcOrderCost(cart) : null;
+    let costRes = typeof calcOrderCost === 'function' ? calcOrderCost(cart, window.currentSelectedPlan) : null;
     let isSplit = costRes && costRes.shouldSplit;
     sendOrderToLine(isSplit ? 'split' : 'planA');
 };
@@ -6149,6 +6303,10 @@ function openCheckoutSummary() {
 
     const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
     if (!schedCheck.valid) {
+        if (schedCheck.reason === 'NOT_SCHEDULABLE') {
+            showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+            return;
+        }
         window.currentStoreClosed = true;
         window.mustSelectScheduleBeforeCheckout = true;
         if (typeof showStoreScheduleModal === 'function') {
@@ -6316,120 +6474,154 @@ function openCheckoutSummary() {
       let storeCountUI = 0;
       const sCounts = {};
       cart.forEach(it => { if(!sCounts[it.storeName]) { sCounts[it.storeName]=true; storeCountUI++; }});
-      const visualSvcFee = 20;
+      // visualSvcFee will be calculated dynamically below
 
       
 
 
 
 
-// Plan A
-html += `<div id="planACard" style="background:#f9f9f9; padding:10px; border-radius:8px; border:2px solid #f43f5e; text-align:center; font-size:14px; position:relative;">`;
+// ========== 雙軌方案切換 Tabs 與 結帳明細卡片 (150內半價 vs 300內半價) ==========
+      if (!window.isGroceryStore) {
+        const comparison = typeof getPlanComparison === 'function' ? getPlanComparison(cart) : null;
+        const curPlan = window.currentSelectedPlan || '150';
 
-let origTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($150內半價)</div>`;
-origTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left; margin-top:10px;">`;
-origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">小計:</td><td style="padding:2px 0 2px 4px;">$${total}</td></tr>`;
-origTable += total >= 150 ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$75</td></tr>` : `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$${Math.floor(total/2)}</td></tr>`;
-origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">代訂費:</td><td style="padding:2px 0 2px 4px;">$${visualSvcFee}</td></tr>`;
-const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
-let aTotalExcess = (function(){
-    if (isDiscount) return 0;
-    let te = 0; const sg = {};
-    cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-    Object.keys(sg).forEach(s => {
-        te += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
-    });
-    return te;
-})();
-origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">外送加成:</td><td style="padding:2px 0 2px 4px;">$${aTotalExcess}</td></tr>`;
-origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">服務費:</td><td style="padding:2px 0 2px 4px;">$0</td></tr>`;
+        html += `
+          <div style="margin: 12px 0 10px 0; background: #f3f4f6; padding: 4px; border-radius: 12px; display: flex; gap: 6px;">
+            <button type="button" onclick="switchPlanTab('150')" style="flex:1; padding: 10px 6px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; ${curPlan === '150' ? 'background:#f43f5e; color:#fff; box-shadow:0 2px 6px rgba(244,63,94,0.3);' : 'background:transparent; color:#4b5563;'}">
+              ⚡ 150 內半價 (代訂$20) ${comparison && comparison.recommended === '150' && comparison.diff > 0 ? '<span style="font-size:11px; background:#fff; color:#f43f5e; padding:1px 5px; border-radius:10px; margin-left:2px;">推薦省$' + comparison.diff + '</span>' : ''}
+            </button>
+            <button type="button" onclick="switchPlanTab('300')" style="flex:1; padding: 10px 6px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; ${curPlan === '300' ? 'background:#276ef1; color:#fff; box-shadow:0 2px 6px rgba(39,110,241,0.3);' : 'background:transparent; color:#4b5563;'} ${!window.couponBEnabled ? 'opacity:0.6;' : ''}">
+              🌟 300 內半價 (代訂$50) ${!window.couponBEnabled ? '<span style="font-size:11px; background:#e5e7eb; color:#6b7280; padding:1px 5px; border-radius:10px; margin-left:2px;">額滿</span>' : (comparison && comparison.recommended === '300' && comparison.diff > 0 ? '<span style="font-size:11px; background:#fff; color:#276ef1; padding:1px 5px; border-radius:10px; margin-left:2px;">推薦省$' + comparison.diff + '</span>' : '')}
+            </button>
+          </div>
+        `;
 
-const preOrderDisc = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
-if (preOrderDisc > 0) {
-    origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">預訂折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$${preOrderDisc}</td></tr>`;
-}
-origTable += `</table>`;
-origTable += `<div style="font-weight:bold; font-size:16px; margin-top:10px; border-top:1px solid #ccc; padding-top:6px;">`;
-origTable += (function(){
-    let totalExcess = 0;
-    if (!isDiscount) {
-        const sg = {};
-        cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-        Object.keys(sg).forEach(s => {
-            totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
-        });
-    }
-    let totalOrigExcess = 0;
-    const sg = {};
-    cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-    Object.keys(sg).forEach(s => {
-        totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0))));
-    });
-
-    const pd = total >= 150 ? 75 : Math.floor(total/2);
-    const pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
-    return `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${total + visualSvcFee + totalOrigExcess}</span> <span style="color:#d32f2f; font-size:18px;">$${total - pd + visualSvcFee + totalExcess - pr}</span>`;
-})();
-origTable += `</div>`;
-
-let costRes = typeof calcOrderCost === 'function' ? calcOrderCost(cart) : null;
-if (costRes && costRes.shouldSplit) {
-    let splitFood = 0; let splitPromo = 0; let splitExcess = 0; let splitPreorder = 0; let splitFee = costRes.bins.length * 20;
-    costRes.bins.forEach(bin => {
-        splitFood += bin.sum;
-        splitPromo += (bin.sum >= 150 ? 75 : Math.floor(bin.sum / 2));
-        let bsg = {}; bin.items.forEach(i => { if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[]; bsg[i.storeName||''].push(i); });
-        let binEx = 0;
-        if (!isDiscount) {
-            Object.keys(bsg).forEach(s => {
-                binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
-            });
+        if (comparison && comparison.diff > 0) {
+          const isBest = (comparison.recommended === curPlan);
+          html += `
+            <div style="background: ${isBest ? '#f0fdf4' : '#fffbeb'}; border: 1px solid ${isBest ? '#86efac' : '#fde047'}; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; display: flex; align-items: center; justify-content: space-between;">
+              <div style="color: ${isBest ? '#166534' : '#854d0e'};">
+                ${isBest ? '✨ <b>當前已是最佳方案！</b>' : '💡 <b>建議切換至「' + (comparison.recommended === '300' ? '🌟 300內半價' : '⚡ 150內半價') + '」</b>'}
+                <span style="color:#e11d48; font-weight:bold;">省 $${comparison.diff}</span> (150方案: $${comparison.final150} vs 300方案: $${comparison.final300})
+              </div>
+              ${!isBest ? '<button onclick="switchPlanTab(\'' + comparison.recommended + '\')" style="background:#f43f5e; color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:12px; font-weight:bold; cursor:pointer; white-space:nowrap; margin-left:8px;">立即切換</button>' : ''}
+            </div>
+          `;
         }
-        splitExcess += binEx;
-        let pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
-        splitPreorder += pr;
-    });
+      }
 
-    let originalBaseStr = total + visualSvcFee + (function(){ let te = 0; const ssg = {}; cart.forEach(it => { if(!ssg[it.storeName||'']) ssg[it.storeName||'']=[]; ssg[it.storeName||''].push(it); }); Object.keys(ssg).forEach(s => { te += Math.max(0, ...ssg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0)))); }); return te; })();
+      const activePlan = window.currentSelectedPlan || '150';
+      const isPlan300 = (activePlan === '300');
+      const planThemeColor = isPlan300 ? '#276ef1' : '#f43f5e';
+      const visualSvcFee = isPlan300 ? 50 : 20;
+      const promoCap = isPlan300 ? 300 : 150;
+      const maxPromoVal = isPlan300 ? 150 : 75;
 
-    let sumTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($150內半價)</div>`;
-    sumTable += `<div style="margin-bottom:8px; color:#666; font-size:12px; font-weight:bold;">(共拆成 ${costRes.bins.length} 單)</div>`;
-    sumTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left;">`;
-sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">小計:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitFood}</td></tr>`;
-sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPromo}</td></tr>`;
-sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">代訂費:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitFee}</td></tr>`;
-sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">外送加成:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitExcess}</td></tr>`;
+      html += `<div id="planACard" style="background:#f9f9f9; padding:10px; border-radius:8px; border:2px solid ${planThemeColor}; text-align:center; font-size:14px; position:relative;">`;
 
-sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">服務費:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$0</td></tr>`;
+      let origTable = `<div style="font-weight:bold; margin-bottom:2px; color:${planThemeColor};">結帳明細 ($${promoCap}內半價)</div>`;
+      origTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left; margin-top:10px;">`;
+      origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">小計:</td><td style="padding:2px 0 2px 4px;">$${total}</td></tr>`;
+      origTable += total >= promoCap ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor};">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor};">-$${maxPromoVal}</td></tr>` : `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor};">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor};">-$${Math.floor(total/2)}</td></tr>`;
+      origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">代訂費:</td><td style="padding:2px 0 2px 4px;">$${visualSvcFee}</td></tr>`;
+      const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
+      let aTotalExcess = (function(){
+          if (isDiscount) return 0;
+          let te = 0; const sg = {};
+          cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+          Object.keys(sg).forEach(s => {
+              te += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+          });
+          return te;
+      })();
+      origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">外送加成:</td><td style="padding:2px 0 2px 4px;">$${aTotalExcess}</td></tr>`;
+      origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">服務費:</td><td style="padding:2px 0 2px 4px;">$0</td></tr>`;
 
-if (splitPreorder > 0) {
-    sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPreorder}</td></tr>`;
-}
-sumTable += `</table>`;
+      const preOrderDisc = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
+      if (preOrderDisc > 0) {
+          origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor};">預訂折扣:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor};">-$${preOrderDisc}</td></tr>`;
+      }
+      origTable += `</table>`;
+      origTable += `<div style="font-weight:bold; font-size:16px; margin-top:10px; border-top:1px solid #ccc; padding-top:6px;">`;
+      origTable += (function(){
+          let totalExcess = 0;
+          if (!isDiscount) {
+              const sg = {};
+              cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+              Object.keys(sg).forEach(s => {
+                  totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+              });
+          }
+          let totalOrigExcess = 0;
+          const sg = {};
+          cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+          Object.keys(sg).forEach(s => {
+              totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0))));
+          });
 
-if (splitPreorder > 0) {
-    sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e; white-space:nowrap;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:#f43f5e; white-space:nowrap;">-$${splitPreorder}</td></tr>`;
-}
-sumTable += `</table>`;
-    sumTable += `<div style="font-weight:bold; font-size:16px; margin-top:10px; border-top:1px solid #ccc; padding-top:6px;">`;
-    sumTable += `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${originalBaseStr}</span> <span style="color:#d32f2f; font-size:18px;">$${costRes.bestCost}</span>`;
-    sumTable += `</div>`;
+          const pd = total >= promoCap ? maxPromoVal : Math.floor(total/2);
+          const pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
+          return `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${total + visualSvcFee + totalOrigExcess}</span> <span style="color:#d32f2f; font-size:18px;">$${total - pd + visualSvcFee + totalExcess - pr}</span>`;
+      })();
+      origTable += `</div>`;
 
-    window._splitOrigHtmlA = sumTable; window._splitBinsA = costRes.bins; window._splitSavingsA = costRes.savings; window._splitBestCostA = costRes.bestCost; window._currentSplitIndexA = -1;
-    
-    html += `<button onclick="switchSplitTab('A', -1)" style="position:absolute; left:-5px; top:50%; transform:translateY(-50%); border:none; background:transparent; font-size:20px; cursor:pointer; color:#f43f5e; padding:10px; z-index:2;">◀</button>`;
-    html += `<div id="splitTabContentA" style="min-height:220px; padding: 0 10px;">` + sumTable + `</div>`;
-    html += `<button onclick="switchSplitTab('A', 1)" style="position:absolute; right:-5px; top:50%; transform:translateY(-50%); border:none; background:transparent; font-size:20px; cursor:pointer; color:#f43f5e; padding:10px; z-index:2;">▶</button>`;
-    html += `<div style="position:absolute; bottom:2px; left:0; right:0; display:flex; justify-content:center; gap:4px;">`;
-    html += `<div id="split-dot-A--1" style="width:6px; height:6px; border-radius:50%; background:#f43f5e;"></div>`;
-    for(let b=0; b<costRes.bins.length; b++){
-        html += `<div id="split-dot-A-${b}" style="width:6px; height:6px; border-radius:50%; background:#ccc;"></div>`;
-    }
-    html += `</div>`;
-} else {
-    html += origTable;
-}
-html += `</div>`; // closes Plan A
+      let costRes = typeof calcOrderCost === 'function' ? calcOrderCost(cart, activePlan) : null;
+      if (costRes && costRes.shouldSplit) {
+          let splitFood = 0; let splitPromo = 0; let splitExcess = 0; let splitPreorder = 0; let splitFee = costRes.bins.length * visualSvcFee;
+          costRes.bins.forEach(bin => {
+              splitFood += bin.sum;
+              splitPromo += (bin.sum >= promoCap ? maxPromoVal : Math.floor(bin.sum / 2));
+              let bsg = {}; bin.items.forEach(i => { if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[]; bsg[i.storeName||''].push(i); });
+              let binEx = 0;
+              if (!isDiscount) {
+                  Object.keys(bsg).forEach(s => {
+                      binEx += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
+                  });
+              }
+              splitExcess += binEx;
+              let pr = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
+              splitPreorder += pr;
+          });
+
+          let originalBaseStr = total + visualSvcFee + (function(){ let te = 0; const ssg = {}; cart.forEach(it => { if(!ssg[it.storeName||'']) ssg[it.storeName||'']=[]; ssg[it.storeName||''].push(it); }); Object.keys(ssg).forEach(s => { te += Math.max(0, ...ssg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0)))); }); return te; })();
+
+          let sumTable = `<div style="font-weight:bold; margin-bottom:2px; color:${planThemeColor};">結帳明細 ($${promoCap}內半價)</div>`;
+          sumTable += `<div style="margin-bottom:8px; color:#666; font-size:12px; font-weight:bold;">(共拆成 ${costRes.bins.length} 單)</div>`;
+          sumTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left;">`;
+          sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">小計:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitFood}</td></tr>`;
+          sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor}; white-space:nowrap;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor}; white-space:nowrap;">-$${splitPromo}</td></tr>`;
+          sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">代訂費:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitFee}</td></tr>`;
+          sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">外送加成:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$${splitExcess}</td></tr>`;
+          sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; white-space:nowrap;">服務費:</td><td style="padding:2px 0 2px 4px; white-space:nowrap;"><span style="visibility:hidden">-</span>$0</td></tr>`;
+          if (splitPreorder > 0) {
+              sumTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor}; white-space:nowrap;">預定折扣:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor}; white-space:nowrap;">-$${splitPreorder}</td></tr>`;
+          }
+          sumTable += `</table>`;
+          sumTable += `<div style="font-weight:bold; font-size:16px; margin-top:10px; border-top:1px solid #ccc; padding-top:6px;">`;
+          sumTable += `總計: <span style="text-decoration:line-through; color:#999; font-size:13px; margin-right:4px;">$${originalBaseStr}</span> <span style="color:#d32f2f; font-size:18px;">$${costRes.bestCost}</span>`;
+          sumTable += `</div>`;
+
+          const planKey = isPlan300 ? 'B' : 'A';
+          if (isPlan300) {
+              window._splitOrigHtmlB = sumTable; window._splitBinsB = costRes.bins; window._splitSavingsB = costRes.savings; window._splitBestCostB = costRes.bestCost; window._currentSplitIndexB = -1;
+          } else {
+              window._splitOrigHtmlA = sumTable; window._splitBinsA = costRes.bins; window._splitSavingsA = costRes.savings; window._splitBestCostA = costRes.bestCost; window._currentSplitIndexA = -1;
+          }
+          
+          html += `<button onclick="switchSplitTab('${planKey}', -1)" style="position:absolute; left:-5px; top:50%; transform:translateY(-50%); border:none; background:transparent; font-size:20px; cursor:pointer; color:${planThemeColor}; padding:10px; z-index:2;">◀</button>`;
+          html += `<div id="splitTabContent${planKey}" style="min-height:220px; padding: 0 10px;">` + sumTable + `</div>`;
+          html += `<button onclick="switchSplitTab('${planKey}', 1)" style="position:absolute; right:-5px; top:50%; transform:translateY(-50%); border:none; background:transparent; font-size:20px; cursor:pointer; color:${planThemeColor}; padding:10px; z-index:2;">▶</button>`;
+          html += `<div style="position:absolute; bottom:2px; left:0; right:0; display:flex; justify-content:center; gap:4px;">`;
+          html += `<div id="split-dot-${planKey}--1" style="width:6px; height:6px; border-radius:50%; background:${planThemeColor};"></div>`;
+          for(let b=0; b<costRes.bins.length; b++){
+              html += `<div id="split-dot-${planKey}-${b}" style="width:6px; height:6px; border-radius:50%; background:#ccc;"></div>`;
+          }
+          html += `</div>`;
+      } else {
+          html += origTable;
+      }
+      html += `</div>`; // closes Plan A
 
 
 
@@ -6499,15 +6691,19 @@ function toggleSummaryItem(idx) {
 
 
 function openGroceryCheckoutSummary() {
+  const is150 = (currentStoreName && currentStoreName.includes('優市'));
+  const typeTitle = is150 ? '優市' : '生鮮雜貨';
+  if (window._groceryDisabled) {
+      showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
+      return;
+  }
+
   const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
   if (!schedCheck.valid) {
       window.currentStoreClosed = true;
       window.mustSelectScheduleBeforeCheckout = true;
-      if (typeof showStoreScheduleModal === 'function') {
-          showStoreScheduleModal({ invalidScheduleText: (scheduleMode === 'SCHEDULE' ? schedCheck.text : ''), isCheckout: true });
-      } else if (typeof showScheduleSelectModalForClosedStore === 'function') {
-          showScheduleSelectModalForClosedStore();
-      }
+      const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
+      showModal('目前暫停營業', `此${tType}目前尚未營業（暫停營業），無法以「盡快送達」接單，請稍候再試。`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
       return;
   }
 
@@ -6552,8 +6748,6 @@ function openGroceryCheckoutSummary() {
       }
     }
   }
-
-  const is150 = (currentStoreName && currentStoreName.includes('優市'));
 
   const minSpend = is150 ? 399 : 449;
   const promoDiscount = is150 ? 150 : 180;
@@ -6850,6 +7044,14 @@ function copyAndRetrySendOrder(btn, orderText) {
     }
 }
 
+function formatOrderStatusUrl(url) {
+    if (!url) return '';
+    // 去除 group- 與 /join
+    // 例: https://www.ubereats.com/tw/group-orders/29dc81b5-cf1c-433f-8c59-69daa1af8866/join
+    // 轉為: https://www.ubereats.com/tw/orders/29dc81b5-cf1c-433f-8c59-69daa1af8866
+    return url.replace(/\/group-orders\//g, '/orders/').replace(/\/join(?:\/|\?.*)?$/g, '');
+}
+
 function showPermissionFailModal(msgText, originalErrorMsg = '') {
     if (window.currentGroupBuyId && typeof markGroupBuySubmitted === 'function') {
         markGroupBuySubmitted(msgText);
@@ -6857,7 +7059,23 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
     clearCart();
     window._orderSent = true;
     const safeOrderText = encodeURIComponent(msgText).replace(/'/g, "%27");
-    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+    let fastCartBtnHtml = '';
+    if (window.lastSubOrders && window.lastSubOrders.length > 0) {
+        window.lastSubOrders.forEach((sub, sIdx) => {
+            const bNum = sub.binIndex || (sIdx + 1);
+            const rawUrl = sub.join_url || (sub.order_uuid ? `https://www.ubereats.com/tw/orders/${sub.order_uuid}` : '');
+            const statusUrl = formatOrderStatusUrl(rawUrl);
+            if (statusUrl) {
+                const btnLabel = (bNum === 1) ? '立即查詢訂單狀態1' : `查詢訂單狀態${bNum}`;
+                fastCartBtnHtml += `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🔍 ${btnLabel}</button>`;
+            }
+        });
+    } else if (window.lastFastGroupOrderUrl) {
+        const statusUrl = formatOrderStatusUrl(window.lastFastGroupOrderUrl);
+        if (statusUrl) {
+            fastCartBtnHtml = `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🔍 立即查詢訂單狀態</button>`;
+        }
+    }
 
     const tipHtml = `
       <div style="text-align:left; font-size:14px; color:#475569; line-height:1.6; margin-bottom:15px; background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
@@ -6865,7 +7083,7 @@ function showPermissionFailModal(msgText, originalErrorMsg = '') {
         <div>因系統需要您同意<b>「傳送訊息至聊天室」</b>的權限，才能自動為您發送訂單。</div>
         <div style="margin-top:10px; font-size:13px; color:#64748b; border-top:1px dashed #cbd5e1; padding-top:8px;">
           💡 <b>貼心提醒：</b><br>
-          您可直接開啟上方<b>「預載 5折 購物車」</b>，或點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
+          您可直接點擊上方<b>「查詢訂單狀態」</b>，或點擊下方<b>「一鍵複製訂單」</b>貼回聊天室完成訂餐。<br>
           下次下單請保留權限（請勿手動關閉），即可享受全自動送單的便利！
         </div>
       </div>
@@ -6923,9 +7141,21 @@ async function sendOrderToLine(forceSubmit = false) {
 }
 
 async function _sendOrderToLine(forceSubmit = false) {
+      let costRes = (typeof calcOrderCost === 'function' && typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0)
+          ? calcOrderCost(cart, window.currentSelectedPlan)
+          : (window._lastCostRes || null);
+      if (costRes) {
+          window._lastCostRes = costRes;
+      }
+
       const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
       if (!schedCheck.valid) {
           hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+
+          if (schedCheck.reason === 'NOT_SCHEDULABLE') {
+              showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+              return;
+          }
 
           window.currentStoreClosed = true;
           window.mustSelectScheduleBeforeCheckout = true;
@@ -7151,13 +7381,16 @@ async function _sendOrderToLine(forceSubmit = false) {
 
 
 
-      const costRes = calcOrderCost(cart);
+      if (typeof calcOrderCost === 'function' && typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0) {
+        costRes = calcOrderCost(cart);
+        window._lastCostRes = costRes;
+      }
 
 
 
       if (!forceSubmit || forceSubmit === 'overrideMethod') {
 
-        if (costRes.shouldSplit && costRes.savings > 0) {
+        if (costRes && costRes.shouldSplit && costRes.savings > 0) {
           hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
 
 
@@ -7253,9 +7486,14 @@ async function _sendOrderToLine(forceSubmit = false) {
 
 
 
-      if (forceSubmit === 'split' && costRes.bins) {
+      if (forceSubmit === 'split' && costRes && costRes.bins) {
 
-      msgText = `🛵 UberEats 揪團訂單${priceKeyText} \n$150內半價\n`;
+      const isPlan300Sub = (window.currentSelectedPlan === '300');
+        const promoCapSub = isPlan300Sub ? 300 : 150;
+        const maxPromoSub = isPlan300Sub ? 150 : 75;
+        msgText = `🛵 UberEats 揪團訂單${priceKeyText} 
+$${promoCapSub}內半價
+`;
 
         if (addr) msgText += `📍 地址: ${addr}${coordsText}\n`;
 
@@ -7271,7 +7509,7 @@ async function _sendOrderToLine(forceSubmit = false) {
             isASAP = true; // 3小時內的預約單視同即時單標準
         }
     }
-      let feePerBin = 20;
+      let feePerBin = (window.currentSelectedPlan === '300') ? 50 : 20;
 
       let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
 
@@ -7353,7 +7591,9 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-          let binPromo = binFoodSum >= 150 ? 75 : Math.floor(binFoodSum / 2);
+          const pCap = (window.currentSelectedPlan === '300') ? 300 : 150;
+          const pMax = (window.currentSelectedPlan === '300') ? 150 : 75;
+          let binPromo = binFoodSum >= pCap ? pMax : Math.floor(binFoodSum / 2);
 
 
 
@@ -7465,9 +7705,11 @@ costRes.bins.forEach((bin, bIdx) => {
 
 
 
-        let promoDiscount = total >= 150 ? 75 : Math.floor(total / 2);
-
-        let serviceFee = 20;
+        const isPlan300Single = (window.currentSelectedPlan === '300');
+        const pCapSingle = isPlan300Single ? 300 : 150;
+        const pMaxSingle = isPlan300Single ? 150 : 75;
+        let promoDiscount = total >= pCapSingle ? pMaxSingle : Math.floor(total / 2);
+        let serviceFee = isPlan300Single ? 50 : 20;
 
 
 
@@ -7491,7 +7733,8 @@ costRes.bins.forEach((bin, bIdx) => {
           let maxTotal = total - 200 + 130 + totalExcessDeliveryFee + 60;
           msgText += `\n💰 總計: $${minTotal} ~ $${maxTotal}\n`;
       } else {
-          msgText += `🏷️ ($150內半價)\n`;
+          msgText += `🏷️ ($${pCapSingle}內半價)
+`;
           msgText += `💵 小計: $${total}\n`;
           if (promoDiscount > 0) msgText += `🎉 優惠半價折抵: -$${promoDiscount}\n`;
           msgText += `🏍️ 代訂費: $${serviceFee}\n`;
@@ -7571,11 +7814,13 @@ costRes.bins.forEach((bin, bIdx) => {
   let submittedOrderId = '';
 
   // 整理結構化商品清單 (包含 MenuItemUUID, SectionUUID, 客製化選項, 數量, 備註等)
+  const fallbackSec = (typeof cart !== 'undefined' && Array.isArray(cart)) ? (cart.find(x => x.sectionUuid)?.sectionUuid || '') : '';
+  const fallbackSubsec = (typeof cart !== 'undefined' && Array.isArray(cart)) ? (cart.find(x => x.subsectionUuid)?.subsectionUuid || '') : '';
   const structuredItems = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => ({
       uuid: it.menuItemUuid || it.uuid,
       menuItemUuid: it.menuItemUuid || it.uuid,
-      sectionUuid: it.sectionUuid || '',
-      subsectionUuid: it.subsectionUuid || '',
+      sectionUuid: it.sectionUuid || fallbackSec || '',
+      subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
       price: it.price || 0,
       title: it.title || it.name || '',
       quantity: it.qty || it.quantity || 1,
@@ -7599,29 +7844,72 @@ costRes.bins.forEach((bin, bIdx) => {
 
   // 多單拆單支援 (Split Bins)
   let splitBins = null;
-  if (forceSubmit === 'split' && costRes && costRes.bins) {
-      splitBins = costRes.bins.map((bin, bIdx) => ({
-          binIndex: bIdx + 1,
-          sum: bin.sum,
-          items: (bin.items || []).map(it => ({
-              uuid: it.menuItemUuid || it.uuid,
-              menuItemUuid: it.menuItemUuid || it.uuid,
-              sectionUuid: it.sectionUuid || '',
-              subsectionUuid: it.subsectionUuid || '',
-              price: it.price || 0,
-              title: it.title || it.name || '',
-              quantity: it.qty || it.quantity || 1,
-              qty: it.qty || it.quantity || 1,
-              rawCustomizations: it.rawCustomizations || it.customizations || {},
-              note: it.note || '',
-              storeUuid: it.storeUuid || mainStoreUuid,
-              storeName: it.storeName || ''
-          }))
-      }));
+  if (!costRes && typeof calcOrderCost === 'function' && typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0) {
+      costRes = calcOrderCost(cart);
+      window._lastCostRes = costRes;
+  }
+  const splitBinsData = (costRes && costRes.bins) ? costRes.bins : (window._splitBinsA || null);
+  if (forceSubmit === 'split' && splitBinsData) {
+      splitBins = splitBinsData.map((bin, bIdx) => {
+          const mergedMap = {};
+          (bin.items || []).forEach(it => {
+              const u = it.menuItemUuid || it.uuid || '';
+              const cust = it.rawCustomizations || it.customizations || {};
+              let custKey = '';
+              try {
+                  const sortedKeys = Object.keys(cust).sort();
+                  const sortedObj = {};
+                  for (const k of sortedKeys) sortedObj[k] = cust[k];
+                  custKey = JSON.stringify(sortedObj);
+              } catch(e) {
+                  custKey = '';
+              }
+              const note = (it.note || '').trim();
+              const price = it.price || 0;
+              const key = `${u}__${price}__${custKey}__${note}`;
+              const itQty = parseInt(it.qty || it.quantity || 1, 10) || 1;
+
+              if (!mergedMap[key]) {
+                  mergedMap[key] = {
+                      uuid: u,
+                      menuItemUuid: u,
+                      sectionUuid: it.sectionUuid || fallbackSec || '',
+                      subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
+                      price: price,
+                      title: it.title || it.name || '',
+                      quantity: itQty,
+                      qty: itQty,
+                      rawCustomizations: cust,
+                      customizations: cust,
+                      note: note,
+                      specialInstructions: note,
+                      storeUuid: it.storeUuid || mainStoreUuid,
+                      storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || '',
+                      imgUrl: it.imgUrl || ''
+                  };
+              } else {
+                  mergedMap[key].quantity += itQty;
+                  mergedMap[key].qty += itQty;
+              }
+          });
+
+          return {
+              binIndex: bIdx + 1,
+              sum: bin.sum,
+              items: Object.values(mergedMap)
+          };
+      });
   }
 
   // 🚀 無論何種環境，一律優先送出訂單資料到後端存檔並啟動 5折 團購注入！
   try {
+      // 🛡️ 地址終極防禦：若送單時尚未取得 Uber Eats 座標，即時自動從 Uber 重新取得
+      if ((!currentLat || !currentLng) && addr) {
+          if (typeof autoRefreshAndVerifyAddressFromUber === 'function') {
+              await autoRefreshAndVerifyAddressFromUber(addr, { title: addr });
+          }
+      }
+
       const owStep1 = document.getElementById('owStep1');
       if (owStep1) owStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
       const owStep2 = document.getElementById('owStep2');
@@ -7630,6 +7918,10 @@ costRes.bins.forEach((bin, bIdx) => {
       if (gwStep1) gwStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
       const gwStep2 = document.getElementById('gwStep2');
       if (gwStep2) gwStep2.innerHTML = '<span>⏳</span> 正在連線伺服器建立訂單...';
+      const isGrocerySub = Boolean(window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') || (currentStoreName && (currentStoreName.includes('優市') || currentStoreName.includes('全聯') || currentStoreName.includes('家樂福') || currentStoreName.includes('大潤發') || currentStoreName.includes('愛買') || currentStoreName.includes('美廉社'))));
+      const is150Sub = (currentStoreName && currentStoreName.includes('優市'));
+      const currentPlanType = window.currentSelectedPlan || '150';
+      const cTypeSub = isGrocerySub ? (is150Sub ? '150' : '225') : (currentPlanType === '300' ? 'B' : 'A');
       const res = await fetch(API_BASE_URL + '/api/store_v3', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -7637,7 +7929,9 @@ costRes.bins.forEach((bin, bIdx) => {
               action: 'submit_order',
               order_text: msgText,
               user_id: currentUserId,
-              coupon_type: 'A',
+              coupon_type: cTypeSub,
+              plan_type: currentPlanType,
+              is_grocery: isGrocerySub,
               store_uuid: mainStoreUuid,
               items: structuredItems,
               bins: splitBins,
@@ -7662,8 +7956,26 @@ costRes.bins.forEach((bin, bIdx) => {
       });
       if (res.ok) {
           const d = await res.json();
+          if (d && (d.coupon_disabled || (d.group_order_error && (d.group_order_error.includes('B券') || d.group_order_error.includes('coupon_disabled') || d.group_order_error.includes('暫停發送'))))) {
+              if (currentPlanType === '300') {
+                  window.couponBEnabled = false;
+                  window.currentSelectedPlan = '150';
+                  hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+                  const submitBtn = document.getElementById('checkoutSubmitBtn');
+                  if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
+                  showModal('⚠️ 300 方案配額已滿', '300 方案今日優惠額度已用罄，系統已自動為您切換至「⚡ 150 內半價」方案，請確認後送出。', false, `
+                      <button onclick="document.getElementById('errorModalOverlay').style.display='none'; openCheckoutSummary();" style="width:100%; padding:12px; background:#f43f5e; color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">查看 150 方案明細並送出</button>
+                  `, true);
+                  return;
+              }
+          }
           if (d && d.order_id) submittedOrderId = d.order_id;
           if (d && d.join_url) window.lastFastGroupOrderUrl = d.join_url;
+          if (d && d.sub_orders && d.sub_orders.length > 0) {
+              window.lastSubOrders = d.sub_orders;
+          } else {
+              window.lastSubOrders = null;
+          }
           if (d && d.order_uuid) {
               window.lastGroupOrderUuid = d.order_uuid;
               console.log("✅ [點餐團購] 開團成功，UUID:", d.order_uuid, "網址:", d.join_url);
@@ -7686,7 +7998,23 @@ costRes.bins.forEach((bin, bIdx) => {
     }
     clearCart();
     window._orderSent = true;
-    const fastCartBtnHtml = window.lastFastGroupOrderUrl ? `<button onclick="window.open('${window.lastFastGroupOrderUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🛒 立即在瀏覽器開啟預載 5折 購物車</button>` : '';
+    let fastCartBtnHtml = '';
+    if (window.lastSubOrders && window.lastSubOrders.length > 0) {
+        window.lastSubOrders.forEach((sub, sIdx) => {
+            const bNum = sub.binIndex || (sIdx + 1);
+            const rawUrl = sub.join_url || (sub.order_uuid ? `https://www.ubereats.com/tw/orders/${sub.order_uuid}` : '');
+            const statusUrl = formatOrderStatusUrl(rawUrl);
+            if (statusUrl) {
+                const btnLabel = (bNum === 1) ? '立即查詢訂單狀態1' : `查詢訂單狀態${bNum}`;
+                fastCartBtnHtml += `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:10px; box-shadow:0 4px 12px rgba(5,150,105,0.25);">🔍 ${btnLabel}</button>`;
+            }
+        });
+    } else if (window.lastFastGroupOrderUrl) {
+        const statusUrl = formatOrderStatusUrl(window.lastFastGroupOrderUrl);
+        if (statusUrl) {
+            fastCartBtnHtml = `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🔍 立即查詢訂單狀態</button>`;
+        }
+    }
     const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息 (貼回聊天室)</button>`;
 
     hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
@@ -8658,6 +8986,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         showModal('無法代購', '此店家無法使用折價券，無法代購請見諒', true);
         return;
     } // Reset retries state on store entry
+
+    // 嚴格規範：不可預約之店家 (已知不支援預約) 即時與預約皆不允許進入與下單
+    const unSchedulableStoresQuick = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
+    if (uuid && unSchedulableStoresQuick.includes(uuid)) {
+        const tTypeQuick = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
+        showModal('無法為您代購', '', true, `<div style="text-align:center;">此${tTypeQuick}不支援預約訂單，無法為您代購。請選擇其他${tTypeQuick}。</div>`);
+        return;
+    }
     
     if (typeof originalAppHeaderHtml !== 'undefined' && originalAppHeaderHtml) {
         const appHeaderEl = document.querySelector('.app-header');
@@ -8874,7 +9210,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           return;
       }
 
-      window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP');
+      const isGroceryName = checkStoreName && (checkStoreName.includes('優市') || checkStoreName.includes('全聯') || checkStoreName.includes('家樂福') || checkStoreName.includes('大潤發') || checkStoreName.includes('愛買') || checkStoreName.includes('美廉社'));
+      window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP') || Boolean(isGroceryName);
       window._groceryDisabled = false;
       const is150StoreName = currentStoreName && currentStoreName.includes('優市');
       if (window.isGroceryStore) {
@@ -8884,6 +9221,17 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
               }
           } else if (!currentStoreName.includes('不需外送費、服務費') && !currentStoreName.includes('不需外送費、需要服務費')) {
               currentStoreName += ' (不需外送費、需要服務費)';
+          }
+
+          if (typeof checkGroceryStatus === 'function') {
+              checkGroceryStatus(currentStoreName).then(isDisabled => {
+                  if (isDisabled) {
+                      window._groceryDisabled = true;
+                      if (typeof applyGroceryDisabledUI === 'function') applyGroceryDisabledUI(currentStoreName, false);
+                      const typeTitle = is150StoreName ? '優市' : '生鮮雜貨';
+                      showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
+                  }
+              });
           }
       }
 
@@ -8949,40 +9297,36 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
 
 
-      const isSchedulable = (d.scheduledOrderInfo && d.scheduledOrderInfo.isSchedulable && d.timeWindowPicker && d.timeWindowPicker.dates);
+      const isSchedulable = Boolean(
+          d.scheduledOrderInfo &&
+          d.scheduledOrderInfo.isSchedulable === true &&
+          d.timeWindowPicker &&
+          Array.isArray(d.timeWindowPicker.dates) &&
+          d.timeWindowPicker.dates.length > 0
+      );
 
       // 生鮮雜貨與餐廳皆需通過可接單檢查
-
-      const isGrocery = window.isGroceryStore;
-
-
+      const isGrocery = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
 
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
       
-      // 店家必須支援預約排程 (能預約未來時段)；僅對全聯等生鮮雜貨 (isGrocery) 的即時單放寬限制
+      // 核心業務規定：除生鮮雜貨 (isGrocery) 的即時單特殊允許外，所有餐廳無論是即時單還是預約單，都「必須是能預約的餐廳」才允許代購與下單！
       let strictScheduleCheck = !isSchedulable;
       if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && isGrocery) {
           strictScheduleCheck = false;
       }
 
       if (isTooFar || strictScheduleCheck) {
-
           const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
-
           if (!unSchedulableStores.includes(storeUuid)) {
-
               unSchedulableStores.push(storeUuid);
-
               localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
-
           }
 
-          
+          const tType = isGrocery ? '商店' : '餐廳';
+          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}不支援預約訂單，無法為您代購。請選擇其他${tType}。`;
 
-          const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}不能使用折價券，無法為您代購。請選擇其他${tType}。`;
-
-          showModal('無法接單', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
+          showModal('無法為您代購', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
 
           
 
@@ -10260,251 +10604,214 @@ function normalizeAddress(addr) {
 
 
 
-  function calcOrderCost(items) {
-
-  let totalSum = 0;
-
-  items.forEach(it => totalSum += it.price * it.qty);
-
-  
-
-  let promoDiscount = totalSum >= 150 ? 75 : Math.floor(totalSum / 2);
-
-  let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
-  const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
-
-  let totalExcessDeliveryFee = 0;
-
-  if (!isPickup) {
-    const sg = {};
-    items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
-
-    Object.keys(sg).forEach(s => {
-        totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
-    });
-  }
-
-  let pickupDisc = 0;
-  let noBinCost = (totalSum - promoDiscount) + 20 + totalExcessDeliveryFee - preOrderDiscount;
-
-
-
-
-  let expanded = [];
-
-  items.forEach(it => {
-
-    for (let j = 0; j < it.qty; j++) {
-
-      expanded.push({ 
-        name: it.title, 
-        price: it.price, 
-        storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '未命名餐廳'), 
-        note: it.note || '', 
-        storeDeliveryFee: it.storeDeliveryFee || 0, 
-        storeUrl: it.storeUrl || (typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '') || (window.groupBuyData?.store_url || '')
-      });
-
-    }
-
-  });
-
-
-
-  if (expanded.length <= 1) return { shouldSplit: false, noBinCost, bestCost: noBinCost, bins: null, savings: 0 };
-
-
-
-  expanded.sort((a, b) => b.price - a.price);
-
-
-
-  let bestBins = null;
-
-  let bestCost = Infinity;
-
-
-
-  for (let attempt = 0; attempt < 1000; attempt++) {
-
-    let bins = [];
-
-    let cur = [...expanded];
-
-    if (attempt > 0) {
-
-      for (let i = cur.length - 1; i > 0; i--) {
-
-        const j = Math.floor(Math.random() * (i + 1));
-
-        [cur[i], cur[j]] = [cur[j], cur[i]];
-
-      }
-
-    }
-
-
-
-    for (let item of cur) {
-
-      let placed = false;
-
-      for (let bin of bins) {
-
-        if (bin.sum + item.price <= 150) {
-
-          bin.items.push(item);
-
-          bin.sum += item.price;
-
-          placed = true;
-
-          break;
-
-        }
-
-      }
-
-      if (!placed) {
-
-        let maxGap = -1;
-
-        let bestBin = null;
-
-        for (let bin of bins) {
-
-          if (bin.sum < 150 && (150 - bin.sum) > maxGap) {
-
-            maxGap = 150 - bin.sum;
-
-            bestBin = bin;
-
+  async function checkCouponSettings() {
+    try {
+      const url = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') + '/order_service/api/coupon_settings';
+      const res = await fetch(url, { method: 'GET' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.auto_coupon_b_enabled !== 'undefined') {
+          window.couponBEnabled = Boolean(data.auto_coupon_b_enabled);
+          if (!window.couponBEnabled && window.currentSelectedPlan === '300') {
+            window.currentSelectedPlan = '150';
           }
-
         }
-
-        if (bestBin && (bestBin.sum + item.price <= 150 || Math.random() < 0.3)) {
-
-          bestBin.items.push(item);
-
-          bestBin.sum += item.price;
-
-        } else {
-
-          bins.push({ items: [item], sum: item.price });
-
-        }
-
       }
-
+    } catch (e) {
+      console.warn('checkCouponSettings warning:', e);
     }
-
-
-
-    let isASAP = (typeof scheduleMode === 'undefined' || scheduleMode === 'ASAP');
-    if (!isASAP && typeof getSelectedScheduleTimestamp === 'function') {
-        if (getSelectedScheduleTimestamp() - Date.now() < 2.99 * 3600000) {
-            isASAP = true; // 3小時內的預約單視同即時單標準
-        }
-    }
-    let binLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 99;
-    
-    let validSplit = true;
-
-    for (let bin of bins) {
-
-      if (bin.sum < binLimit) {
-
-        validSplit = false;
-
-        break;
-
-      }
-
-    }
-
-
-
-    if (validSplit) {
-
-      let cost = 0;
-
-        let feePerBin = 20;
-
-      for (let bin of bins) {
-
-        let binPromo = bin.sum >= 150 ? 75 : Math.floor(bin.sum / 2);
-
-        let binFoodCost = bin.sum - binPromo;
-
-        
-
-        let binExcess = 0;
-
-        const bsg = {};
-
-        bin.items.forEach(i => {
-
-            if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[];
-
-            bsg[i.storeName||''].push(i);
-
-        });
-
-        if (!isPickup) {
-            Object.keys(bsg).forEach(s => {
-                binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
-            });
-        }
-
-        
-
-        
-        cost += binFoodCost + feePerBin + binExcess - preOrderDiscount;
-
-
-      }
-
-
-
-
-      if (cost < bestCost) {
-
-        bestCost = cost;
-
-        bestBins = bins;
-
-      }
-
-    }
-
   }
 
+  function getPlanComparison(items) {
+    if (!items || items.length === 0) return null;
+    const res150 = calcOrderCost(items, '150');
+    const res300 = calcOrderCost(items, '300');
+    const final150 = res150.shouldSplit ? res150.bestCost : res150.noBinCost;
+    const final300 = res300.shouldSplit ? res300.bestCost : res300.noBinCost;
+    let recommended = '150';
+    let diff = 0;
+    if (final300 < final150) {
+      recommended = '300';
+      diff = final150 - final300;
+    } else if (final150 < final300) {
+      recommended = '150';
+      diff = final300 - final150;
+    }
+    return {
+      res150,
+      res300,
+      final150,
+      final300,
+      recommended,
+      diff,
+      isEqual: final150 === final300
+    };
+  }
 
+  function calcOrderCost(items, planType) {
+    const activePlan = planType || window.currentSelectedPlan || '150';
+    const isPlan300 = (activePlan === '300');
+    const binTarget = isPlan300 ? 300 : 150;
+    const maxPromo = isPlan300 ? 150 : 75;
+    const feePerBin = isPlan300 ? 50 : 20;
+    const splitThreshold = isPlan300 ? 520 : 280;
 
-  return {
+    let totalSum = 0;
+    items.forEach(it => totalSum += it.price * it.qty);
 
-    shouldSplit: totalSum >= 280 && expanded.length > 1 && bestBins && bestBins.length > 1 && bestCost < noBinCost,
+    let promoDiscount = totalSum >= binTarget ? maxPromo : Math.floor(totalSum / 2);
+    let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
+    const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
 
-    noBinCost,
+    let totalExcessDeliveryFee = 0;
+    if (!isPickup) {
+      const sg = {};
+      items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
+      Object.keys(sg).forEach(s => {
+          totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+      });
+    }
 
-    bestCost,
+    let noBinCost = (totalSum - promoDiscount) + feePerBin + totalExcessDeliveryFee - preOrderDiscount;
 
-    bins: bestBins,
+    let expanded = [];
+    items.forEach(it => {
+      for (let j = 0; j < it.qty; j++) {
+        expanded.push({ 
+          ...it,
+          name: it.title || it.name, 
+          price: it.price, 
+          qty: 1,
+          quantity: 1,
+          storeName: it.storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '未命名餐廳'), 
+          note: it.note || '', 
+          storeDeliveryFee: it.storeDeliveryFee || 0, 
+          storeUrl: it.storeUrl || (typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '') || (window.groupBuyData?.store_url || '')
+        });
+      }
+    });
 
-    savings: noBinCost - bestCost
+    if (expanded.length <= 1) {
+      return { 
+        shouldSplit: false, 
+        noBinCost, 
+        bestCost: noBinCost, 
+        bins: null, 
+        savings: 0,
+        planType: activePlan,
+        feePerBin,
+        maxPromo
+      };
+    }
 
-  };
+    expanded.sort((a, b) => b.price - a.price);
 
-}
+    let bestBins = null;
+    let bestCost = Infinity;
+
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      let bins = [];
+      let cur = [...expanded];
+      if (attempt > 0) {
+        for (let i = cur.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [cur[i], cur[j]] = [cur[j], cur[i]];
+        }
+      }
+
+      for (let item of cur) {
+        let placed = false;
+        for (let bin of bins) {
+          if (bin.sum + item.price <= binTarget) {
+            bin.items.push(item);
+            bin.sum += item.price;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          let maxGap = -1;
+          let bestBin = null;
+          for (let bin of bins) {
+            if (bin.sum < binTarget && (binTarget - bin.sum) > maxGap) {
+              maxGap = binTarget - bin.sum;
+              bestBin = bin;
+            }
+          }
+          if (bestBin && (bestBin.sum + item.price <= binTarget || Math.random() < 0.3)) {
+            bestBin.items.push(item);
+            bestBin.sum += item.price;
+          } else {
+            bins.push({ items: [item], sum: item.price });
+          }
+        }
+      }
+
+      let isASAP = (typeof scheduleMode === 'undefined' || scheduleMode === 'ASAP');
+      if (!isASAP && typeof getSelectedScheduleTimestamp === 'function') {
+          if (getSelectedScheduleTimestamp() - Date.now() < 2.99 * 3600000) {
+              isASAP = true;
+          }
+      }
+      let binLimit = (typeof isClosedStatusBypassed === 'function' && isClosedStatusBypassed()) ? 0 : 99;
+      
+      let validSplit = true;
+      for (let bin of bins) {
+        if (bin.sum < binLimit) {
+          validSplit = false;
+          break;
+        }
+      }
+
+      if (validSplit) {
+        let cost = 0;
+        for (let bin of bins) {
+          let binPromo = bin.sum >= binTarget ? maxPromo : Math.floor(bin.sum / 2);
+          let binFoodCost = bin.sum - binPromo;
+          let binExcess = 0;
+          const bsg = {};
+          bin.items.forEach(i => {
+              if(!bsg[i.storeName||'']) bsg[i.storeName||'']=[];
+              bsg[i.storeName||''].push(i);
+          });
+          if (!isPickup) {
+              Object.keys(bsg).forEach(s => {
+                  binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee||0));
+              });
+          }
+          cost += binFoodCost + feePerBin + binExcess - preOrderDiscount;
+        }
+
+        if (cost < bestCost) {
+          bestCost = cost;
+          bestBins = bins;
+        }
+      }
+    }
+
+    return {
+      shouldSplit: totalSum >= splitThreshold && expanded.length > 1 && bestBins && bestBins.length > 1 && bestCost < noBinCost,
+      noBinCost,
+      bestCost,
+      bins: bestBins,
+      savings: noBinCost - bestCost,
+      planType: activePlan,
+      feePerBin,
+      maxPromo
+    };
+  }
 
 function buildSplitSuggestionHtml(result) {
 
     if (!result.shouldSplit) return '';
 
-    let html = `<div style="background:#fff0f5; border:2px solid #f43f5e; border-radius:12px; padding:15px; margin-top:15px;">`;
+    const isPlan300 = (result && (result.planType === '300' || window.currentSelectedPlan === '300'));
+    const color = isPlan300 ? '#276ef1' : '#f43f5e';
+    const bgColor = isPlan300 ? '#eff6ff' : '#fff0f5';
 
-    html += `<div style="font-weight:bold; color:#f43f5e; font-size:16px; text-align:center; margin-bottom:10px;">💡 多單優惠建議（分成 ${result.bins.length} 單）</div>`;
+    let html = `<div style="background:${bgColor}; border:2px solid ${color}; border-radius:12px; padding:15px; margin-top:15px;">`;
+
+    html += `<div style="font-weight:bold; color:${color}; font-size:16px; text-align:center; margin-bottom:10px;">💡 多單優惠建議（${isPlan300 ? '$300內半價·' : '$150內半價·'}分成 ${result.bins.length} 單）</div>`;
 
     html += `<div style="text-align:center; margin-bottom:12px;">`;
 
@@ -10609,7 +10916,7 @@ function buildSplitSuggestionHtml(result) {
   window.handleSleepIconClick = function(e) {
     if (e && e.stopPropagation) e.stopPropagation();
     const title = document.getElementById('errorModalTitle')?.innerText || '';
-    if (title !== '目前暫時無法接單' && !title.includes('無法接單')) {
+    if (title !== '目前暫時無法接單' && title !== '代訂睡覺中') {
         return;
     }
     window._sleepIconClickCount = (window._sleepIconClickCount || 0) + 1;
@@ -10669,7 +10976,7 @@ function buildSplitSuggestionHtml(result) {
 
   function closeErrorModal() {
     const title = document.getElementById('errorModalTitle')?.innerText || '';
-    if (title === '代訂睡覺中' || ((title === '目前暫時無法接單' || title.includes('無法接單')) && !isClosedStatusBypassed())) {
+    if ((title === '代訂睡覺中' || title === '目前暫時無法接單') && !isClosedStatusBypassed()) {
         return;
     }
     const cb = window.errorModalCloseCallback;
@@ -10682,7 +10989,7 @@ function buildSplitSuggestionHtml(result) {
   }
 
   function showModal(title, text, isError = true, htmlContent = '', hideBtn = false, onClose = null) {
-    if ((title === '目前暫時無法接單' || title.includes('無法接單')) && isClosedStatusBypassed()) {
+    if ((title === '目前暫時無法接單' || title === '代訂睡覺中') && isClosedStatusBypassed()) {
         return;
     }
     window.errorModalCloseCallback = (typeof onClose === 'function') ? onClose : null;
@@ -10691,7 +10998,7 @@ function buildSplitSuggestionHtml(result) {
         text = '';
     }
 
-    if (title === '代訂睡覺中' || title === '目前暫時無法接單' || title.includes('無法接單')) {
+    if (title === '代訂睡覺中' || title === '目前暫時無法接單') {
         document.getElementById('errorModalIcon').innerHTML = '<img class="sleep-icon-img" src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1)); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
@@ -10701,7 +11008,7 @@ function buildSplitSuggestionHtml(result) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">🔒</div>';
     } else if (title.includes('團購')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">👥</div>';
-    } else if (title.includes('時段') || title.includes('預約') || title.includes('尚未營業') || title.includes('無法預約')) {
+    } else if (title.includes('時段') || title.includes('預約') || title.includes('尚未營業') || title.includes('無法預約') || title.includes('代購')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">⏰</div>';
     } else if (title.includes('地址') || title.includes('送達')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">📍</div>';
@@ -10759,8 +11066,11 @@ window.renderSplitTab = function(plan) {
     for (let key in counts) itemStrs.push(counts[key] > 1 ? `${key} x${counts[key]}` : key);
     
     let binFood = bin.sum;
-    let binPromo = (bin.sum >= 150 ? 75 : Math.floor(bin.sum / 2));
-    let binFee = 20;
+    let isPlan300 = (plan === 'B' || window.currentSelectedPlan === '300');
+    let maxPromo = isPlan300 ? 150 : 75;
+    let promoCap = isPlan300 ? 300 : 150;
+    let binPromo = (bin.sum >= promoCap ? maxPromo : Math.floor(bin.sum / 2));
+    let binFee = isPlan300 ? 50 : 20;
     
     let bsg = {};
     bin.items.forEach(i => {
@@ -10781,7 +11091,7 @@ window.renderSplitTab = function(plan) {
     
     let binTotal = binFood - binPromo + binFee + binExcess - binPreorder;
     
-    let titleText = '結帳明細 ($150內半價)';
+    let titleText = (plan === 'B' || window.currentSelectedPlan === '300') ? '結帳明細 ($300內半價)' : '結帳明細 ($150內半價)';
     let html = `
         <div style="font-weight:bold; color:${color}; margin-bottom:2px;">${titleText}</div>
         <div style="margin-bottom:6px; color:#666; font-size:12px; font-weight:bold;">第 ${currentIndex + 1} 單 / 共 ${bins.length} 單</div>
@@ -11841,7 +12151,7 @@ async function loadServerStatusDot() {
                 // 已被使用者以密碼 5318 解鎖，若畫面上正好有無法接單彈窗則自動隱藏
                 const overlay = document.getElementById('errorModalOverlay');
                 const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
-                if (overlay && overlay.style.display !== 'none' && (modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+                if (overlay && overlay.style.display !== 'none' && (modalTitle === '目前暫時無法接單' || modalTitle === '代訂睡覺中')) {
                     overlay.style.display = 'none';
                 }
             }
@@ -11850,7 +12160,7 @@ async function loadServerStatusDot() {
         // 伺服器狀態正常 (非 closed 且非 offline)，若目前正開啟睡覺或無法接單彈窗，則自動關閉解除鎖定
         const overlay = document.getElementById('errorModalOverlay');
         const modalTitle = document.getElementById('errorModalTitle')?.innerText || '';
-        if (overlay && overlay.style.display !== 'none' && (modalTitle === '代訂睡覺中' || modalTitle === '目前暫時無法接單' || modalTitle.includes('無法接單'))) {
+        if (overlay && overlay.style.display !== 'none' && (modalTitle === '代訂睡覺中' || modalTitle === '目前暫時無法接單')) {
             overlay.style.display = 'none';
         }
 
@@ -12648,18 +12958,18 @@ async function checkGroceryStatus(storeName) {
     return false;
 }
 
-function applyGroceryDisabledUI(storeName) {
+function applyGroceryDisabledUI(storeName, popModal = false) {
     window._groceryDisabled = true;
     const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
     const is150 = (sName && sName.includes('優市'));
-    const typeTitle = is150 ? '優市' : '雜貨';
+    const typeTitle = is150 ? '優市' : '生鮮雜貨';
     const couponTitle = is150 ? '優市 150' : '生鮮雜貨 225';
     const noticeEl = document.getElementById('groceryCheckoutNotice');
     if (noticeEl) {
         noticeEl.innerHTML = `
           <div style="background:#FEE2E2; border:1px solid #EF4444; color:#B91C1C; padding:14px; border-radius:10px; font-weight:bold; font-size:15px; text-align:center; box-shadow:0 2px 6px rgba(239,68,68,0.15);">
             ⚠️ 目前已售完 請等待補貨<br>
-            <span style="font-size:13px; font-weight:normal; color:#7F1D1D; margin-top:4px; display:inline-block;">目前已售完 請等待補貨</span>
+            <span style="font-size:13px; font-weight:normal; color:#7F1D1D; margin-top:4px; display:inline-block;">目前${typeTitle}暫停營業，請等待補貨</span>
           </div>
         `;
     }
@@ -12669,8 +12979,11 @@ function applyGroceryDisabledUI(storeName) {
         submitBtn.style.background = '#94A3B8';
         submitBtn.style.cursor = 'not-allowed';
         submitBtn.onclick = function() {
-            showToast(`⚠️ 目前${typeTitle}已售完 請等待補貨`);
+            showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none';" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
         };
+    }
+    if (popModal && typeof showModal === 'function') {
+        showModal('目前暫停營業', `⚠️ 目前${typeTitle}已售完，暫停營業，請等待補貨！`, true, `<button onclick="document.getElementById('errorModalOverlay').style.display='none'; if(typeof handleMainBack==='function') handleMainBack();" style="margin-top:15px; background:#f43f5e; color:#fff; border:none; border-radius:8px; padding:12px; width:100%; font-size:15px; font-weight:bold; cursor:pointer;">我知道了</button>`, true);
     }
 }
 
@@ -12691,11 +13004,11 @@ function restoreGroceryEnabledUI() {
     }
 }
 
-async function checkAndApplyGroceryDisabledUI(storeName) {
+async function checkAndApplyGroceryDisabledUI(storeName, popModal = true) {
     const sName = storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '');
     const isDisabled = await checkGroceryStatus(sName);
     if (isDisabled) {
-        applyGroceryDisabledUI(sName);
+        applyGroceryDisabledUI(sName, popModal);
     } else {
         restoreGroceryEnabledUI();
     }
@@ -13030,17 +13343,17 @@ async function handleFoodOrderSubmit(msgText) {
             if (res.ok) {
                 const data = await res.json();
                 if (data.status === 'success') {
-                    if (data.join_url) {
-                        clearInterval(orderPollTimer);
-                        orderPollTimer = null;
-                        onFastFoodCartSuccess(data.join_url, data.store_name || storeName, data.items_count, data.cookie_serial, data.progress_url);
-                        return;
-                    } else if (data.progress_url) {
-                        clearInterval(orderPollTimer);
-                        orderPollTimer = null;
-                        onOrderProgressSuccess(data.progress_url, data.store_name || storeName);
-                        return;
+                    if (data.cookie_serial) window.lastFastGroupOrderSerial = data.cookie_serial;
+                    if (data.join_url) window.lastFastGroupOrderUrl = data.join_url;
+                    clearInterval(orderPollTimer);
+                    orderPollTimer = null;
+                    const finalProgressUrl = data.progress_url || (submittedOrderId ? `https://liff.line.me/2011657436-QfTNNMU8?id=${submittedOrderId}` : (data.order_id ? `https://liff.line.me/2011657436-QfTNNMU8?id=${data.order_id}` : ''));
+                    if (finalProgressUrl) {
+                        onOrderProgressSuccess(finalProgressUrl, data.store_name || storeName);
+                    } else if (data.join_url) {
+                        onOrderProgressSuccess(data.join_url, data.store_name || storeName);
                     }
+                    return;
                 } else if (data.status === 'error' || data.status === 'cancelled') {
                     clearInterval(orderPollTimer);
                     orderPollTimer = null;
@@ -13098,7 +13411,7 @@ function onFastFoodCartSuccess(joinUrl, storeName, itemsCount, cookieSerial, pro
         `;
     }
     setTimeout(() => {
-        window.location.href = joinUrl;
+        window.location.href = progressUrl || joinUrl;
     }, 1200);
 }
 
