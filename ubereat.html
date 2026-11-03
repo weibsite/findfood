@@ -2789,8 +2789,11 @@ window.addrDebounceTimer = null;
 
 
 
-  async function setAddress(lat, lng, title) {
-
+  async function setAddress(lat, lng, title, placeId) {
+    if (placeId) {
+      window.currentPlaceId = placeId;
+      try { localStorage.setItem('finddog_current_place_id', placeId); } catch(e){}
+    }
     const statusEl = document.getElementById('addrStatus');
 
     statusEl.innerText = ''; 
@@ -7896,6 +7899,7 @@ costRes.bins.forEach((bin, bIdx) => {
                   address: (typeof addr !== 'undefined' && addr) ? addr : '',
                   lat: (typeof currentLat !== 'undefined') ? currentLat : null,
                   lng: (typeof currentLng !== 'undefined') ? currentLng : null,
+                  place_id: (typeof window.currentPlaceId !== 'undefined' && window.currentPlaceId) ? window.currentPlaceId : (function(){ try { return localStorage.getItem('finddog_current_place_id') || ''; } catch(e){ return ''; } })(),
                   phone: (typeof phoneVal !== 'undefined' && phoneVal) ? phoneVal : '',
                   deliveryMethod: (typeof selectedMethodVal !== 'undefined' && selectedMethodVal) ? selectedMethodVal : '當面點交',
                   notes: (typeof finalNote !== 'undefined' && finalNote) ? finalNote : '',
@@ -12584,7 +12588,8 @@ window.selectUberAddrCandidate = async function(idx) {
                     resolvedTitle = `${resolvedTitle}${extraSuffix}`;
                 }
                 window.lastSearchedAddr = resolvedTitle;
-                await setAddress(localHit.lat, localHit.lng, resolvedTitle);
+                window.currentPlaceId = item.id;
+                await setAddress(localHit.lat, localHit.lng, resolvedTitle, item.id);
                 window.syncAddrFloatingPopup(true);
                 window.checkAddressMismatchAndPrompt(rawUserText, item, resolvedTitle);
                 return;
@@ -12625,7 +12630,8 @@ window.selectUberAddrCandidate = async function(idx) {
                         resolvedTitle = `${resolvedTitle}${extraSuffix}`;
                     }
                     window.lastSearchedAddr = resolvedTitle;
-                    await setAddress(data.lat, data.lng, resolvedTitle);
+                    window.currentPlaceId = item.id;
+                    await setAddress(data.lat, data.lng, resolvedTitle, item.id);
                     window.syncAddrFloatingPopup(true);
                     window.checkAddressMismatchAndPrompt(rawUserText, item, resolvedTitle);
                     return;
