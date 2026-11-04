@@ -5421,7 +5421,13 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             storeUrl: typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '',
 
+            uuid: menuItemUuid,
+
             menuItemUuid: menuItemUuid,
+
+            item_uuid: menuItemUuid,
+
+            itemUuid: menuItemUuid,
 
             storeUuid: storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
 
@@ -5433,12 +5439,16 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             rawCustomizations: {},
 
+            customizations: {},
+
+            quantity: 1,
+
             user_name: window.currentGroupBuyId ? getOrPromptGroupBuyUserName() : '',
 
             device_fp: getGroupBuyDeviceFp(),
 
             storeCanPickup: typeof window.currentStoreCanPickup !== 'undefined' ? window.currentStoreCanPickup : false,
-      storeDeliveryFee: typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0,
+      storeDeliveryFee: (window.currentStoreCanPickup ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0)),
       originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
 
           };
@@ -6551,13 +6561,13 @@ function openCheckoutSummary() {
       origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">小計:</td><td style="padding:2px 0 2px 4px;">$${total}</td></tr>`;
       origTable += total >= promoCap ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor};">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor};">-$${maxPromoVal}</td></tr>` : `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:${planThemeColor};">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:${planThemeColor};">-$${Math.floor(total/2)}</td></tr>`;
       origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">代訂費:</td><td style="padding:2px 0 2px 4px;">$${visualSvcFee}</td></tr>`;
-      const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
+      const isDiscount = (cart.length > 0) ? cart.every(it => it.storeCanPickup) : (localStorage.getItem('uberCartIsDiscount') === 'true');
       let aTotalExcess = (function(){
           if (isDiscount) return 0;
           let te = 0; const sg = {};
           cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
           Object.keys(sg).forEach(s => {
-              te += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+              te += Math.max(0, ...sg[s].map(it => (it.storeCanPickup ? 0 : (it.storeDeliveryFee||0))));
           });
           return te;
       })();
@@ -6576,7 +6586,7 @@ function openCheckoutSummary() {
               const sg = {};
               cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
               Object.keys(sg).forEach(s => {
-                  totalExcess += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+                  totalExcess += Math.max(0, ...sg[s].map(it => (it.storeCanPickup ? 0 : (it.storeDeliveryFee||0))));
               });
           }
           let totalOrigExcess = 0;
@@ -7195,9 +7205,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
             // 判斷此訂單店家是否支援外帶自取 (Pickup)
       const isStoreCanPickup = Boolean(
-          window.currentStoreCanPickup ||
-          (cart.length > 0 && cart.some(it => it.storeCanPickup)) ||
-          isStorePickupAvailable(window.currentStoreRawData)
+          (cart.length > 0) ? cart.every(it => it.storeCanPickup) : (window.currentStoreCanPickup || isStorePickupAvailable(window.currentStoreRawData))
       );
 
       const pickupTag = isStoreCanPickup ? '🏷️' : '';
@@ -7543,7 +7551,7 @@ $${promoCapSub}內半價
 
 
         
-        const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
+        const isPickup = (cart.length > 0) ? cart.every(it => it.storeCanPickup) : isStoreCanPickup;
 costRes.bins.forEach((bin, bIdx) => {
 
           msgText += `📦 【多單 ${bIdx + 1}】\n`;
@@ -7569,7 +7577,8 @@ costRes.bins.forEach((bin, bIdx) => {
                 qty: 0, 
                 storeName: sn, 
                 storeUrl: fallbackUrl, 
-                storeDeliveryFee: it.storeDeliveryFee || 0 
+                storeDeliveryFee: (it.storeCanPickup ? 0 : (it.storeDeliveryFee || 0)),
+                storeCanPickup: it.storeCanPickup || false 
               };
 
             }
@@ -7627,7 +7636,7 @@ costRes.bins.forEach((bin, bIdx) => {
           let binExcess = 0;
           if (!isPickup) {
             Object.keys(binStores).forEach(sName => {
-              binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => item.storeDeliveryFee || 0));
+              binExcess += Math.max(0, ...Object.values(binStores[sName]).map(item => (item.storeCanPickup ? 0 : (item.storeDeliveryFee || 0))));
             });
           }
 
@@ -7703,7 +7712,7 @@ costRes.bins.forEach((bin, bIdx) => {
 
           let maxDeliveryFeeForStore = 0;
           items.forEach(it => {
-              if (it.storeDeliveryFee && it.storeDeliveryFee > maxDeliveryFeeForStore) {
+              if (!it.storeCanPickup && it.storeDeliveryFee && it.storeDeliveryFee > maxDeliveryFeeForStore) {
                   maxDeliveryFeeForStore = it.storeDeliveryFee;
               }
           });
@@ -7745,7 +7754,7 @@ costRes.bins.forEach((bin, bIdx) => {
         let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
 
         
-        const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
+        const isPickup = (cart.length > 0) ? cart.every(it => it.storeCanPickup) : isStoreCanPickup;
         if (isPickup) {
             totalExcessDeliveryFee = 0;
         }
@@ -7848,9 +7857,12 @@ costRes.bins.forEach((bin, bIdx) => {
   const structuredItems = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => {
       const baseNote = (it.note || '').trim();
       const combinedNote = foodNotes ? (baseNote ? `${baseNote} | 備註: ${foodNotes}` : `備註: ${foodNotes}`) : baseNote;
+      const itemUuidVal = it.menuItemUuid || it.uuid || it.item_uuid || it.itemUuid || '';
       return {
-          uuid: it.menuItemUuid || it.uuid,
-          menuItemUuid: it.menuItemUuid || it.uuid,
+          uuid: itemUuidVal,
+          menuItemUuid: itemUuidVal,
+          item_uuid: itemUuidVal,
+          itemUuid: itemUuidVal,
           sectionUuid: it.sectionUuid || fallbackSec || '',
           subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
           price: it.price || 0,
@@ -7907,6 +7919,8 @@ costRes.bins.forEach((bin, bIdx) => {
                   mergedMap[key] = {
                       uuid: u,
                       menuItemUuid: u,
+                      item_uuid: u,
+                      itemUuid: u,
                       sectionUuid: it.sectionUuid || fallbackSec || '',
                       subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
                       price: price,
@@ -8195,6 +8209,12 @@ async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUui
       }
 
       if (json.status === 'success' && json.data) {
+        if (json.data.sectionUuid) currentItem.sectionUuid = json.data.sectionUuid;
+        if (json.data.subsectionUuid) currentItem.subsectionUuid = json.data.subsectionUuid;
+        if (json.data.uuid) {
+            currentItem.uuid = json.data.uuid;
+            currentItem.menuItemUuid = json.data.uuid;
+        }
         currentCustomizations = json.data.customizationsList || [];
         if (currentCustomizations.length === 0) {
           window.noOptionsItems.add(menuItemUuid);
@@ -8492,8 +8512,9 @@ function recalcCustomizations() {
 
 
 
-    const collectSelections = (container, currentPrefix = '') => {
-        container.querySelectorAll(':scope > .cust-group').forEach(groupDiv => {
+    const collectSelections = (container, currentPrefix = '', parentPath = '') => {
+        let childGroupIndex = 0;
+        container.querySelectorAll(':scope > .cust-group').forEach((groupDiv, gIdx) => {
             const rawGTitle = groupDiv.getAttribute('data-title') || '';
             const gTitle = cleanGroupTitle(rawGTitle);
 
@@ -8522,14 +8543,20 @@ function recalcCustomizations() {
                     extraPrice += (price * qty);
                     const optGroupUuid = groupDiv.getAttribute('data-group-uuid') || '';
                     const optOptionUuid = radio ? radio.getAttribute('data-opt-uuid') : (qtySpan ? qtySpan.getAttribute('data-opt-uuid') : '');
+                    
+                    let gKey = '';
                     if (optGroupUuid && optOptionUuid) {
-                        const gKey = optGroupUuid + '+0';
+                        const currentGroupIdx = parentPath ? childGroupIndex : gIdx;
+                        gKey = parentPath ? `${parentPath},${optGroupUuid}+${currentGroupIdx}` : `${optGroupUuid}+${currentGroupIdx}`;
                         if (!currentItem.rawCustomizations[gKey]) currentItem.rawCustomizations[gKey] = [];
                         currentItem.rawCustomizations[gKey].push({
                             uuid: optOptionUuid,
+                            optionUuid: optOptionUuid,
+                            groupUuid: optGroupUuid,
                             price: Math.round(price * 100),
                             quantity: qty,
                             title: oTitle,
+                            groupTitle: gTitle,
                             customizationMeta: {
                                 title: gTitle,
                                 isPickOne: !!radio
@@ -8566,7 +8593,9 @@ function recalcCustomizations() {
                             } else {
                                 nextPrefix = optText;
                             }
-                            collectSelections(childrenDiv, nextPrefix);
+                            // 關鍵：將母選項逗號路徑傳遞給子客製化群組
+                            const nextParentPath = `${gKey},${optOptionUuid}`;
+                            collectSelections(childrenDiv, nextPrefix, nextParentPath);
                         }
                     }
                     
@@ -8582,6 +8611,9 @@ function recalcCustomizations() {
                     }
                 }
             });
+            if (parentPath) {
+                childGroupIndex++;
+            }
         });
     };
 
@@ -8783,11 +8815,15 @@ const note = document.getElementById('modalNote').value.trim();
 
       storeUrl: typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '',
 
-      menuItemUuid: currentItem.menuItemUuid,
+      uuid: currentItem.menuItemUuid || currentItem.uuid,
+      menuItemUuid: currentItem.menuItemUuid || currentItem.uuid,
+      item_uuid: currentItem.menuItemUuid || currentItem.uuid,
+      itemUuid: currentItem.menuItemUuid || currentItem.uuid,
       storeUuid: currentItem.storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
       sectionUuid: currentItem.sectionUuid || '',
       subsectionUuid: currentItem.subsectionUuid || '',
       rawCustomizations: currentItem.rawCustomizations || {},
+      customizations: currentItem.rawCustomizations || {},
       imgUrl: currentItem.imgUrl || '',
 
         title: currentItem.title,
@@ -8796,6 +8832,8 @@ const note = document.getElementById('modalNote').value.trim();
 
       qty: currentQty,
 
+      quantity: currentQty,
+
       note: fullNote,
 
       user_name: window.currentGroupBuyId ? getOrPromptGroupBuyUserName() : '',
@@ -8803,7 +8841,7 @@ const note = document.getElementById('modalNote').value.trim();
       device_fp: getGroupBuyDeviceFp(),
 
       storeCanPickup: typeof window.currentStoreCanPickup !== 'undefined' ? window.currentStoreCanPickup : false,
-      storeDeliveryFee: typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0,
+      storeDeliveryFee: (window.currentStoreCanPickup ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0)),
       originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
 
     };
@@ -9243,6 +9281,11 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       window.currentStoreRawData = d;
       window.currentStoreCanPickup = isStorePickupAvailable(d);
+      if (window.currentStoreCanPickup || diningMode === 'PICKUP') {
+          localStorage.setItem('uberCartIsDiscount', 'true');
+      } else {
+          localStorage.setItem('uberCartIsDiscount', 'false');
+      }
 
       // 檢查取得後的官方店家標題是否在黑名單中
       if (d && d.title && typeof isStoreBlacklisted === 'function' && isStoreBlacklisted(d.title)) {
@@ -9848,63 +9891,55 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       const etaHtml = etaText ? `<div style="text-align: center; color: #555; font-size: 14px; margin-top: 5px; margin-bottom: 5px; font-weight: bold;">⏱️ 預計抵達時間 ${escapeHTML(etaText)}</div>` : '';
 
+      function getStoreFareText(storeObj) {
+          if (!storeObj) return '';
+          // 1. 優先以官方原始基準外送費 fareInfo.serviceFee 為準（非生鮮雜貨時），不受各帳號促銷減免干擾
+          if (!window.isGroceryStore && storeObj.fareInfo && typeof storeObj.fareInfo.serviceFee === 'number') {
+              return `${storeObj.fareInfo.serviceFee}TWD Delivery Fee`;
+          }
+          // 2. 備援：若有 modalityInfo，優先尋找 STRIKE_THROUGH 劃線原價
+          try {
+              const modOpts = storeObj.modalityInfo && storeObj.modalityInfo.modalityOptions;
+              if (Array.isArray(modOpts)) {
+                  const delOpt = modOpts.find(o => o.diningMode === 'DELIVERY') || modOpts[0];
+                  const richElements = delOpt && delOpt.priceTitleRichText && delOpt.priceTitleRichText.richTextElements;
+                  if (Array.isArray(richElements)) {
+                      for (const el of richElements) {
+                          const decs = el.text && el.text.predefinedDecorations;
+                          if (Array.isArray(decs) && decs.includes('STRIKE_THROUGH') && el.text && el.text.text && el.text.text.text) {
+                              return el.text.text.text.trim();
+                          }
+                      }
+                      const parts = richElements
+                          .filter(el => el.type === 'text' && el.text && el.text.text && el.text.text.text)
+                          .map(el => el.text.text.text.trim())
+                          .filter(Boolean);
+                      if (parts.length > 0) return parts.join(' ');
+                  }
+              }
+          } catch(e) {}
+          // 3. 最後備援：fareBadge.text
+          if (storeObj.fareBadge && storeObj.fareBadge.text) return storeObj.fareBadge.text;
+          return '';
+      }
 
-
-      const isPickupDiscount = (localStorage.getItem('uberCartIsDiscount') === 'true') || (diningMode === 'PICKUP');
+      const isPickupDiscount = (diningMode === 'PICKUP') || Boolean(window.currentStoreCanPickup);
 
       let fareHtml = '<div id="storeFareArea" style="text-align: center; color: #999; font-size: 13px; margin-bottom: 10px;">運費查詢中...</div>';
 
       if (isPickupDiscount) {
           currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
           fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">免運費 🎉</div>`;
-      } else if (d.fareBadge && d.fareBadge.text) {
-
-          const fareText = d.fareBadge.text;
-
-          if (fareText.toLowerCase().includes('no fee')) {
-
-              fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費</div>`;
-
+      } else if (!window.isGroceryStore && d && d.fareInfo && typeof d.fareInfo.serviceFee === 'number') {
+          const fee = d.fareInfo.serviceFee;
+          const displayFee = fee > 50 ? (fee - 50) : 0;
+          if (displayFee <= 0) {
+              currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = fee;
+              fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費</div>`;
           } else {
-
-              const match = fareText.match(/(\d+)/);
-
-              if (match) {
-
-                  let fee = parseInt(match[1], 10);
-
-                  let displayFee = 0;
-
-                  if (fee > 50) {
-
-                      displayFee = fee - 50;
-
-                  } else {
-
-                      displayFee = fee - 10;
-
-                  }
-
-                  
-
-                  if (displayFee <= 0) {
-
-                      currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
-
-                      fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費</div>`;
-
-                  } else {
-
-                      currentStoreDeliveryFee = displayFee; currentOriginalDeliveryFee = typeof fee !== 'undefined' ? fee : (displayFee > 0 ? displayFee + 50 : 0);
-
-                      fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 外送費超過50 需要額外 ${displayFee} 元外送費用</div>`;
-
-                  }
-
-              }
-
+              currentStoreDeliveryFee = displayFee; currentOriginalDeliveryFee = fee;
+              fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 外送費超過50 需要額外 ${displayFee} 元外送費用</div>`;
           }
-
       }
 
       
@@ -9914,7 +9949,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           const is150Store = (currentStoreName && currentStoreName.includes('優市'));
           if (is150Store) {
               window.groceryServiceFee = 0;
-              fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、<span style="color:#d32f2f;">免服務費</span></div>`;
+              fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、<span style="color:#d32f2f;">免服務費</span></div>`;
               currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
           } else {
               window.groceryServiceFee = null;
@@ -9939,7 +9974,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                       feeText = `服務費${displayFee}`;
                   }
               } catch(e) { console.error(e); }
-              fareHtml = `<div style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、${feeText}</div>`;
+              fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費、${feeText}</div>`;
               currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
           }
 
@@ -10257,7 +10292,7 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
       // === Background fetch v1 for delivery fee ===
       (async () => {
           try {
-              const isPickupDiscount = (localStorage.getItem('uberCartIsDiscount') === 'true') || (diningMode === 'PICKUP');
+              const isPickupDiscount = (diningMode === 'PICKUP') || Boolean(window.currentStoreCanPickup);
               if (isPickupDiscount) {
                   currentStoreDeliveryFee = 0;
                   currentOriginalDeliveryFee = 0;
@@ -10304,43 +10339,52 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
               if (feeJson.data || feeJson.status === 'success') {
                   const fd = feeJson.data || feeJson;
                   const fareArea = document.getElementById('storeFareArea');
-                  if (!fareArea) return;
                   
-                  if (fd.fareBadge && fd.fareBadge.text) {
-                      const fareText = fd.fareBadge.text;
+                  const storeFareText = getStoreFareText(fd);
+                  if (storeFareText) {
+                      const fareText = storeFareText;
                       if (fareText.toLowerCase().includes('no fee')) {
                           currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
-                          fareArea.innerHTML = '免運費 🎉';
-                          fareArea.style.color = '#d32f2f';
-                          fareArea.style.fontWeight = 'bold';
-                          fareArea.style.fontSize = '14px';
+                          if (fareArea) {
+                              fareArea.innerHTML = '免運費 🎉';
+                              fareArea.style.color = '#d32f2f';
+                              fareArea.style.fontWeight = 'bold';
+                              fareArea.style.fontSize = '14px';
+                          }
                       } else {
                           const match = fareText.match(/(\d+)/);
                           if (match) {
                               let fee = parseInt(match[1], 10);
-                              let displayFee = fee > 50 ? fee - 50 : fee - 10;
+                              let displayFee = fee > 50 ? (fee - 50) : 0;
                               if (displayFee <= 0) {
-                                  currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
-                                  fareArea.innerHTML = '免運費 🎉';
-                                  fareArea.style.color = '#d32f2f';
-                                  fareArea.style.fontWeight = 'bold';
-                                  fareArea.style.fontSize = '14px';
+                                  currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = fee;
+                                  if (fareArea) {
+                                      fareArea.innerHTML = '免運費 🎉';
+                                      fareArea.style.color = '#d32f2f';
+                                      fareArea.style.fontWeight = 'bold';
+                                      fareArea.style.fontSize = '14px';
+                                  }
                               } else {
-                                  currentStoreDeliveryFee = displayFee; currentOriginalDeliveryFee = typeof fee !== 'undefined' ? fee : (displayFee > 0 ? displayFee + 50 : 0);
-                                  fareArea.innerHTML = `⚠️ 超過50元免運 額外運費 ${displayFee} 元`;
-                                  fareArea.style.color = '#d32f2f';
-                                  fareArea.style.fontWeight = 'bold';
-                                  fareArea.style.fontSize = '14px';
+                                  currentStoreDeliveryFee = displayFee; currentOriginalDeliveryFee = fee;
+                                  if (fareArea) {
+                                      fareArea.innerHTML = `⚠️ 超過50元免運 額外運費 ${displayFee} 元`;
+                                      fareArea.style.color = '#d32f2f';
+                                      fareArea.style.fontWeight = 'bold';
+                                      fareArea.style.fontSize = '14px';
+                                  }
                               }
                           }
                       }
                   } else {
-                      fareArea.innerHTML = '免運費 🎉';
-                      fareArea.style.color = '#d32f2f';
-                      fareArea.style.fontWeight = 'bold';
-                      fareArea.style.fontSize = '14px';
+                      if (fareArea) {
+                          fareArea.innerHTML = '免運費 🎉';
+                          fareArea.style.color = '#d32f2f';
+                          fareArea.style.fontWeight = 'bold';
+                          fareArea.style.fontSize = '14px';
+                      }
                       currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
                   }
+                  if (typeof updateCartUI === 'function') updateCartUI();
                   
                   const is150Store = (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('優市'));
                   if (is150Store) {
@@ -10706,14 +10750,14 @@ function normalizeAddress(addr) {
 
     let promoDiscount = totalSum >= binTarget ? maxPromo : Math.floor(totalSum / 2);
     let preOrderDiscount = typeof getPreOrderDiscount === 'function' ? getPreOrderDiscount() : 0;
-    const isPickup = localStorage.getItem('uberCartIsDiscount') === 'true';
+    const isPickup = (items && items.length > 0) ? items.every(it => it.storeCanPickup) : (localStorage.getItem('uberCartIsDiscount') === 'true');
 
     let totalExcessDeliveryFee = 0;
     if (!isPickup) {
       const sg = {};
       items.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
       Object.keys(sg).forEach(s => {
-          totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => it.storeDeliveryFee||0));
+          totalExcessDeliveryFee += Math.max(0, ...sg[s].map(it => (it.storeCanPickup ? 0 : (it.storeDeliveryFee||0))));
       });
     }
 
@@ -11124,10 +11168,10 @@ window.renderSplitTab = function(plan) {
         bsg[sn].push(i);
     });
     let binExcess = 0;
-    const isDiscount = localStorage.getItem('uberCartIsDiscount') === 'true';
+    const isDiscount = (bin.items && bin.items.length > 0) ? bin.items.every(it => it.storeCanPickup) : ((cart.length > 0) ? cart.every(it => it.storeCanPickup) : (localStorage.getItem('uberCartIsDiscount') === 'true'));
     if (!isDiscount) {
         Object.keys(bsg).forEach(s => {
-            binExcess += Math.max(0, ...bsg[s].map(it => it.storeDeliveryFee || 0));
+            binExcess += Math.max(0, ...bsg[s].map(it => (it.storeCanPickup ? 0 : (it.storeDeliveryFee || 0))));
         });
     }
     const binPickupDisc = 0;
