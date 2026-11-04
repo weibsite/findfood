@@ -8426,8 +8426,9 @@ function recalcCustomizations() {
 
 
 
-    const collectSelections = (container, currentPrefix = '') => {
-        container.querySelectorAll(':scope > .cust-group').forEach(groupDiv => {
+    const collectSelections = (container, currentPrefix = '', parentPath = '') => {
+        let childGroupIndex = 0;
+        container.querySelectorAll(':scope > .cust-group').forEach((groupDiv, gIdx) => {
             const rawGTitle = groupDiv.getAttribute('data-title') || '';
             const gTitle = cleanGroupTitle(rawGTitle);
 
@@ -8456,8 +8457,11 @@ function recalcCustomizations() {
                     extraPrice += (price * qty);
                     const optGroupUuid = groupDiv.getAttribute('data-group-uuid') || '';
                     const optOptionUuid = radio ? radio.getAttribute('data-opt-uuid') : (qtySpan ? qtySpan.getAttribute('data-opt-uuid') : '');
+                    
+                    let gKey = '';
                     if (optGroupUuid && optOptionUuid) {
-                        const gKey = optGroupUuid + '+0';
+                        const currentGroupIdx = parentPath ? childGroupIndex : gIdx;
+                        gKey = parentPath ? `${parentPath},${optGroupUuid}+${currentGroupIdx}` : `${optGroupUuid}+${currentGroupIdx}`;
                         if (!currentItem.rawCustomizations[gKey]) currentItem.rawCustomizations[gKey] = [];
                         currentItem.rawCustomizations[gKey].push({
                             uuid: optOptionUuid,
@@ -8466,6 +8470,7 @@ function recalcCustomizations() {
                             price: Math.round(price * 100),
                             quantity: qty,
                             title: oTitle,
+                            groupTitle: gTitle,
                             customizationMeta: {
                                 title: gTitle,
                                 isPickOne: !!radio
@@ -8502,7 +8507,9 @@ function recalcCustomizations() {
                             } else {
                                 nextPrefix = optText;
                             }
-                            collectSelections(childrenDiv, nextPrefix);
+                            // 關鍵：將母選項逗號路徑傳遞給子客製化群組
+                            const nextParentPath = `${gKey},${optOptionUuid}`;
+                            collectSelections(childrenDiv, nextPrefix, nextParentPath);
                         }
                     }
                     
@@ -8518,6 +8525,9 @@ function recalcCustomizations() {
                     }
                 }
             });
+            if (parentPath) {
+                childGroupIndex++;
+            }
         });
     };
 
@@ -9795,13 +9805,24 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       function getStoreFareText(storeObj) {
           if (!storeObj) return '';
-          if (storeObj.fareBadge && storeObj.fareBadge.text) return storeObj.fareBadge.text;
+          // 1. 優先以官方原始基準外送費 fareInfo.serviceFee 為準（非生鮮雜貨時），不受各帳號促銷減免干擾
+          if (!window.isGroceryStore && storeObj.fareInfo && typeof storeObj.fareInfo.serviceFee === 'number') {
+              return `${storeObj.fareInfo.serviceFee}TWD Delivery Fee`;
+          }
+          // 2. 備援：若有 modalityInfo，優先尋找 STRIKE_THROUGH 劃線原價
           try {
               const modOpts = storeObj.modalityInfo && storeObj.modalityInfo.modalityOptions;
               if (Array.isArray(modOpts)) {
                   const delOpt = modOpts.find(o => o.diningMode === 'DELIVERY') || modOpts[0];
-                  if (delOpt && delOpt.priceTitleRichText && delOpt.priceTitleRichText.richTextElements) {
-                      const parts = delOpt.priceTitleRichText.richTextElements
+                  const richElements = delOpt && delOpt.priceTitleRichText && delOpt.priceTitleRichText.richTextElements;
+                  if (Array.isArray(richElements)) {
+                      for (const el of richElements) {
+                          const decs = el.text && el.text.predefinedDecorations;
+                          if (Array.isArray(decs) && decs.includes('STRIKE_THROUGH') && el.text && el.text.text && el.text.text.text) {
+                              return el.text.text.text.trim();
+                          }
+                      }
+                      const parts = richElements
                           .filter(el => el.type === 'text' && el.text && el.text.text && el.text.text.text)
                           .map(el => el.text.text.text.trim())
                           .filter(Boolean);
@@ -9809,6 +9830,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                   }
               }
           } catch(e) {}
+          // 3. 最後備援：fareBadge.text
+          if (storeObj.fareBadge && storeObj.fareBadge.text) return storeObj.fareBadge.text;
           return '';
       }
 
