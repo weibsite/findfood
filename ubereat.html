@@ -733,6 +733,31 @@
 
 <script>
 
+function decodeStoreUuid(raw) {
+    if (!raw) return '';
+    raw = String(raw).trim();
+    if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(raw)) {
+        return raw.toLowerCase();
+    }
+    if (/^[a-zA-Z0-9_-]{22}$/.test(raw)) {
+        try {
+            let b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4 !== 0) b64 += '=';
+            const binary = atob(b64);
+            if (binary.length === 16) {
+                let hex = '';
+                for (let i = 0; i < 16; i++) {
+                    const h = binary.charCodeAt(i).toString(16).padStart(2, '0');
+                    hex += h;
+                }
+                return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`.toLowerCase();
+            }
+        } catch (e) {}
+    }
+    return raw;
+}
+window.decodeStoreUuid = decodeStoreUuid;
+
 function showToast(msg) {
     if (!document.body) {
         window.addEventListener('DOMContentLoaded', () => showToast(msg));
@@ -1875,17 +1900,23 @@ function validateStoreSchedule() {
     }
 
     const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
-    // 嚴格規範：除全聯生鮮雜貨即時單特殊允許外，所有餐廳無論是即時單還是預約單，都「必須是能預約的餐廳」才允許下單！
+    // 規範檢查：預約單需確認店家支援預約；即時單只要店家營業中即可正常接單
     if (rawData) {
-        const isSched = Boolean(
-            rawData.scheduledOrderInfo &&
-            rawData.scheduledOrderInfo.isSchedulable === true &&
+        const hasPickerWindows = Boolean(
             rawData.timeWindowPicker &&
             Array.isArray(rawData.timeWindowPicker.dates) &&
-            rawData.timeWindowPicker.dates.length > 0
+            rawData.timeWindowPicker.dates.some(dateObj =>
+                (dateObj.listItems && dateObj.listItems.length > 0) ||
+                (dateObj.timeWindows && dateObj.timeWindows.length > 0)
+            )
         );
-        const allowWithoutSched = isGr && scheduleMode === 'ASAP';
-        if (!allowWithoutSched && !isSched) {
+        const isSched = Boolean(
+            (rawData.scheduledOrderInfo && rawData.scheduledOrderInfo.isSchedulable === true) ||
+            hasPickerWindows
+        );
+        const isStoreOpen = (rawData.isOpen !== false && rawData.isOrderable !== false);
+        const allowInAsap = scheduleMode === 'ASAP' && (isGr || isStoreOpen);
+        if (!allowInAsap && !isSched) {
             return { valid: false, reason: 'NOT_SCHEDULABLE', text: '此餐廳不支援預約，無法代購' };
         }
     }
@@ -3289,7 +3320,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
         const safeMetaText = (metaText || '').replace(/'/g, "\\'");
         const safeEtdText = (etdText || metaText || '免運專區').replace(/'/g, "\\'");
         const cardOnclick = isPickup
-            ? `localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'PICKUP', '${safeEtdText}')`
+            ? `localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'DELIVERY', '${safeEtdText}')`
             : `localStorage.setItem('uberCartIsDiscount', 'false'); openStore('${s.storeUuid}', decodeURIComponent('${encodeURIComponent(name).replace(/'/g, "%27")}'), '${s.actionUrl || ''}', false, 'DELIVERY', '${safeMetaText}')`;
 
         return `
@@ -4043,7 +4074,7 @@ async function searchStoresPickup(q) {
 
             const safeEtdText = (etdText || '').replace(/'/g, "\\'");
             return `
-            <div class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${storeUuid}', '${name.replace(/'/g, "\\'")}', '${actionUrl}', false, 'PICKUP', '${safeEtdText}')" style="position:relative;">
+            <div class="card" onclick="localStorage.setItem('uberCartIsDiscount', 'true'); openStore('${storeUuid}', '${name.replace(/'/g, "\\'")}', '${actionUrl}', false, 'DELIVERY', '${safeEtdText}')" style="position:relative;">
                 ${distBadge}
                 <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); color:#00cc66; padding:6px 14px; border-radius:20px; font-size:20px; font-weight:bold; letter-spacing:0.5px; z-index:3; box-shadow:0 2px 6px rgba(0,0,0,0.3);">免運費</div>
                 <div class="card-img" style="background-image: url('${imgUrl}');"></div>
@@ -5423,7 +5454,7 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
             device_fp: getGroupBuyDeviceFp(),
 
             storeCanPickup: typeof window.currentStoreCanPickup !== 'undefined' ? window.currentStoreCanPickup : false,
-      storeDeliveryFee: (window.currentStoreCanPickup ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0)),
+      storeDeliveryFee: (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
       originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
 
           };
@@ -8753,7 +8784,7 @@ const note = document.getElementById('modalNote').value.trim();
       device_fp: getGroupBuyDeviceFp(),
 
       storeCanPickup: typeof window.currentStoreCanPickup !== 'undefined' ? window.currentStoreCanPickup : false,
-      storeDeliveryFee: (window.currentStoreCanPickup ? 0 : (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0)),
+      storeDeliveryFee: (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
       originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
 
     };
@@ -8982,9 +9013,10 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
         return;
     } // Reset retries state on store entry
 
-    // 嚴格規範：不可預約之店家 (已知不支援預約) 即時與預約皆不允許進入與下單
+    // 嚴格規範：不可預約之店家 (已知不支援預約)
+    // 只有在 SCHEDULE 模式下才快速攔截 unSchedulableStores，避免即時單被歷史快取誤擋
     const unSchedulableStoresQuick = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
-    if (uuid && unSchedulableStoresQuick.includes(uuid)) {
+    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE' && uuid && unSchedulableStoresQuick.includes(uuid)) {
         const tTypeQuick = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
         showModal('無法為您代購', '', true, `<div style="text-align:center;">此${tTypeQuick}不支援預約訂單，無法為您代購。請選擇其他${tTypeQuick}。</div>`);
         return;
@@ -9062,10 +9094,11 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     }
     window.currentStoreName = currentStoreName;
 
-    if(actionUrl) {
-        currentStoreUrl = 'https://www.ubereats.com/tw' + actionUrl + (actionUrl.includes('?') ? '&' : '?') + 'diningMode=' + diningMode;
+    const cleanActionUrl = (actionUrl || '').replace(/([?&])diningMode=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+    if(cleanActionUrl) {
+        currentStoreUrl = 'https://www.ubereats.com/tw' + cleanActionUrl + (cleanActionUrl.includes('?') ? '&' : '?') + 'diningMode=' + diningMode;
     } else {
-        currentStoreUrl = 'https://www.ubereats.com/tw/store/-/' + uuid + '?diningMode=' + diningMode;
+        currentStoreUrl = 'https://www.ubereats.com/tw/store/-/' + (decodeStoreUuid(uuid) || uuid) + '?diningMode=' + diningMode;
     }
 
       currentStoreUuid = uuid;
@@ -9297,87 +9330,39 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
 
 
-      const isSchedulable = Boolean(
-          d.scheduledOrderInfo &&
-          d.scheduledOrderInfo.isSchedulable === true &&
+      const hasPickerWindows = Boolean(
           d.timeWindowPicker &&
           Array.isArray(d.timeWindowPicker.dates) &&
-          d.timeWindowPicker.dates.length > 0
+          d.timeWindowPicker.dates.some(dateObj =>
+              (dateObj.listItems && dateObj.listItems.length > 0) ||
+              (dateObj.timeWindows && dateObj.timeWindows.length > 0)
+          )
+      );
+
+      const isSchedulable = Boolean(
+          (d.scheduledOrderInfo && d.scheduledOrderInfo.isSchedulable === true) ||
+          hasPickerWindows
       );
 
       // 生鮮雜貨與餐廳皆需通過可接單檢查
       const isGrocery = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
 
-      const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
-      
-      // 核心業務規定：除生鮮雜貨 (isGrocery) 的即時單特殊允許外，所有餐廳無論是即時單還是預約單，都「必須是能預約的餐廳」才允許代購與下單！
-      let strictScheduleCheck = !isSchedulable;
-      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'ASAP' && isGrocery) {
-          strictScheduleCheck = false;
-      }
-
-      if (isTooFar || strictScheduleCheck) {
-          const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
-          if (!unSchedulableStores.includes(storeUuid)) {
-              unSchedulableStores.push(storeUuid);
-              localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
-          }
-
-          const tType = isGrocery ? '商店' : '餐廳';
-          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}不支援預約訂單，無法為您代購。請選擇其他${tType}。`;
-
-          showModal('無法為您代購', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
-
-          
-
-          resultsDiv.innerHTML = oldHtml;
-
-          const cardEl = document.getElementById('card_' + storeUuid);
-
-          if (cardEl) {
-
-              cardEl.style.filter = 'grayscale(100%)';
-
-              cardEl.style.opacity = '0.6';
-
-          }
-
-          return;
-
-      }
-
-
-
-            // 解析所有可用時段，供預約與即時單狀態判斷
-
+      // 解析所有可用時段，供預約與即時單狀態判斷
       let availableWindows = [];
-
       if (d.timeWindowPicker && d.timeWindowPicker.dates) {
-
           d.timeWindowPicker.dates.forEach(dateObj => {
-
               if (dateObj.listItems) {
-
                   dateObj.listItems.forEach(item => {
-
                       if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
-
                           availableWindows.push(item.timeWindowViewModel.timeWindow);
-
                       }
-
                   });
-
               }
-
           });
-
       }
       if (typeof interleaveThreeHourWindows === 'function') {
           availableWindows = interleaveThreeHourWindows(availableWindows, storeName, isGrocery);
       }
-
-
 
       // 檢查是否被 Uber 標記為關閉 / 休息中 / 無法即時接單
       const isStoreClosedByUber = Boolean(d.closedMessage && d.closedMessage.trim()) ||
@@ -9392,6 +9377,49 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const nowSec = Date.now() / 1000;
       const isNextWindowWithin30 = availableWindows.length > 0 && ((availableWindows[0].startTimeSeconds - nowSec) <= 30 * 60) && ((availableWindows[0].startTimeSeconds - nowSec) >= -15 * 60);
       const isWithin30 = isOpeningWithin30Minutes(badgeTime || storeClosedNotice) || isNextWindowWithin30;
+
+      const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
+      const isStoreOpen = (d.isOpen !== false && d.isOrderable !== false && !isStoreClosedByUber);
+
+      let strictScheduleCheck = false;
+      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+          // 預約單模式：店家必須支援預約時段
+          strictScheduleCheck = !isSchedulable;
+      } else {
+          // 即時單模式：除生鮮雜貨外，若店家已關閉且無任何預約時段，才判定無法接單
+          if (!isGrocery && !isStoreOpen && !isSchedulable) {
+              strictScheduleCheck = true;
+          }
+      }
+
+      if (isTooFar || strictScheduleCheck) {
+          const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
+          if (!unSchedulableStores.includes(storeUuid)) {
+              unSchedulableStores.push(storeUuid);
+              localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
+          }
+
+          const tType = isGrocery ? '商店' : '餐廳';
+          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}目前未營業，無法訂餐。請選擇其他${tType}。`;
+
+          showModal('店家未營業', errorMsg, true, `<div style="text-align:center;">${errorMsg}</div>`);
+
+          resultsDiv.innerHTML = oldHtml;
+          const cardEl = document.getElementById('card_' + storeUuid);
+          if (cardEl) {
+              cardEl.style.filter = 'grayscale(100%)';
+              cardEl.style.opacity = '0.6';
+          }
+          return;
+      } else {
+          // 若店家通過檢查，自動自 unSchedulableStores 解除封鎖 (自我修復歷史誤判)
+          const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
+          const unIdx = unSchedulableStores.indexOf(storeUuid);
+          if (unIdx !== -1) {
+              unSchedulableStores.splice(unIdx, 1);
+              localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
+          }
+      }
 
       // 輔助函式：判斷店家此時此刻 (當下) 是否處於營業中
       const checkIsOpenNow = () => {
@@ -9835,14 +9863,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           return '';
       }
 
-      const isPickupDiscount = (diningMode === 'PICKUP') || Boolean(window.currentStoreCanPickup);
-
       let fareHtml = '<div id="storeFareArea" style="text-align: center; color: #999; font-size: 13px; margin-bottom: 10px;">運費查詢中...</div>';
 
-      if (isPickupDiscount) {
-          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
-          fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">免運費 🎉</div>`;
-      } else if (!window.isGroceryStore && d && d.fareInfo && typeof d.fareInfo.serviceFee === 'number') {
+      if (!window.isGroceryStore && d && d.fareInfo && typeof d.fareInfo.serviceFee === 'number') {
           const fee = d.fareInfo.serviceFee;
           const displayFee = fee > 50 ? (fee - 50) : 0;
           if (displayFee <= 0) {
@@ -10204,24 +10227,9 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
       // === Background fetch v1 for delivery fee ===
       (async () => {
           try {
-              const isPickupDiscount = (diningMode === 'PICKUP') || Boolean(window.currentStoreCanPickup);
-              if (isPickupDiscount) {
-                  currentStoreDeliveryFee = 0;
-                  currentOriginalDeliveryFee = 0;
-                  const fareArea = document.getElementById('storeFareArea');
-                  if (fareArea) {
-                      fareArea.innerHTML = '免運費 🎉';
-                      fareArea.style.color = '#d32f2f';
-                      fareArea.style.fontWeight = 'bold';
-                      fareArea.style.fontSize = '14px';
-                      fareArea.style.display = 'block';
-                  }
-                  return; // ⭐ 免運費店家直接不需要查詢，絕不呼叫 /api/store 且保持固定顯示免運費
-              }
-              
-
+              const normalizedStoreUuid = decodeStoreUuid(uuid);
               const feePayload = {
-                  storeUuid: uuid,
+                  storeUuid: normalizedStoreUuid || uuid,
                   lat: currentLat,
                   lng: currentLng
               };
@@ -10252,39 +10260,40 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                   const fd = feeJson.data || feeJson;
                   const fareArea = document.getElementById('storeFareArea');
                   
-                  const storeFareText = getStoreFareText(fd);
-                  if (storeFareText) {
-                      const fareText = storeFareText;
-                      if (fareText.toLowerCase().includes('no fee')) {
-                          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+                  let fee = null;
+                  if (fd.fareInfo && typeof fd.fareInfo.serviceFee === 'number') {
+                      fee = fd.fareInfo.serviceFee;
+                  } else {
+                      const storeFareText = getStoreFareText(fd);
+                      if (storeFareText) {
+                          if (storeFareText.toLowerCase().includes('no fee')) {
+                              fee = 0;
+                          } else {
+                              const match = storeFareText.match(/(\d+)/);
+                              if (match) fee = parseInt(match[1], 10);
+                          }
+                      }
+                  }
+
+                  if (fee !== null) {
+                      let displayFee = fee > 50 ? (fee - 50) : 0;
+                      if (displayFee <= 0) {
+                          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = fee;
                           if (fareArea) {
                               fareArea.innerHTML = '免運費 🎉';
                               fareArea.style.color = '#d32f2f';
                               fareArea.style.fontWeight = 'bold';
                               fareArea.style.fontSize = '14px';
+                              fareArea.style.display = 'block';
                           }
                       } else {
-                          const match = fareText.match(/(\d+)/);
-                          if (match) {
-                              let fee = parseInt(match[1], 10);
-                              let displayFee = fee > 50 ? (fee - 50) : 0;
-                              if (displayFee <= 0) {
-                                  currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = fee;
-                                  if (fareArea) {
-                                      fareArea.innerHTML = '免運費 🎉';
-                                      fareArea.style.color = '#d32f2f';
-                                      fareArea.style.fontWeight = 'bold';
-                                      fareArea.style.fontSize = '14px';
-                                  }
-                              } else {
-                                  currentStoreDeliveryFee = displayFee; currentOriginalDeliveryFee = fee;
-                                  if (fareArea) {
-                                      fareArea.innerHTML = `⚠️ 超過50元免運 額外運費 ${displayFee} 元`;
-                                      fareArea.style.color = '#d32f2f';
-                                      fareArea.style.fontWeight = 'bold';
-                                      fareArea.style.fontSize = '14px';
-                                  }
-                              }
+                          currentStoreDeliveryFee = displayFee; currentOriginalDeliveryFee = fee;
+                          if (fareArea) {
+                              fareArea.innerHTML = `⚠️ 超過50元免運 額外運費 ${displayFee} 元`;
+                              fareArea.style.color = '#d32f2f';
+                              fareArea.style.fontWeight = 'bold';
+                              fareArea.style.fontSize = '14px';
+                              fareArea.style.display = 'block';
                           }
                       }
                   } else {
@@ -10344,15 +10353,23 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
       }
 
     } catch (e) {
-
-      const errHtml = `<div class="status error">錯誤: ${e.message}\n\n詳細資訊請按 F12 查看 Console。</div>`;
-
-    if (typeof sc !== 'undefined' && sc) { sc.innerHTML = errHtml; document.getElementById('storeView').style.display = 'block'; document.getElementById('listView').style.display = 'none'; }
-
-    else if (resultsDiv) { resultsDiv.innerHTML = errHtml; }
-
-    console.error('openStore error:', e);
-
+      console.error('openStore error:', e);
+      if (typeof showModal === 'function') {
+          showModal('店家未營業', '此店家目前尚未營業，無法訂餐。請選擇其他店家或稍候再試！', true);
+      }
+      const errHtml = `<div class="status error" style="text-align:center; padding:35px 20px; font-size:16px; font-weight:bold; color:#e11d48; line-height:1.6;">
+          <div style="font-size:36px; margin-bottom:10px;">🏪❌</div>
+          <div style="font-size:18px; margin-bottom:6px; color:#111;">店家未營業，無法訂餐</div>
+          <div style="font-size:14px; color:#666; font-weight:normal; margin-bottom:20px;">此店家目前未營業或暫未開放點餐，請選擇其他店家或稍候再試！</div>
+          <button onclick="backToList()" style="background:#f43f5e; color:#fff; border:none; padding:10px 24px; border-radius:25px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow:0 3px 8px rgba(244,63,94,0.3);">返回店家列表</button>
+      </div>`;
+      if (typeof sc !== 'undefined' && sc) {
+          sc.innerHTML = errHtml;
+          document.getElementById('storeView').style.display = 'block';
+          document.getElementById('listView').style.display = 'none';
+      } else if (resultsDiv) {
+          resultsDiv.innerHTML = errHtml;
+      }
     }
 
   }
