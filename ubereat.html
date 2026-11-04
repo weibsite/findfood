@@ -5396,7 +5396,13 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             storeUrl: typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '',
 
+            uuid: menuItemUuid,
+
             menuItemUuid: menuItemUuid,
+
+            item_uuid: menuItemUuid,
+
+            itemUuid: menuItemUuid,
 
             storeUuid: storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
 
@@ -5407,6 +5413,10 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
             imgUrl: imgUrl || '',
 
             rawCustomizations: {},
+
+            customizations: {},
+
+            quantity: 1,
 
             user_name: window.currentGroupBuyId ? getOrPromptGroupBuyUserName() : '',
 
@@ -7776,9 +7786,12 @@ costRes.bins.forEach((bin, bIdx) => {
   const structuredItems = (typeof cart !== 'undefined' && Array.isArray(cart)) ? cart.map(it => {
       const baseNote = (it.note || '').trim();
       const combinedNote = foodNotes ? (baseNote ? `${baseNote} | 備註: ${foodNotes}` : `備註: ${foodNotes}`) : baseNote;
+      const itemUuidVal = it.menuItemUuid || it.uuid || it.item_uuid || it.itemUuid || '';
       return {
-          uuid: it.menuItemUuid || it.uuid,
-          menuItemUuid: it.menuItemUuid || it.uuid,
+          uuid: itemUuidVal,
+          menuItemUuid: itemUuidVal,
+          item_uuid: itemUuidVal,
+          itemUuid: itemUuidVal,
           sectionUuid: it.sectionUuid || fallbackSec || '',
           subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
           price: it.price || 0,
@@ -7835,6 +7848,8 @@ costRes.bins.forEach((bin, bIdx) => {
                   mergedMap[key] = {
                       uuid: u,
                       menuItemUuid: u,
+                      item_uuid: u,
+                      itemUuid: u,
                       sectionUuid: it.sectionUuid || fallbackSec || '',
                       subsectionUuid: it.subsectionUuid || fallbackSubsec || '',
                       price: price,
@@ -8108,6 +8123,12 @@ async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUui
       }
 
       if (json.status === 'success' && json.data) {
+        if (json.data.sectionUuid) currentItem.sectionUuid = json.data.sectionUuid;
+        if (json.data.subsectionUuid) currentItem.subsectionUuid = json.data.subsectionUuid;
+        if (json.data.uuid) {
+            currentItem.uuid = json.data.uuid;
+            currentItem.menuItemUuid = json.data.uuid;
+        }
         currentCustomizations = json.data.customizationsList || [];
         if (currentCustomizations.length === 0) {
           window.noOptionsItems.add(menuItemUuid);
@@ -8440,6 +8461,8 @@ function recalcCustomizations() {
                         if (!currentItem.rawCustomizations[gKey]) currentItem.rawCustomizations[gKey] = [];
                         currentItem.rawCustomizations[gKey].push({
                             uuid: optOptionUuid,
+                            optionUuid: optOptionUuid,
+                            groupUuid: optGroupUuid,
                             price: Math.round(price * 100),
                             quantity: qty,
                             title: oTitle,
@@ -8696,11 +8719,15 @@ const note = document.getElementById('modalNote').value.trim();
 
       storeUrl: typeof currentStoreUrl !== 'undefined' ? currentStoreUrl : '',
 
-      menuItemUuid: currentItem.menuItemUuid,
+      uuid: currentItem.menuItemUuid || currentItem.uuid,
+      menuItemUuid: currentItem.menuItemUuid || currentItem.uuid,
+      item_uuid: currentItem.menuItemUuid || currentItem.uuid,
+      itemUuid: currentItem.menuItemUuid || currentItem.uuid,
       storeUuid: currentItem.storeUuid || (typeof currentStoreUuid !== 'undefined' ? currentStoreUuid : ''),
       sectionUuid: currentItem.sectionUuid || '',
       subsectionUuid: currentItem.subsectionUuid || '',
       rawCustomizations: currentItem.rawCustomizations || {},
+      customizations: currentItem.rawCustomizations || {},
       imgUrl: currentItem.imgUrl || '',
 
         title: currentItem.title,
@@ -8708,6 +8735,8 @@ const note = document.getElementById('modalNote').value.trim();
       price: finalPrice,
 
       qty: currentQty,
+
+      quantity: currentQty,
 
       note: fullNote,
 
