@@ -7997,7 +7997,7 @@ costRes.bins.forEach((bin, bIdx) => {
       if (gwStep1) gwStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
       const gwStep2 = document.getElementById('gwStep2');
       if (gwStep2) gwStep2.innerHTML = '<span>⏳</span> 正在連線伺服器建立訂單...';
-      const isGrocerySub = Boolean(window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') || (currentStoreName && (currentStoreName.includes('優市') || currentStoreName.includes('全聯') || currentStoreName.includes('家樂福') || currentStoreName.includes('大潤發') || currentStoreName.includes('愛買') || currentStoreName.includes('美廉社'))));
+      const isGrocerySub = Boolean(window.isGroceryStore || (currentStoreName && (currentStoreName.includes('優市') || currentStoreName.includes('全聯') || currentStoreName.includes('家樂福') || currentStoreName.includes('大潤發') || currentStoreName.includes('愛買') || currentStoreName.includes('美廉社'))));
       const is150Sub = (currentStoreName && currentStoreName.includes('優市'));
       const currentPlanType = window.currentSelectedPlan || '150';
       const cTypeSub = isGrocerySub ? (is150Sub ? '150' : '225') : (currentPlanType === '300' ? 'B' : 'A');
@@ -9088,6 +9088,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
     let checkStoreName = '';
     try { checkStoreName = decodeURIComponent(storeName || ''); } catch (e) { checkStoreName = storeName || ''; }
+    // 先重置生鮮標記，避免上一家店殘留
+    const isInitialGroceryName = Boolean(checkStoreName && (checkStoreName.includes('優市') || checkStoreName.includes('全聯') || checkStoreName.includes('家樂福') || checkStoreName.includes('大潤發') || checkStoreName.includes('愛買') || checkStoreName.includes('美廉社')));
+    window.isGroceryStore = isInitialGroceryName;
 
     // 檢查店家黑名單與三小時時段店家 (若未載入則先載入)
     if (!window._blacklistLoaded && typeof loadStoreBlacklist === 'function') {
@@ -9332,7 +9335,10 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       }
 
       const isGroceryName = checkStoreName && (checkStoreName.includes('優市') || checkStoreName.includes('全聯') || checkStoreName.includes('家樂福') || checkStoreName.includes('大潤發') || checkStoreName.includes('愛買') || checkStoreName.includes('美廉社'));
-      window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP') || Boolean(isGroceryName);
+      window.isGroceryStore = Boolean((d && d.isGr === true) || isGroceryName);
+      if (typeof currentVertical !== 'undefined') {
+          currentVertical = window.isGroceryStore ? 'SHOP' : 'RESTAURANTS';
+      }
       window._groceryDisabled = false;
       const is150StoreName = currentStoreName && currentStoreName.includes('優市');
       if (window.isGroceryStore) {
@@ -9435,8 +9441,38 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       // 生鮮雜貨與餐廳皆需通過可接單檢查
       const isGrocery = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
 
+      // 解析所有可用時段，供預約與即時單狀態判斷
+      let availableWindows = [];
+      if (d.timeWindowPicker && d.timeWindowPicker.dates) {
+          d.timeWindowPicker.dates.forEach(dateObj => {
+              if (dateObj.listItems) {
+                  dateObj.listItems.forEach(item => {
+                      if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
+                          availableWindows.push(item.timeWindowViewModel.timeWindow);
+                      }
+                  });
+              }
+          });
+      }
+      if (typeof interleaveThreeHourWindows === 'function') {
+          availableWindows = interleaveThreeHourWindows(availableWindows, storeName, isGrocery);
+      }
+
+      // 檢查是否被 Uber 標記為關閉 / 休息中 / 無法即時接單
+      const isStoreClosedByUber = Boolean(d.closedMessage && d.closedMessage.trim()) ||
+          Boolean(d.orderForLaterInfo && (d.orderForLaterInfo.autoSurfaceBottomSheet || (d.orderForLaterInfo.bottomSheetSubtitleMessage && d.orderForLaterInfo.bottomSheetSubtitleMessage.includes('沒有營業')))) ||
+          Boolean(d.tracking && d.tracking.storePayload && d.tracking.storePayload.storeAvailablityState === 'STORE_CLOSED') ||
+          (d.isOpen === false) || (d.isOrderable === false);
+
+      const storeClosedNotice = d.closedMessage ? d.closedMessage.trim() : (d.orderForLaterInfo && d.orderForLaterInfo.bottomSheetSubtitleMessage ? d.orderForLaterInfo.bottomSheetSubtitleMessage.trim() : '');
+      const closedTimeMatch = (storeClosedNotice || '').match(/(?:上午|下午)?\s*\d{1,2}:\d{2}\s*(?:AM|PM)?/i);
+      const effectiveDisplayTime = displayTime || (closedTimeMatch ? closedTimeMatch[0] : '');
+
+      const nowSec = Date.now() / 1000;
+      const isNextWindowWithin30 = availableWindows.length > 0 && ((availableWindows[0].startTimeSeconds - nowSec) <= 30 * 60) && ((availableWindows[0].startTimeSeconds - nowSec) >= -15 * 60);
+      const isWithin30 = isOpeningWithin30Minutes(badgeTime || storeClosedNotice) || isNextWindowWithin30;
+
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
-      
       const isStoreOpen = (d.isOpen !== false && d.isOrderable !== false && !isStoreClosedByUber);
 
       let strictScheduleCheck = false;
@@ -9458,9 +9494,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           }
 
           const tType = isGrocery ? '商店' : '餐廳';
-          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}不支援預約訂單，無法為您代購。請選擇其他${tType}。`;
+          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}目前未營業，無法訂餐。請選擇其他${tType}。`;
 
-          showModal('無法為您代購', '', true, `<div style="text-align:center;">${errorMsg}</div>`);
+          showModal('店家未營業', errorMsg, true, `<div style="text-align:center;">${errorMsg}</div>`);
 
           resultsDiv.innerHTML = oldHtml;
           const cardEl = document.getElementById('card_' + storeUuid);
@@ -9478,53 +9514,6 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
               localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
           }
       }
-
-
-
-            // 解析所有可用時段，供預約與即時單狀態判斷
-
-      let availableWindows = [];
-
-      if (d.timeWindowPicker && d.timeWindowPicker.dates) {
-
-          d.timeWindowPicker.dates.forEach(dateObj => {
-
-              if (dateObj.listItems) {
-
-                  dateObj.listItems.forEach(item => {
-
-                      if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
-
-                          availableWindows.push(item.timeWindowViewModel.timeWindow);
-
-                      }
-
-                  });
-
-              }
-
-          });
-
-      }
-      if (typeof interleaveThreeHourWindows === 'function') {
-          availableWindows = interleaveThreeHourWindows(availableWindows, storeName, isGrocery);
-      }
-
-
-
-      // 檢查是否被 Uber 標記為關閉 / 休息中 / 無法即時接單
-      const isStoreClosedByUber = Boolean(d.closedMessage && d.closedMessage.trim()) ||
-          Boolean(d.orderForLaterInfo && (d.orderForLaterInfo.autoSurfaceBottomSheet || (d.orderForLaterInfo.bottomSheetSubtitleMessage && d.orderForLaterInfo.bottomSheetSubtitleMessage.includes('沒有營業')))) ||
-          Boolean(d.tracking && d.tracking.storePayload && d.tracking.storePayload.storeAvailablityState === 'STORE_CLOSED') ||
-          (d.isOpen === false) || (d.isOrderable === false);
-
-      const storeClosedNotice = d.closedMessage ? d.closedMessage.trim() : (d.orderForLaterInfo && d.orderForLaterInfo.bottomSheetSubtitleMessage ? d.orderForLaterInfo.bottomSheetSubtitleMessage.trim() : '');
-      const closedTimeMatch = (storeClosedNotice || '').match(/(?:上午|下午)?\s*\d{1,2}:\d{2}\s*(?:AM|PM)?/i);
-      const effectiveDisplayTime = displayTime || (closedTimeMatch ? closedTimeMatch[0] : '');
-
-      const nowSec = Date.now() / 1000;
-      const isNextWindowWithin30 = availableWindows.length > 0 && ((availableWindows[0].startTimeSeconds - nowSec) <= 30 * 60) && ((availableWindows[0].startTimeSeconds - nowSec) >= -15 * 60);
-      const isWithin30 = isOpeningWithin30Minutes(badgeTime || storeClosedNotice) || isNextWindowWithin30;
 
       // 輔助函式：判斷店家此時此刻 (當下) 是否處於營業中
       const checkIsOpenNow = () => {
@@ -10458,15 +10447,23 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
       }
 
     } catch (e) {
-
-      const errHtml = `<div class="status error">錯誤: ${e.message}\n\n詳細資訊請按 F12 查看 Console。</div>`;
-
-    if (typeof sc !== 'undefined' && sc) { sc.innerHTML = errHtml; document.getElementById('storeView').style.display = 'block'; document.getElementById('listView').style.display = 'none'; }
-
-    else if (resultsDiv) { resultsDiv.innerHTML = errHtml; }
-
-    console.error('openStore error:', e);
-
+      console.error('openStore error:', e);
+      if (typeof showModal === 'function') {
+          showModal('店家未營業', '此店家目前尚未營業，無法訂餐。請選擇其他店家或稍候再試！', true);
+      }
+      const errHtml = `<div class="status error" style="text-align:center; padding:35px 20px; font-size:16px; font-weight:bold; color:#e11d48; line-height:1.6;">
+          <div style="font-size:36px; margin-bottom:10px;">🏪❌</div>
+          <div style="font-size:18px; margin-bottom:6px; color:#111;">店家未營業，無法訂餐</div>
+          <div style="font-size:14px; color:#666; font-weight:normal; margin-bottom:20px;">此店家目前未營業或暫未開放點餐，請選擇其他店家或稍候再試！</div>
+          <button onclick="backToList()" style="background:#f43f5e; color:#fff; border:none; padding:10px 24px; border-radius:25px; font-size:14px; font-weight:bold; cursor:pointer; box-shadow:0 3px 8px rgba(244,63,94,0.3);">返回店家列表</button>
+      </div>`;
+      if (typeof sc !== 'undefined' && sc) {
+          sc.innerHTML = errHtml;
+          document.getElementById('storeView').style.display = 'block';
+          document.getElementById('listView').style.display = 'none';
+      } else if (resultsDiv) {
+          resultsDiv.innerHTML = errHtml;
+      }
     }
 
   }

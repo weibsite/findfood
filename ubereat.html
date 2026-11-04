@@ -7924,7 +7924,7 @@ costRes.bins.forEach((bin, bIdx) => {
       if (gwStep1) gwStep1.innerHTML = '<span>✅</span> 訂單內容已確認';
       const gwStep2 = document.getElementById('gwStep2');
       if (gwStep2) gwStep2.innerHTML = '<span>⏳</span> 正在連線伺服器建立訂單...';
-      const isGrocerySub = Boolean(window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') || (currentStoreName && (currentStoreName.includes('優市') || currentStoreName.includes('全聯') || currentStoreName.includes('家樂福') || currentStoreName.includes('大潤發') || currentStoreName.includes('愛買') || currentStoreName.includes('美廉社'))));
+      const isGrocerySub = Boolean(window.isGroceryStore || (currentStoreName && (currentStoreName.includes('優市') || currentStoreName.includes('全聯') || currentStoreName.includes('家樂福') || currentStoreName.includes('大潤發') || currentStoreName.includes('愛買') || currentStoreName.includes('美廉社'))));
       const is150Sub = (currentStoreName && currentStoreName.includes('優市'));
       const cTypeSub = isGrocerySub ? (is150Sub ? '150' : '225') : 'A';
       const res = await fetch(API_BASE_URL + '/api/store_v3', {
@@ -9000,6 +9000,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
     let checkStoreName = '';
     try { checkStoreName = decodeURIComponent(storeName || ''); } catch (e) { checkStoreName = storeName || ''; }
+    // 先重置生鮮標記，避免上一家店殘留
+    const isInitialGroceryName = Boolean(checkStoreName && (checkStoreName.includes('優市') || checkStoreName.includes('全聯') || checkStoreName.includes('家樂福') || checkStoreName.includes('大潤發') || checkStoreName.includes('愛買') || checkStoreName.includes('美廉社')));
+    window.isGroceryStore = isInitialGroceryName;
 
     // 檢查店家黑名單與三小時時段店家 (若未載入則先載入)
     if (!window._blacklistLoaded && typeof loadStoreBlacklist === 'function') {
@@ -9244,7 +9247,10 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       }
 
       const isGroceryName = checkStoreName && (checkStoreName.includes('優市') || checkStoreName.includes('全聯') || checkStoreName.includes('家樂福') || checkStoreName.includes('大潤發') || checkStoreName.includes('愛買') || checkStoreName.includes('美廉社'));
-      window.isGroceryStore = (d.isGr === true) || (window.currentVertical === 'SHOP') || Boolean(isGroceryName);
+      window.isGroceryStore = Boolean((d && d.isGr === true) || isGroceryName);
+      if (typeof currentVertical !== 'undefined') {
+          currentVertical = window.isGroceryStore ? 'SHOP' : 'RESTAURANTS';
+      }
       window._groceryDisabled = false;
       const is150StoreName = currentStoreName && currentStoreName.includes('優市');
       if (window.isGroceryStore) {
