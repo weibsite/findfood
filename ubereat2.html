@@ -4868,10 +4868,25 @@ function changeGroupBuyUserName() {
     }
 }
 
+function showGroupBuyClosedModal(customMsg = '') {
+    window.isGroupBuyClosed = true;
+    if (window.groupBuyData) window.groupBuyData.status = 'submitted';
+    renderGroupBuyTopBar(window.groupBuyData || {});
+    const detailMsg = customMsg || '團長已完成結帳並送出訂單，本團購已截止點餐，無法再增加或修改品項！';
+    showModal('🔒 訂單已截止', detailMsg, true, `
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
+            <button onclick="document.getElementById('errorModalOverlay').style.display='none'; viewCart();" style="width:100%; padding:11px; background:#06c167; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">👀 查看最終訂單明細</button>
+            <button onclick="document.getElementById('errorModalOverlay').style.display='none'; exitGroupBuyToPersonal();" style="width:100%; padding:11px; background:#f43f5e; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">🛒 我要自己另外點餐</button>
+        </div>
+    `, true);
+    if (typeof closeItemModal === 'function') closeItemModal();
+    if (typeof updateMenuActions === 'function') updateMenuActions();
+}
+
 async function groupBuySyncCartAction(action, data = {}) {
     if (!window.currentGroupBuyId) return null;
     if (window.isGroupBuyClosed) {
-        showToast('⚠️ 本團購訂單已送出結帳，目前已截止修改！');
+        showGroupBuyClosedModal();
         return null;
     }
     const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
@@ -4909,16 +4924,7 @@ async function groupBuySyncCartAction(action, data = {}) {
         } else {
             const errJson = await res.json().catch(() => ({}));
             if (errJson.code === 'GROUP_BUY_CLOSED') {
-                window.isGroupBuyClosed = true;
-                if (window.groupBuyData) window.groupBuyData.status = 'submitted';
-                renderGroupBuyTopBar(window.groupBuyData || {});
-                showModal('🔒 團購訂單已送出', errJson.message || '本團購已截止點餐！', true, `
-                    <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
-                        <button onclick="document.getElementById('errorModalOverlay').style.display='none'; viewCart();" style="width:100%; padding:11px; background:#06c167; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">👀 查看最終訂單明細</button>
-                        <button onclick="document.getElementById('errorModalOverlay').style.display='none'; exitGroupBuyToPersonal();" style="width:100%; padding:11px; background:#f43f5e; color:#fff; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer;">🛒 我要自己另外點餐</button>
-                    </div>
-                `, true);
-                if (typeof updateMenuActions === 'function') updateMenuActions();
+                showGroupBuyClosedModal(errJson.message);
                 if (currentView === 'cart') viewCart();
                 return null;
             }
@@ -4929,20 +4935,19 @@ async function groupBuySyncCartAction(action, data = {}) {
     return null;
 }
 
-function startGroupBuySync(groupId) {
-    if (groupBuySyncInterval) clearInterval(groupBuySyncInterval);
-    groupBuySyncInterval = setInterval(async () => {
-        if (!window.currentGroupBuyId) {
-            clearInterval(groupBuySyncInterval);
-            return;
-        }
-        const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
-        try {
-            const v = window.localGroupBuyVersion || 0;
-            const res = await fetch(`${apiBase}/api/group_buy/sync?group_id=${window.currentGroupBuyId}&v=${v}`);
-            if (res.ok) {
-                const json = await res.json();
-                if (json.status === 'success' && json.changed) {
+async function syncGroupBuyCart(showFeedback = false, forceRefresh = false) {
+    if (!window.currentGroupBuyId) return null;
+    if (window._isSyncingGroupBuy) return null;
+    window._isSyncingGroupBuy = true;
+
+    const apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+    try {
+        const v = forceRefresh ? 0 : (window.localGroupBuyVersion || 0);
+        const res = await fetch(`${apiBase}/api/group_buy/sync?group_id=${window.currentGroupBuyId}&v=${v}`);
+        if (res.ok) {
+            const json = await res.json();
+            if (json.status === 'success') {
+                if (json.changed || forceRefresh) {
                     window.localGroupBuyVersion = json.version;
 
                     // 偵測到團購已送出結帳
@@ -4973,10 +4978,10 @@ function startGroupBuySync(groupId) {
                         if (cart.length === 0) {
                             goBackToStore();
                         } else {
-                            viewCart();
+                            viewCart(true);
                         }
                     }
-                    
+
                     // 根據 last_event 顯示精準廣播通知給其他團員
                     const myName = localStorage.getItem('group_buy_user_name') || '';
                     const evt = json.last_event;
@@ -4990,14 +4995,32 @@ function startGroupBuySync(groupId) {
                             showToast(`✏️ ${evt.user_name} 修改了「${evt.item_title}」數量 (${dStr})`);
                         } else if (evt.type === 'clear') {
                             showToast(`🧹 ${evt.user_name} 清空了團購購物車`);
-                        } else {
-                            showToast('🛒 團購購物車已同步更新！');
                         }
+                    } else if (showFeedback) {
+                        showToast('🔄 團購點餐內容已更新為最新！');
                     }
+                } else if (showFeedback) {
+                    showToast('✅ 目前點餐內容已是最新！');
                 }
+                return json;
             }
-        } catch (e) {}
-    }, 2000);
+        }
+    } catch (e) {
+        console.warn('團購同步失敗:', e);
+        if (showFeedback) showToast('⚠️ 團購同步失敗，請檢查網路');
+    } finally {
+        window._isSyncingGroupBuy = false;
+    }
+    return null;
+}
+
+function startGroupBuySync(groupId) {
+    if (groupBuySyncInterval) {
+        clearInterval(groupBuySyncInterval);
+        groupBuySyncInterval = null;
+    }
+    // 依指令：取消 2 秒高密集常駐輪詢，改為按需確認。進入團購時僅做單次初始同步
+    syncGroupBuyCart(false, true);
 }
 
 function showGroupBuyPasswordAuthModal(callback, customTitle, customDesc) {
@@ -5524,8 +5547,8 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
   function handleQuickPlus(event, uuid) {
     event.stopPropagation();
-    if (window.isGroupBuyClosed) {
-      showToast('⚠️ 本團購訂單已送出結帳，目前已截止點餐！');
+    if (window.currentGroupBuyId && window.isGroupBuyClosed) {
+      showGroupBuyClosedModal();
       return;
     }
     if (window.currentGroupBuyId) {
@@ -5772,12 +5795,17 @@ let currentOriginalDeliveryFee = 0;
     `;
   }
 
-  function viewCart() {
+  async function viewCart(skipSync = false) {
     if (typeof closeQueryOverlay === 'function') {
         closeQueryOverlay();
     }
     if (document.getElementById('headerSearchBox') && document.getElementById('headerSearchBox').style.display === 'block') {
         toggleStoreSearch();
+    }
+
+    // ⭐ 團購模式：按下購物車時，立即向伺服器確認最新協同點餐內容
+    if (window.currentGroupBuyId && !skipSync) {
+        await syncGroupBuyCart(false, true);
     }
 
     if (cart.length === 0) {
@@ -8141,6 +8169,11 @@ costRes.bins.forEach((bin, bIdx) => {
 }
 
 async function openItemModal(storeUuid, sectionUuid, subsectionUuid, menuItemUuid, titleEnc, descEnc, basePrice, imgUrl, hasCustomizations) {
+
+  if (window.currentGroupBuyId && window.isGroupBuyClosed) {
+      showGroupBuyClosedModal();
+      return;
+  }
 
   if (window.isGroceryStore) {
       const sName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName : '';
