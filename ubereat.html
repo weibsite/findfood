@@ -1188,14 +1188,15 @@ let isAddressSet = false;
 
 
 
-  function saveAddressHistory(lat, lng, title) {
+  function saveAddressHistory(lat, lng, title, placeId) {
 
     let history = JSON.parse(localStorage.getItem('finddog_history_address')) || [];
 
     history = history.filter(item => item.title !== title);
 
-    // [修補] 加入儲存時間戳，方便後續偵測過時座標
-    history.unshift({ lat, lng, title, savedAt: Date.now() });
+    // [修補] 加入儲存時間戳與 place_id，方便後續精準還原 Place ID
+    const pid = placeId || (window.currentPlaceId || '');
+    history.unshift({ lat, lng, title, place_id: pid, savedAt: Date.now() });
 
     if (history.length > 5) history = history.slice(0, 5);
 
@@ -2824,6 +2825,9 @@ window.addrDebounceTimer = null;
     if (placeId) {
       window.currentPlaceId = placeId;
       try { localStorage.setItem('finddog_current_place_id', placeId); } catch(e){}
+    } else {
+      window.currentPlaceId = '';
+      try { localStorage.removeItem('finddog_current_place_id'); } catch(e){}
     }
     const statusEl = document.getElementById('addrStatus');
 
@@ -2902,7 +2906,7 @@ window.addrDebounceTimer = null;
 
           if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
           revealSubSections();
-          saveAddressHistory(lat, lng, title);
+          saveAddressHistory(lat, lng, title, placeId);
 
         updateAddrTitleState('ok');
         fetchDeliveryTimes();
@@ -7944,7 +7948,7 @@ costRes.bins.forEach((bin, bIdx) => {
                   address: (typeof addr !== 'undefined' && addr) ? addr : '',
                   lat: (typeof currentLat !== 'undefined') ? currentLat : null,
                   lng: (typeof currentLng !== 'undefined') ? currentLng : null,
-                  place_id: (typeof window.currentPlaceId !== 'undefined' && window.currentPlaceId) ? window.currentPlaceId : (function(){ try { return localStorage.getItem('finddog_current_place_id') || ''; } catch(e){ return ''; } })(),
+                  place_id: (typeof window.currentPlaceId === 'string' && window.currentPlaceId) ? window.currentPlaceId : '',
                   phone: (typeof phoneVal !== 'undefined' && phoneVal) ? phoneVal : '',
                   deliveryMethod: (typeof selectedMethodVal !== 'undefined' && selectedMethodVal) ? selectedMethodVal : '當面點交',
                   notes: (typeof finalNote !== 'undefined' && finalNote) ? finalNote : '',
@@ -12786,7 +12790,7 @@ window.selectHistoryAddrCandidate = async function(idx) {
     if (stEl) stEl.innerText = '';
     window.syncAddrFloatingPopup(true);
     window.lastSearchedAddr = item.title;
-    await setAddress(item.lat, item.lng, item.title);
+    await setAddress(item.lat, item.lng, item.title, item.place_id || item.placeId || item.id || '');
     window.syncAddrFloatingPopup(true);
 };
 
