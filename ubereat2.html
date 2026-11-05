@@ -1138,13 +1138,13 @@ let isAddressSet = false;
       };
 
       let locRes = await fetch(`${apiBase}/api/getDeliveryLocationV2`, reqInit);
-      if (locRes.status === 404) {
+      let locData = locRes.ok ? await locRes.json() : null;
+      if (!locData || locData.status !== 'success' || !locData.lat || !locData.lng) {
         locRes = await fetch(`${apiBase}/api/getDeliveryLocationV1`, reqInit);
+        locData = locRes.ok ? await locRes.json() : null;
       }
 
-      if (locRes.ok) {
-        const locData = await locRes.json();
-        if (locData.status === 'success' && locData.lat && locData.lng) {
+      if (locData && locData.status === 'success' && locData.lat && locData.lng) {
           const baseFullAddr = (locData.title || bestCandidate.fullAddress || bestCandidate.addressLine1 || '').trim();
           let finalResolvedTitle = baseFullAddr;
           if (extraSuffix && !finalResolvedTitle.endsWith(extraSuffix)) {
@@ -12732,12 +12732,12 @@ window.selectUberAddrCandidate = async function(idx) {
                 })
             };
             let res = await fetch(`${apiBase}/api/getDeliveryLocationV2`, reqInit);
-            if (res.status === 404) {
+            let data = res.ok ? await res.json() : null;
+            if (!data || data.status !== 'success' || !data.lat || !data.lng) {
                 res = await fetch(`${apiBase}/api/getDeliveryLocationV1`, reqInit);
+                data = res.ok ? await res.json() : null;
             }
-            if (res.ok) {
-                const data = await res.json();
-                if (data.status === 'success' && data.lat && data.lng) {
+            if (data && data.status === 'success' && data.lat && data.lng) {
                     const baseResolvedTitle = (data.title || baseFullAddr).trim();
                     try {
                         localPlaceCache[item.id] = {
