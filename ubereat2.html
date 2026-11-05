@@ -1182,7 +1182,6 @@ let isAddressSet = false;
           if (typeof updateAddrTitleState === 'function') updateAddrTitleState('ok');
           if (typeof fetchDeliveryTimes === 'function') fetchDeliveryTimes();
         }
-      }
     } catch (e) {
       console.warn('[自動地址校準] 發生錯誤，保留目前地址:', e);
     }
@@ -12760,7 +12759,6 @@ window.selectUberAddrCandidate = async function(idx) {
                     window.checkAddressMismatchAndPrompt(rawUserText, item, resolvedTitle);
                     return;
                 }
-            }
         } catch (e) {
             console.warn('getDeliveryLocationV2 error:', e);
         }
