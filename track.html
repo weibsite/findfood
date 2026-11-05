@@ -2803,20 +2803,17 @@
 
 
             try {
-
                 const res = await sendCourierMessage(targetUuid, text, window.trackApiBase);
-
-                if (res && res.status === 'success') {
-
+                if (res && (res.status === 'success' || res.success)) {
                     if (btn) btn.innerText = '已送達';
-
+                } else {
+                    const errMsg = (res && (res.error || res.message)) || '訊息傳送失敗';
+                    appendMultiChatBubble('courier', `⚠️ 系統提示：${errMsg}`, true);
                 }
-
             } catch(e) {
-
                 console.warn('發送訊息異常:', e);
-
-            } finally {
+                appendMultiChatBubble('courier', '⚠️ 系統提示：訊息傳送連線異常，請稍後重試', true);
+            } } finally {
 
                 setTimeout(() => {
 
