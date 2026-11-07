@@ -12139,7 +12139,6 @@ function renderOverlayHTML() {
                     metaText = `<div style="font-size:12px; color:#666; margin-top:2px;">${metaText}</div>`;
                 }
 
-                html += `
                 // 若為建議店家 (缺少完整預約檢驗)，禁止直接跳轉開單，點擊轉為送出完整搜尋
                 const storeClickAction = s.isSuggestionStore
                     ? `selectQueryOverlay('${encodedName}')`
