@@ -9998,7 +9998,17 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       let fareHtml = '<div id="storeFareArea" style="text-align: center; color: #999; font-size: 13px; margin-bottom: 10px;">運費查詢中...</div>';
 
-      if (!window.isGroceryStore && d && d.fareInfo && typeof d.fareInfo.serviceFee === 'number') {
+      const isFreeDeliveryStore = !window.isGroceryStore && (
+          window.currentStoreCanPickup ||
+          (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(d)) ||
+          localStorage.getItem('uberCartIsDiscount') === 'true' ||
+          diningMode === 'PICKUP'
+      );
+
+      if (isFreeDeliveryStore) {
+          currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+          fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費</div>`;
+      } else if (!window.isGroceryStore && d && d.fareInfo && typeof d.fareInfo.serviceFee === 'number') {
           const fee = d.fareInfo.serviceFee;
           const displayFee = fee > 50 ? (fee - 50) : 0;
           if (displayFee <= 0) {
@@ -10408,7 +10418,24 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                       }
                   }
 
-                  if (fee !== null) {
+                  const isFreeDeliveryStore = !window.isGroceryStore && (
+                      window.currentStoreCanPickup ||
+                      (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(d)) ||
+                      (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(fd)) ||
+                      localStorage.getItem('uberCartIsDiscount') === 'true' ||
+                      diningMode === 'PICKUP'
+                  );
+
+                  if (isFreeDeliveryStore) {
+                      currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
+                      if (fareArea) {
+                          fareArea.innerHTML = '免運費 🎉';
+                          fareArea.style.color = '#d32f2f';
+                          fareArea.style.fontWeight = 'bold';
+                          fareArea.style.fontSize = '14px';
+                          fareArea.style.display = 'block';
+                      }
+                  } else if (fee !== null) {
                       let displayFee = fee > 50 ? (fee - 50) : 0;
                       if (displayFee <= 0) {
                           currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = fee;
@@ -10459,8 +10486,22 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
               console.log('背景運費查詢失敗:', e);
               const fareArea = document.getElementById('storeFareArea');
               if (fareArea) {
-                  fareArea.innerHTML = '';
-                  fareArea.style.display = 'none';
+                  const isFreeDeliveryStore = !window.isGroceryStore && (
+                      window.currentStoreCanPickup ||
+                      (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(d)) ||
+                      localStorage.getItem('uberCartIsDiscount') === 'true' ||
+                      diningMode === 'PICKUP'
+                  );
+                  if (isFreeDeliveryStore) {
+                      fareArea.innerHTML = '免運費 🎉';
+                      fareArea.style.color = '#d32f2f';
+                      fareArea.style.fontWeight = 'bold';
+                      fareArea.style.fontSize = '14px';
+                      fareArea.style.display = 'block';
+                  } else {
+                      fareArea.innerHTML = '';
+                      fareArea.style.display = 'none';
+                  }
               }
           }
       })();
