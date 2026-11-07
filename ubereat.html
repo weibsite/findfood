@@ -3084,6 +3084,8 @@ window.addrDebounceTimer = null;
 
 
 function generateStoreListHTML(stores, q, currentVertical) {
+    // 過濾掉未經完整 API 驗證的建議店家資訊 (避免無營業與預約狀態之店家出現在列表)
+    stores = (stores || []).filter(s => !s.isSuggestionStore);
     const statusEl = document.getElementById('status');
 
     // 全新智能排序：嚴格依照「關聯度」與「營業狀態」進行排序
@@ -3762,7 +3764,8 @@ async function searchStores() {
     };
 
     // [優化] 如果關鍵字與剛剛自動搜尋的關鍵字完全相同 (且分類相同)，且資料已下載完畢，直接使用快取不需重發 API
-    if (q === lastSearchedQuery && currentVert === (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') && typeof isFetchingSuggestions !== 'undefined' && !isFetchingSuggestions && window.suggestionStores && window.suggestionStores.length > 0) {
+    // [優化] 如果關鍵字與剛剛自動搜尋的關鍵字完全相同 (且分類相同)，且資料已下載完畢，直接使用快取不需重發 API (排除未經完整預約檢驗的 quick_suggestions)
+    if (q === lastSearchedQuery && currentVert === (typeof lastSearchedVertical !== 'undefined' ? lastSearchedVertical : '') && typeof isFetchingSuggestions !== 'undefined' && !isFetchingSuggestions && window.suggestionStores && window.suggestionStores.length > 0 && window.suggestionStoreSource !== 'quick_suggestions') {
         const keyword = (q || '').trim();
         const safeKw = typeof escapeHTML === 'function' ? escapeHTML(keyword) : keyword;
         statusEl.innerHTML = ((typeof currentVertical !== 'undefined' && currentVertical === 'SHOP')
@@ -3861,7 +3864,7 @@ async function searchStores() {
           finalStores = applyPickupDiscountToStores(stores, pickupStores);
       }
 
-      const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
+      const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0 && window.suggestionStoreSource !== 'quick_suggestions');
       if (finalStores.length > 0) {
           window.suggestionStores = finalStores;
           window.suggestionStoreSource = 'search_v3';
@@ -11758,7 +11761,10 @@ function fetchSuggestionsBar(query) {
                 // [注意] 若成功取得 0 筆建議 (完全空的建議)，完全不顯示套用在畫面上，也不取代或清空已出現的建議
                 
                 // 2. 店家：過濾出 store，顯示在關聯餐廳/店家列表中 (先出現，等待 search_v3 覆蓋)
-                const storeItems = resJson.data.filter(it => it.type === 'store');
+                // 2. 店家：【暫時禁止搜尋方式一讀取店家資訊避免誤觸】
+                // 因 getSearchSuggestionsV1 缺乏營業時段與預約狀態，避免誤觸或造成預約錯誤，目前只讀取文字關鍵詞(keyword)，不讀取店家資訊(storeItems)，保留後續修改空間
+                const ENABLE_SUGGESTION_STORE_ITEMS = false;
+                const storeItems = ENABLE_SUGGESTION_STORE_ITEMS ? resJson.data.filter(it => it.type === 'store') : [];
                 if (storeItems.length > 0) {
                     // 僅當目前這個關鍵字 q 尚未被 search_v3 覆蓋完成時，才先由 Suggestion 店家搶先展示
                     if (!(window.suggestionStoreSource === 'search_v3' && window.suggestionStoreQuery === q)) {
@@ -11918,7 +11924,7 @@ async function fetchStoreSuggestions(q) {
             });
 
             
-            const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0);
+            const hasFirstResults = (window.suggestionStoreQuery === q && window.suggestionStores && window.suggestionStores.length > 0 && window.suggestionStoreSource !== 'quick_suggestions');
             if (stores.length > 0) {
                 window.suggestionStores = stores;
                 window.suggestionStoreSource = 'search_v3';
@@ -12134,7 +12140,13 @@ function renderOverlayHTML() {
                 }
 
                 html += `
-                <div onclick="localStorage.setItem('uberCartIsDiscount', 'false'); if(typeof closeQueryOverlay === 'function') closeQueryOverlay(); window.openStore('${uuid}', '${encodedName}', '${actionUrl}')" style="display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #f0f0f0; cursor:pointer;">
+                // 若為建議店家 (缺少完整預約檢驗)，禁止直接跳轉開單，點擊轉為送出完整搜尋
+                const storeClickAction = s.isSuggestionStore
+                    ? `selectQueryOverlay('${encodedName}')`
+                    : `localStorage.setItem('uberCartIsDiscount', 'false'); if(typeof closeQueryOverlay === 'function') closeQueryOverlay(); window.openStore('${uuid}', '${encodedName}', '${actionUrl}')`;
+
+                html += `
+                <div onclick="${storeClickAction}" style="display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #f0f0f0; cursor:pointer;">
                     ${imageUrl ? `<img src="${imageUrl}" style="width:50px; height:50px; border-radius:8px; object-fit:cover; background:#eee; flex-shrink:0;">` : `<div style="width:50px; height:50px; border-radius:8px; background:#eee; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:20px;">🏪</div>`}
                     <div style="flex:1; min-width:0;">
                         <div style="font-size:15px; font-weight:bold; color:#111; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(name)}</div>
