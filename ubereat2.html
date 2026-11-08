@@ -12,50 +12,7 @@
 
 
 
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js">
-// ============================================================
-// 排除自取免運店家管理 (強制收取外送加成，不享自取免運)
-// ============================================================
-window.pickupExcludeStores = ['漢堡王', '麥當勞', 'pizza hut', 'pizzahut', '拿波里'];
-window._pickupExcludeStoresLoaded = false;
-
-async function loadPickupExcludeStores() {
-    try {
-        const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
-        const res = await fetch(`${apiBase}/api/pickup_exclude_stores?t=${Date.now()}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (data && Array.isArray(data.excluded) && data.excluded.length > 0) {
-                window.pickupExcludeStores = data.excluded;
-                window._pickupExcludeStoresLoaded = true;
-                console.log('Loaded pickup exclude stores:', window.pickupExcludeStores);
-            }
-        }
-    } catch (e) {
-        console.warn('載入排除自取免運店家名單失敗:', e);
-    }
-}
-
-function isStorePickupExcluded(name) {
-    if (!name) return false;
-    if (typeof name === 'object') {
-        name = name.text || name.title || '';
-    }
-    const list = (window.pickupExcludeStores && window.pickupExcludeStores.length > 0) 
-        ? window.pickupExcludeStores 
-        : ['漢堡王', '麥當勞', 'pizza hut', 'pizzahut', '拿波里'];
-    const cleanName = String(name).toLowerCase();
-    for (const kw of list) {
-        if (!kw) continue;
-        const cleanKw = String(kw).trim().toLowerCase();
-        if (cleanKw && cleanName.includes(cleanKw)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-</script>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <title>點餐系統 22.1</title>
 
@@ -775,6 +732,64 @@ function isStorePickupExcluded(name) {
 
 
 <script>
+
+// ============================================================
+// 排除自取免運店家管理 (強制收取外送加成，不享自取免運)
+// ============================================================
+window.pickupExcludeStores = ['漢堡王', 'burger king', 'burgerking', '麥當勞', 'mcdonald', 'pizza hut', 'pizzahut', '拿波里'];
+window._pickupExcludeStoresLoaded = false;
+
+function getStoreNameString(obj) {
+    if (!obj) return '';
+    let str = '';
+    if (typeof obj === 'string') {
+        str = obj;
+    } else if (typeof obj === 'object') {
+        if (typeof obj.text === 'string') str = obj.text;
+        else if (typeof obj.title === 'string') str = obj.title;
+        else if (typeof obj.title === 'object' && obj.title && typeof obj.title.text === 'string') str = obj.title.text;
+        else if (typeof obj.name === 'string') str = obj.name;
+    }
+    try {
+        if (str && str.includes('%')) str = decodeURIComponent(str);
+    } catch(e) {}
+    return String(str || '');
+}
+
+function isStorePickupExcluded(name) {
+    if (!name) return false;
+    const cleanName = getStoreNameString(name).toLowerCase();
+    if (!cleanName) return false;
+    const list = (window.pickupExcludeStores && window.pickupExcludeStores.length > 0) 
+        ? window.pickupExcludeStores 
+        : ['漢堡王', 'burger king', 'burgerking', '麥當勞', 'mcdonald', 'pizza hut', 'pizzahut', '拿波里'];
+    for (const kw of list) {
+        if (!kw) continue;
+        const cleanKw = String(kw).trim().toLowerCase();
+        if (cleanKw && cleanName.includes(cleanKw)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function loadPickupExcludeStores() {
+    try {
+        const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+        const res = await fetch(`${apiBase}/api/pickup_exclude_stores?t=${Date.now()}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.excluded) && data.excluded.length > 0) {
+                window.pickupExcludeStores = data.excluded;
+                window._pickupExcludeStoresLoaded = true;
+                console.log('Loaded pickup exclude stores:', window.pickupExcludeStores);
+            }
+        }
+    } catch (e) {
+        console.warn('載入排除自取免運店家名單失敗:', e);
+    }
+}
+
 
 function decodeStoreUuid(raw) {
     if (!raw) return '';
@@ -3405,7 +3420,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
             overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; letter-spacing:1px; z-index:2;">無法接單</div>`;
         }
 
-        const isPickup = (s._isPickupDiscount === true) && !(typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(name));
+        const isPickup = (s._isPickupDiscount === true) && !(typeof isStorePickupExcluded === 'function' && (isStorePickupExcluded(name) || isStorePickupExcluded(s)));
 
         let etdText = '';
         const metaSource = s._pickupMeta || s.meta;
@@ -3677,23 +3692,29 @@ function applyPickupDiscountToStores(deliveryStores, pickupStores) {
     const existingUuids = new Set();
     const merged = [];
 
-    // 1. 保留原本 deliveryStores 順序，若在 PICKUP 中存在，加上免運標籤與資訊
+    // 1. 保留原本 deliveryStores 順序，若在 PICKUP 中存在且非排除店家，加上免運標籤與資訊
     deliveryStores.forEach(s => {
         if (!s || !s.storeUuid) return;
         existingUuids.add(s.storeUuid);
         if (pickupMap.has(s.storeUuid)) {
-            s._isPickupDiscount = true;
-            const ps = pickupMap.get(s.storeUuid);
-            if (ps.meta && Array.isArray(ps.meta)) {
-                s._pickupMeta = ps.meta;
+            const isEx = typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(s);
+            if (!isEx) {
+                s._isPickupDiscount = true;
+                const ps = pickupMap.get(s.storeUuid);
+                if (ps.meta && Array.isArray(ps.meta)) {
+                    s._pickupMeta = ps.meta;
+                }
             }
         }
         merged.push(s);
     });
 
-    // 2. 將 PICKUP 有但 deliveryStores 沒有的店家穿插追加在後面
+    // 2. 將 PICKUP 有但 deliveryStores 沒有的店家穿插追加在後面 (排除店家不追加免運)
     pickupStores.forEach(ps => {
         if (!ps || !ps.storeUuid) return;
+        if (typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(ps)) {
+            return;
+        }
         if (!existingUuids.has(ps.storeUuid)) {
             existingUuids.add(ps.storeUuid);
             ps._isPickupDiscount = true;
@@ -7387,7 +7408,9 @@ async function _sendOrderToLine(forceSubmit = false) {
             // 判斷此訂單店家是否支援外帶自取 (Pickup)
       const isPickupExcludedOrder = typeof isStorePickupExcluded === 'function' && (
           (cart.length > 0 && cart.some(it => isStorePickupExcluded(it.storeName))) ||
-          isStorePickupExcluded(window.currentStoreRawData && window.currentStoreRawData.title)
+          (window.currentStoreRawData && isStorePickupExcluded(window.currentStoreRawData)) ||
+          (window.currentStoreRawData && isStorePickupExcluded(window.currentStoreRawData.title)) ||
+          (typeof currentStoreName !== 'undefined' && isStorePickupExcluded(currentStoreName))
       );
       // 判斷此訂單店家是否支援外帶自取 (Pickup)
       const isStoreCanPickup = !isPickupExcludedOrder && Boolean(
@@ -9486,6 +9509,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const isPickupExcluded = typeof isStorePickupExcluded === 'function' && (
           isStorePickupExcluded(checkStoreName) ||
           isStorePickupExcluded(storeName) ||
+          (d && isStorePickupExcluded(d)) ||
           (d && isStorePickupExcluded(d.title))
       );
       if (isPickupExcluded) {
