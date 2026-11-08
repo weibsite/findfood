@@ -1892,6 +1892,44 @@ function openTimePickerModal() {
     document.getElementById('timePickerModal').style.display = 'flex';
 }
 
+function getTargetScheduleDate(rawDataOrD) {
+    const schedSelect = document.getElementById('scheduleTime');
+    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE' && schedSelect && schedSelect.value) {
+        try {
+            const parsed = JSON.parse(schedSelect.value);
+            if (parsed && parsed.date) return parsed.date;
+        } catch(e) {}
+    }
+    const modalDate = document.getElementById('modalDateSelect')?.value;
+    if (modalDate) return modalDate;
+
+    const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    const dObj = rawDataOrD || window.currentStoreRawData;
+    if (dObj) {
+        const dates = dObj.adaptedDeliveryHoursInfos?.dates || (dObj.timeWindowPicker?.dates || []).map(dt => dt?.date).filter(Boolean);
+        if (Array.isArray(dates) && dates.length > 0) {
+            if (dates.includes(todayTw)) {
+                let todayHasSlots = false;
+                if (dObj.timeWindowPicker && Array.isArray(dObj.timeWindowPicker.dates)) {
+                    const tObj = dObj.timeWindowPicker.dates.find(dt => dt && dt.date === todayTw);
+                    if (tObj) {
+                        const listLen = Array.isArray(tObj.listItems) ? tObj.listItems.length : (Array.isArray(tObj.timeWindows) ? tObj.timeWindows.length : 0);
+                        if (listLen > 0) todayHasSlots = true;
+                    }
+                }
+                if (todayHasSlots) return todayTw;
+                const futureDate = dates.find(dt => dt > todayTw) || dates[0];
+                if (futureDate) return futureDate;
+            } else {
+                const futureDate = dates.find(dt => dt >= todayTw) || dates[0];
+                if (futureDate) return futureDate;
+            }
+        }
+    }
+    return todayTw;
+}
+window.getTargetScheduleDate = getTargetScheduleDate;
+
 function checkStoreIsOpenNow(d, badgeTime) {
     try {
         if (!d) return false;
@@ -1984,14 +2022,15 @@ function validateStoreSchedule() {
             (rawData.scheduledOrderInfo && rawData.scheduledOrderInfo.isSchedulable === false)
         );
 
-        // 取得今日台灣時間 (YYYY-MM-DD)，檢查當日是否具備配送時段
+        // 取得目標預約檢查日期 (支援跨日預約與當前所選預約日期)
         const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+        const targetDate = (typeof getTargetScheduleDate === 'function') ? getTargetScheduleDate(rawData) : todayTw;
         let hasTodayPickerSlots = false;
         if (rawData.timeWindowPicker && Array.isArray(rawData.timeWindowPicker.dates)) {
-            const todayDateObj = rawData.timeWindowPicker.dates.find(dt => dt && dt.date === todayTw) || rawData.timeWindowPicker.dates[0];
-            if (todayDateObj && todayDateObj.date === todayTw) {
-                const listLen = Array.isArray(todayDateObj.listItems) ? todayDateObj.listItems.length : 0;
-                const winLen = Array.isArray(todayDateObj.timeWindows) ? todayDateObj.timeWindows.length : 0;
+            const targetDateObj = rawData.timeWindowPicker.dates.find(dt => dt && dt.date === targetDate) || rawData.timeWindowPicker.dates[0];
+            if (targetDateObj) {
+                const listLen = Array.isArray(targetDateObj.listItems) ? targetDateObj.listItems.length : 0;
+                const winLen = Array.isArray(targetDateObj.timeWindows) ? targetDateObj.timeWindows.length : 0;
                 if (listLen > 0 || winLen > 0) {
                     hasTodayPickerSlots = true;
                 }
@@ -2000,7 +2039,7 @@ function validateStoreSchedule() {
 
         let hasTodayDeliveryHours = true;
         if (rawData.adaptedDeliveryHoursInfos && Array.isArray(rawData.adaptedDeliveryHoursInfos.dates) && rawData.adaptedDeliveryHoursInfos.dates.length > 0) {
-            hasTodayDeliveryHours = rawData.adaptedDeliveryHoursInfos.dates.includes(todayTw);
+            hasTodayDeliveryHours = rawData.adaptedDeliveryHoursInfos.dates.includes(targetDate);
         }
 
         const isExplicitlySchedulable = Boolean(
@@ -2015,7 +2054,7 @@ function validateStoreSchedule() {
 
         if (windows.length === 0 && isSched && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
             rawData.timeWindowPicker.dates.forEach(dateObj => {
-                if (dateObj.date === todayTw) {
+                if (dateObj.date === targetDate) {
                     if (dateObj.listItems) {
                         dateObj.listItems.forEach(item => {
                             if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
@@ -2070,6 +2109,33 @@ function validateStoreSchedule() {
                 }
             }
         }
+        if (!timeFound && rawData && rawData.timeWindowPicker && Array.isArray(rawData.timeWindowPicker.dates)) {
+            for (const dateObj of rawData.timeWindowPicker.dates) {
+                const items = dateObj.listItems || [];
+                for (const item of items) {
+                    const tw = item.timeWindowViewModel?.timeWindow;
+                    if (tw && tw.startTimeSeconds) {
+                        const duration = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) * 60 : 1800;
+                        if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + duration) {
+                            timeFound = true;
+                            break;
+                        }
+                    }
+                }
+                if (timeFound) break;
+                const tws = dateObj.timeWindows || [];
+                for (const tw of tws) {
+                    if (tw && tw.startTimeSeconds) {
+                        const duration = (tw.endTime && tw.startTime) ? (tw.endTime - tw.startTime) * 60 : 1800;
+                        if (selectedTime >= tw.startTimeSeconds && selectedTime <= tw.startTimeSeconds + duration) {
+                            timeFound = true;
+                            break;
+                        }
+                    }
+                }
+                if (timeFound) break;
+            }
+        }
 
         const nowSec = Date.now() / 1000;
         const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : false;
@@ -2099,8 +2165,9 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
     const rawData = window.currentStoreRawData;
     if (windows.length === 0 && rawData && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
         const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+        const targetDate = (typeof getTargetScheduleDate === 'function') ? getTargetScheduleDate(rawData) : todayTw;
         rawData.timeWindowPicker.dates.forEach(dateObj => {
-            if (dateObj.date === todayTw) {
+            if (dateObj.date === targetDate) {
                 if (dateObj.listItems) {
                     dateObj.listItems.forEach(item => {
                         if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
@@ -9641,15 +9708,16 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           (d.scheduledOrderInfo && d.scheduledOrderInfo.isSchedulable === false)
       );
 
-      // 取得今日台灣時間 (YYYY-MM-DD)，檢查當日是否具備配送時段
+      // 取得目標預約檢查日期 (支援跨日預約與當前所選預約日期)
       const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+      const targetDate = (typeof getTargetScheduleDate === 'function') ? getTargetScheduleDate(d) : todayTw;
 
       let hasTodayPickerSlots = false;
       if (d.timeWindowPicker && Array.isArray(d.timeWindowPicker.dates)) {
-          const todayDateObj = d.timeWindowPicker.dates.find(dt => dt && dt.date === todayTw) || d.timeWindowPicker.dates[0];
-          if (todayDateObj && todayDateObj.date === todayTw) {
-              const listLen = Array.isArray(todayDateObj.listItems) ? todayDateObj.listItems.length : 0;
-              const winLen = Array.isArray(todayDateObj.timeWindows) ? todayDateObj.timeWindows.length : 0;
+          const targetDateObj = d.timeWindowPicker.dates.find(dt => dt && dt.date === targetDate) || d.timeWindowPicker.dates[0];
+          if (targetDateObj) {
+              const listLen = Array.isArray(targetDateObj.listItems) ? targetDateObj.listItems.length : 0;
+              const winLen = Array.isArray(targetDateObj.timeWindows) ? targetDateObj.timeWindows.length : 0;
               if (listLen > 0 || winLen > 0) {
                   hasTodayPickerSlots = true;
               }
@@ -9658,7 +9726,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       let hasTodayDeliveryHours = true;
       if (d.adaptedDeliveryHoursInfos && Array.isArray(d.adaptedDeliveryHoursInfos.dates) && d.adaptedDeliveryHoursInfos.dates.length > 0) {
-          hasTodayDeliveryHours = d.adaptedDeliveryHoursInfos.dates.includes(todayTw);
+          hasTodayDeliveryHours = d.adaptedDeliveryHoursInfos.dates.includes(targetDate);
       }
 
       const isExplicitlySchedulable = Boolean(
@@ -9669,8 +9737,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       // 綜合判定可預約性：
       // 1. 不能被 Uber 官方禁止 (isProhibitedByUber 為 false)
-      // 2. 當日必須有外送時段 (hasTodayDeliveryHours 為 true)
-      // 3. 當日必須有可選預約時段 (hasTodayPickerSlots 為 true)
+      // 2. 目標預約日必須有外送時段 (hasTodayDeliveryHours 為 true)
+      // 3. 目標預約日必須有可選預約時段 (hasTodayPickerSlots 為 true)
       // 4. 同時具備顯式預約授權或時段
       const isSchedulable = !isProhibitedByUber && hasTodayDeliveryHours && hasTodayPickerSlots && Boolean(
           isExplicitlySchedulable || hasTodayPickerSlots
@@ -9679,11 +9747,11 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       // 生鮮雜貨與餐廳皆需通過可接單檢查
       const isGrocery = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
 
-      // 解析當日所有可用時段，供預約與即時單狀態判斷 (若店家禁止預約，時段一律為空)
+      // 解析目標預約日所有可用時段，供預約與即時單狀態判斷 (若店家禁止預約，時段一律為空)
       let availableWindows = [];
       if (isSchedulable && d.timeWindowPicker && d.timeWindowPicker.dates) {
           d.timeWindowPicker.dates.forEach(dateObj => {
-              if (dateObj.date === todayTw) {
+              if (dateObj.date === targetDate) {
                   if (dateObj.listItems) {
                       dateObj.listItems.forEach(item => {
                           if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
