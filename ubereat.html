@@ -3190,6 +3190,17 @@ function generateStoreListHTML(stores, q, currentVertical) {
       if (stage2Stores.length > 0) {
           finalList = finalList.concat(stage2Stores);
       }
+
+      // ⭐【依使用者要求】：從第 4 個開始強制優先排序能自取店家，自取店家全部排完後，才把剩下的店家排列在後面
+      if (finalList.length > 3) {
+          const top3 = finalList.slice(0, 3);
+          const rest = finalList.slice(3);
+          const isPickupStore = (s) => Boolean(s && (s._isPickupDiscount === true || s.storeCanPickup === true));
+          const pickupRest = rest.filter(s => isPickupStore(s));
+          const nonPickupRest = rest.filter(s => !isPickupStore(s));
+          finalList = [...top3, ...pickupRest, ...nonPickupRest];
+      }
+
       stores.length = 0; finalList.forEach(x => stores.push(x));
 
 

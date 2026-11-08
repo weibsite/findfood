@@ -1979,7 +1979,7 @@ function validateStoreSchedule() {
 
         if (!isSched) {
             const tType = isGr ? '商店' : '餐廳';
-            return { valid: false, reason: 'NOT_SCHEDULABLE', text: `此${tType}不支援預約訂單，無法為您代購。請選擇其他${tType}。` };
+            return { valid: false, reason: 'NOT_SCHEDULABLE', text: `此${tType}無法代訂，請選擇其他${tType}` };
         }
     }
 
@@ -3214,6 +3214,17 @@ function generateStoreListHTML(stores, q, currentVertical) {
       if (stage2Stores.length > 0) {
           finalList = finalList.concat(stage2Stores);
       }
+
+      // ⭐【依使用者要求】：從第 4 個開始強制優先排序能自取店家，自取店家全部排完後，才把剩下的店家排列在後面
+      if (finalList.length > 3) {
+          const top3 = finalList.slice(0, 3);
+          const rest = finalList.slice(3);
+          const isPickupStore = (s) => Boolean(s && (s._isPickupDiscount === true || s.storeCanPickup === true));
+          const pickupRest = rest.filter(s => isPickupStore(s));
+          const nonPickupRest = rest.filter(s => !isPickupStore(s));
+          finalList = [...top3, ...pickupRest, ...nonPickupRest];
+      }
+
       stores.length = 0; finalList.forEach(x => stores.push(x));
 
 
@@ -6451,7 +6462,7 @@ function openCheckoutSummary() {
     const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
     if (!schedCheck.valid) {
         if (schedCheck.reason === 'NOT_SCHEDULABLE') {
-            showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+            showModal('無法為您代購', '此餐廳無法代訂，請選擇其他餐廳', true);
             return;
         }
         window.currentStoreClosed = true;
@@ -7300,7 +7311,7 @@ async function _sendOrderToLine(forceSubmit = false) {
           hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
 
           if (schedCheck.reason === 'NOT_SCHEDULABLE') {
-              showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+              showModal('無法為您代購', '此餐廳無法代訂，請選擇其他餐廳', true);
               return;
           }
 
@@ -9194,7 +9205,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     const unSchedulableStoresQuick = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE' && uuid && unSchedulableStoresQuick.includes(uuid)) {
         const tTypeQuick = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-        showModal('無法為您代購', '', true, `<div style="text-align:center;">此${tTypeQuick}不支援預約訂單，無法為您代購。請選擇其他${tTypeQuick}。</div>`);
+        showModal('無法為您代購', `此${tTypeQuick}無法代訂，請選擇其他${tTypeQuick}`, true);
         return;
     }
     
@@ -9616,13 +9627,13 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
           const tType = isGrocery ? '商店' : '餐廳';
           let errorTitle = '無法為您代購';
-          let errorMsg = `此${tType}不支援預約訂單，無法為您代購。請選擇其他${tType}。`;
+          let errorMsg = `此${tType}無法代訂，請選擇其他${tType}`;
           if (isTooFar) {
               errorTitle = '超出外送範圍';
               errorMsg = `店家太遠無法外送，請選擇其他${tType}。`;
           }
 
-          showModal(errorTitle, errorMsg, true, `<div style="text-align:center;">${errorMsg}</div>`);
+          showModal(errorTitle, errorMsg, true);
 
           resultsDiv.innerHTML = oldHtml;
           const cardEl = document.getElementById('card_' + storeUuid);
@@ -11274,6 +11285,9 @@ function buildSplitSuggestionHtml(result) {
     window.errorModalCloseCallback = (typeof onClose === 'function') ? onClose : null;
     if (typeof text === 'string' && (text.includes('<div') || text.includes('<button') || text.includes('<span') || text.includes('<p') || text.includes('<br>')) && !htmlContent) {
         htmlContent = text;
+        text = '';
+    }
+    if (text && htmlContent && htmlContent.includes(text)) {
         text = '';
     }
 
