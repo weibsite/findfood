@@ -12,7 +12,50 @@
 
 
 
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js">
+// ============================================================
+// 排除自取免運店家管理 (強制收取外送加成，不享自取免運)
+// ============================================================
+window.pickupExcludeStores = ['漢堡王', '麥當勞', 'pizza hut', 'pizzahut', '拿波里'];
+window._pickupExcludeStoresLoaded = false;
+
+async function loadPickupExcludeStores() {
+    try {
+        const apiBase = (typeof API_BASE_URL !== 'undefined' && API_BASE_URL) ? API_BASE_URL : '';
+        const res = await fetch(`${apiBase}/api/pickup_exclude_stores?t=${Date.now()}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && Array.isArray(data.excluded) && data.excluded.length > 0) {
+                window.pickupExcludeStores = data.excluded;
+                window._pickupExcludeStoresLoaded = true;
+                console.log('Loaded pickup exclude stores:', window.pickupExcludeStores);
+            }
+        }
+    } catch (e) {
+        console.warn('載入排除自取免運店家名單失敗:', e);
+    }
+}
+
+function isStorePickupExcluded(name) {
+    if (!name) return false;
+    if (typeof name === 'object') {
+        name = name.text || name.title || '';
+    }
+    const list = (window.pickupExcludeStores && window.pickupExcludeStores.length > 0) 
+        ? window.pickupExcludeStores 
+        : ['漢堡王', '麥當勞', 'pizza hut', 'pizzahut', '拿波里'];
+    const cleanName = String(name).toLowerCase();
+    for (const kw of list) {
+        if (!kw) continue;
+        const cleanKw = String(kw).trim().toLowerCase();
+        if (cleanKw && cleanName.includes(cleanKw)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+</script>
 
 <title>點餐系統 22.1</title>
 
@@ -1372,6 +1415,7 @@ let isAddressSet = false;
     // Config loaded, API_BASE_URL is ready, now we can fetch times
     loadStoreBlacklist();
     if (typeof loadThreeHourStores === 'function') loadThreeHourStores();
+    if (typeof loadPickupExcludeStores === 'function') loadPickupExcludeStores();
     fetchDeliveryTimes();
     loadServerStatusDot();
     if (!window._serverStatusWatchdog) {
@@ -3219,7 +3263,12 @@ function generateStoreListHTML(stores, q, currentVertical) {
       if (finalList.length > 3) {
           const top3 = finalList.slice(0, 3);
           const rest = finalList.slice(3);
-          const isPickupStore = (s) => Boolean(s && (s._isPickupDiscount === true || s.storeCanPickup === true));
+          const isPickupStore = (s) => {
+              if (!s) return false;
+              const sTitle = (s.title && s.title.text) ? s.title.text : (s.title || s.name || '');
+              if (typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(sTitle)) return false;
+              return Boolean(s._isPickupDiscount === true || s.storeCanPickup === true);
+          };
           const pickupRest = rest.filter(s => isPickupStore(s));
           const nonPickupRest = rest.filter(s => !isPickupStore(s));
           finalList = [...top3, ...pickupRest, ...nonPickupRest];
@@ -3356,7 +3405,7 @@ function generateStoreListHTML(stores, q, currentVertical) {
             overlayHtml = `<div style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:bold; letter-spacing:1px; z-index:2;">無法接單</div>`;
         }
 
-        const isPickup = s._isPickupDiscount === true;
+        const isPickup = (s._isPickupDiscount === true) && !(typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(name));
 
         let etdText = '';
         const metaSource = s._pickupMeta || s.meta;
@@ -3576,7 +3625,12 @@ async function fetchPickupDiscountStores(q) {
             return 99999;
         };
 
-        stores = stores.filter(s => getDist(s) <= 5.0);
+        stores = stores.filter(s => {
+            if (getDist(s) > 5.0) return false;
+            const sTitle = (s.title && s.title.text) ? s.title.text : (s.title || s.name || '');
+            if (typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(sTitle)) return false;
+            return true;
+        });
         stores.sort((a, b) => getDist(a) - getDist(b));
 
         if (q) {
@@ -4102,7 +4156,12 @@ async function searchStoresPickup(q) {
         };
 
         
-        stores = stores.filter(s => getDist(s) <= 5.0);
+        stores = stores.filter(s => {
+            if (getDist(s) > 5.0) return false;
+            const sTitle = (s.title && s.title.text) ? s.title.text : (s.title || s.name || '');
+            if (typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(sTitle)) return false;
+            return true;
+        });
         
         stores.sort((a, b) => {
             return getDist(a) - getDist(b);
@@ -7326,7 +7385,12 @@ async function _sendOrderToLine(forceSubmit = false) {
       }
 
             // 判斷此訂單店家是否支援外帶自取 (Pickup)
-      const isStoreCanPickup = Boolean(
+      const isPickupExcludedOrder = typeof isStorePickupExcluded === 'function' && (
+          (cart.length > 0 && cart.some(it => isStorePickupExcluded(it.storeName))) ||
+          isStorePickupExcluded(window.currentStoreRawData && window.currentStoreRawData.title)
+      );
+      // 判斷此訂單店家是否支援外帶自取 (Pickup)
+      const isStoreCanPickup = !isPickupExcludedOrder && Boolean(
           (cart.length > 0) ? cart.every(it => it.storeCanPickup) : (window.currentStoreCanPickup || isStorePickupAvailable(window.currentStoreRawData))
       );
 
@@ -9164,6 +9228,10 @@ function isOpeningWithin30Minutes(badgeTime) {
 
 function isStorePickupAvailable(storeRawData) {
     if (!storeRawData) return false;
+    const storeTitle = typeof storeRawData.title === 'object' && storeRawData.title ? (storeRawData.title.text || '') : (storeRawData.title || storeRawData.name || '');
+    if (typeof isStorePickupExcluded === 'function' && isStorePickupExcluded(storeTitle)) {
+        return false;
+    }
     try {
         const suppModes = storeRawData.supportedDiningModes || [];
         const hasPickupMode = Array.isArray(suppModes) && suppModes.some(m => m.mode === 'PICKUP');
@@ -9194,6 +9262,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     }
     if (!window._threeHourStoresLoaded && typeof loadThreeHourStores === 'function') {
         await loadThreeHourStores();
+    }
+    if (!window._pickupExcludeStoresLoaded && typeof loadPickupExcludeStores === 'function') {
+        await loadPickupExcludeStores();
     }
     if (checkStoreName && typeof isStoreBlacklisted === 'function' && isStoreBlacklisted(checkStoreName)) {
         showModal('無法代購', '此店家無法使用折價券，無法代購請見諒', true);
@@ -9412,11 +9483,21 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const d = json.data;
 
       window.currentStoreRawData = d;
-      window.currentStoreCanPickup = isStorePickupAvailable(d);
-      if (window.currentStoreCanPickup || diningMode === 'PICKUP') {
-          localStorage.setItem('uberCartIsDiscount', 'true');
-      } else {
+      const isPickupExcluded = typeof isStorePickupExcluded === 'function' && (
+          isStorePickupExcluded(checkStoreName) ||
+          isStorePickupExcluded(storeName) ||
+          (d && isStorePickupExcluded(d.title))
+      );
+      if (isPickupExcluded) {
+          window.currentStoreCanPickup = false;
           localStorage.setItem('uberCartIsDiscount', 'false');
+      } else {
+          window.currentStoreCanPickup = isStorePickupAvailable(d);
+          if (window.currentStoreCanPickup || diningMode === 'PICKUP') {
+              localStorage.setItem('uberCartIsDiscount', 'true');
+          } else {
+              localStorage.setItem('uberCartIsDiscount', 'false');
+          }
       }
 
       // 檢查取得後的官方店家標題是否在黑名單中
@@ -10096,7 +10177,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       let fareHtml = '<div id="storeFareArea" style="text-align: center; color: #999; font-size: 13px; margin-bottom: 10px;">運費查詢中...</div>';
 
-      const isFreeDeliveryStore = !window.isGroceryStore && (
+      const isFreeDeliveryStore = !window.isGroceryStore && !isPickupExcluded && (
           window.currentStoreCanPickup ||
           (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(d)) ||
           localStorage.getItem('uberCartIsDiscount') === 'true' ||
@@ -10516,7 +10597,8 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                       }
                   }
 
-                  const isFreeDeliveryStore = !window.isGroceryStore && (
+                  const isExcludedFareStore = isPickupExcluded || (typeof isStorePickupExcluded === 'function' && fd && isStorePickupExcluded(fd.title));
+                  const isFreeDeliveryStore = !window.isGroceryStore && !isExcludedFareStore && (
                       window.currentStoreCanPickup ||
                       (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(d)) ||
                       (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(fd)) ||
@@ -10597,7 +10679,7 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
               console.log('背景運費查詢失敗:', e);
               const fareArea = document.getElementById('storeFareArea');
               if (fareArea) {
-                  const isFreeDeliveryStore = !window.isGroceryStore && (
+                  const isFreeDeliveryStore = !window.isGroceryStore && !isPickupExcluded && (
                       window.currentStoreCanPickup ||
                       (typeof isStorePickupAvailable === 'function' && isStorePickupAvailable(d)) ||
                       localStorage.getItem('uberCartIsDiscount') === 'true' ||
