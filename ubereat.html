@@ -10475,6 +10475,19 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                       }
                       currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = 0;
                   }
+                  if (typeof cart !== 'undefined' && Array.isArray(cart)) {
+                      let updatedCartFees = false;
+                      cart.forEach(it => {
+                          if (it.storeUuid === currentStoreUuid || (it.storeName && it.storeName === currentStoreName)) {
+                              it.storeDeliveryFee = currentStoreDeliveryFee;
+                              it.originalStoreDeliveryFee = currentOriginalDeliveryFee;
+                              updatedCartFees = true;
+                          }
+                      });
+                      if (updatedCartFees && typeof saveCart === 'function') {
+                          saveCart();
+                      }
+                  }
                   if (typeof updateCartUI === 'function') updateCartUI();
                   
                   const is150Store = (typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('優市'));
