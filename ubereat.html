@@ -1882,42 +1882,80 @@ window.checkStoreIsOpenNow = checkStoreIsOpenNow;
 function validateStoreSchedule() {
     let windows = window.currentStoreAvailableWindows || [];
     const rawData = window.currentStoreRawData;
-    if (windows.length === 0 && rawData && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
-        rawData.timeWindowPicker.dates.forEach(dateObj => {
-            if (dateObj.listItems) {
-                dateObj.listItems.forEach(item => {
-                    if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
-                        windows.push(item.timeWindowViewModel.timeWindow);
-                    }
-                });
-            }
-        });
-        const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
-        if (typeof interleaveThreeHourWindows === 'function') {
-            windows = interleaveThreeHourWindows(windows, currentStoreName, isGr);
-        }
-        window.currentStoreAvailableWindows = windows;
-    }
-
     const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
-    // 規範檢查：預約單需確認店家支援預約；即時單只要店家營業中即可正常接單
+
+    // 規範檢查：預約單與即時單均需確認店家支援預約且當日具備配送時段
     if (rawData) {
-        const hasPickerWindows = Boolean(
-            rawData.timeWindowPicker &&
-            Array.isArray(rawData.timeWindowPicker.dates) &&
-            rawData.timeWindowPicker.dates.some(dateObj =>
-                (dateObj.listItems && dateObj.listItems.length > 0) ||
-                (dateObj.timeWindows && dateObj.timeWindows.length > 0)
-            )
+        const ofl = rawData.orderForLaterInfo;
+        const isProhibitedByUber = Boolean(
+            (ofl && (
+                ofl.bottomSheetPrimaryButtonAction === 'DISMISS' ||
+                ofl.bottomSheetPrimaryButtonMessage === '查看商家' ||
+                (ofl.bottomSheetSubtitleMessage && (
+                    ofl.bottomSheetSubtitleMessage.includes('要等到營業時間才會接受訂單') ||
+                    ofl.bottomSheetSubtitleMessage.includes('不接受預約') ||
+                    ofl.bottomSheetSubtitleMessage.includes('目前不接受預約')
+                )) ||
+                ofl.isSchedulable === false
+            )) ||
+            (rawData.scheduledOrderInfo && rawData.scheduledOrderInfo.isSchedulable === false)
         );
-        const isSched = Boolean(
+
+        // 取得今日台灣時間 (YYYY-MM-DD)，檢查當日是否具備配送時段
+        const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+        let hasTodayPickerSlots = false;
+        if (rawData.timeWindowPicker && Array.isArray(rawData.timeWindowPicker.dates)) {
+            const todayDateObj = rawData.timeWindowPicker.dates.find(dt => dt && dt.date === todayTw) || rawData.timeWindowPicker.dates[0];
+            if (todayDateObj && todayDateObj.date === todayTw) {
+                const listLen = Array.isArray(todayDateObj.listItems) ? todayDateObj.listItems.length : 0;
+                const winLen = Array.isArray(todayDateObj.timeWindows) ? todayDateObj.timeWindows.length : 0;
+                if (listLen > 0 || winLen > 0) {
+                    hasTodayPickerSlots = true;
+                }
+            }
+        }
+
+        let hasTodayDeliveryHours = true;
+        if (rawData.adaptedDeliveryHoursInfos && Array.isArray(rawData.adaptedDeliveryHoursInfos.dates) && rawData.adaptedDeliveryHoursInfos.dates.length > 0) {
+            hasTodayDeliveryHours = rawData.adaptedDeliveryHoursInfos.dates.includes(todayTw);
+        }
+
+        const isExplicitlySchedulable = Boolean(
             (rawData.scheduledOrderInfo && rawData.scheduledOrderInfo.isSchedulable === true) ||
-            hasPickerWindows
+            (ofl && ofl.bottomSheetPrimaryButtonAction === 'SCHEDULE') ||
+            (ofl && ofl.isSchedulable === true)
         );
-        const isStoreOpen = (rawData.isOpen !== false && rawData.isOrderable !== false);
-        const allowInAsap = scheduleMode === 'ASAP' && (isGr || isStoreOpen);
-        if (!allowInAsap && !isSched) {
-            return { valid: false, reason: 'NOT_SCHEDULABLE', text: '此餐廳不支援預約，無法代購' };
+
+        const isSched = !isProhibitedByUber && hasTodayDeliveryHours && hasTodayPickerSlots && Boolean(
+            isExplicitlySchedulable || hasTodayPickerSlots
+        );
+
+        if (windows.length === 0 && isSched && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
+            rawData.timeWindowPicker.dates.forEach(dateObj => {
+                if (dateObj.date === todayTw) {
+                    if (dateObj.listItems) {
+                        dateObj.listItems.forEach(item => {
+                            if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
+                                windows.push(item.timeWindowViewModel.timeWindow);
+                            }
+                        });
+                    }
+                    if (dateObj.timeWindows) {
+                        dateObj.timeWindows.forEach(tw => {
+                            windows.push(tw);
+                        });
+                    }
+                }
+            });
+            if (typeof interleaveThreeHourWindows === 'function') {
+                windows = interleaveThreeHourWindows(windows, currentStoreName, isGr);
+            }
+            window.currentStoreAvailableWindows = windows;
+        }
+
+        if (!isSched) {
+            const tType = isGr ? '商店' : '餐廳';
+            return { valid: false, reason: 'NOT_SCHEDULABLE', text: `此${tType}無法代訂，請選擇其他${tType}` };
         }
     }
 
@@ -1977,13 +2015,21 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
     let windows = window.currentStoreAvailableWindows || [];
     const rawData = window.currentStoreRawData;
     if (windows.length === 0 && rawData && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
+        const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
         rawData.timeWindowPicker.dates.forEach(dateObj => {
-            if (dateObj.listItems) {
-                dateObj.listItems.forEach(item => {
-                    if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
-                        windows.push(item.timeWindowViewModel.timeWindow);
-                    }
-                });
+            if (dateObj.date === todayTw) {
+                if (dateObj.listItems) {
+                    dateObj.listItems.forEach(item => {
+                        if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
+                            windows.push(item.timeWindowViewModel.timeWindow);
+                        }
+                    });
+                }
+                if (dateObj.timeWindows) {
+                    dateObj.timeWindows.forEach(tw => {
+                        windows.push(tw);
+                    });
+                }
             }
         });
         const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
@@ -6379,7 +6425,7 @@ function openCheckoutSummary() {
     const schedCheck = typeof validateStoreSchedule === 'function' ? validateStoreSchedule() : { valid: true };
     if (!schedCheck.valid) {
         if (schedCheck.reason === 'NOT_SCHEDULABLE') {
-            showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+            showModal('無法為您代購', '此餐廳無法代訂，請選擇其他餐廳', true);
             return;
         }
         window.currentStoreClosed = true;
@@ -7194,7 +7240,7 @@ async function _sendOrderToLine(forceSubmit = false) {
           hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
 
           if (schedCheck.reason === 'NOT_SCHEDULABLE') {
-              showModal('無法為您代購', '', true, `<div style="text-align:center;">此店家不支援預約訂單，無法為您代購。請選擇其他店家。</div>`);
+              showModal('無法為您代購', '此餐廳無法代訂，請選擇其他餐廳', true);
               return;
           }
 
@@ -9060,7 +9106,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     const unSchedulableStoresQuick = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
     if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE' && uuid && unSchedulableStoresQuick.includes(uuid)) {
         const tTypeQuick = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
-        showModal('無法為您代購', '', true, `<div style="text-align:center;">此${tTypeQuick}不支援預約訂單，無法為您代購。請選擇其他${tTypeQuick}。</div>`);
+        showModal('無法為您代購', `此${tTypeQuick}無法代訂，請選擇其他${tTypeQuick}`, true);
         return;
     }
     
@@ -9375,33 +9421,77 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
 
 
-      const hasPickerWindows = Boolean(
-          d.timeWindowPicker &&
-          Array.isArray(d.timeWindowPicker.dates) &&
-          d.timeWindowPicker.dates.some(dateObj =>
-              (dateObj.listItems && dateObj.listItems.length > 0) ||
-              (dateObj.timeWindows && dateObj.timeWindows.length > 0)
-          )
+            // 嚴格判斷：店家是否被 Uber Eats 官方禁止預約
+      const ofl = d.orderForLaterInfo;
+      const isProhibitedByUber = Boolean(
+          (ofl && (
+              ofl.bottomSheetPrimaryButtonAction === 'DISMISS' ||
+              ofl.bottomSheetPrimaryButtonMessage === '查看商家' ||
+              (ofl.bottomSheetSubtitleMessage && (
+                  ofl.bottomSheetSubtitleMessage.includes('要等到營業時間才會接受訂單') ||
+                  ofl.bottomSheetSubtitleMessage.includes('不接受預約') ||
+                  ofl.bottomSheetSubtitleMessage.includes('目前不接受預約')
+              )) ||
+              ofl.isSchedulable === false
+          )) ||
+          (d.scheduledOrderInfo && d.scheduledOrderInfo.isSchedulable === false)
       );
 
-      const isSchedulable = Boolean(
+      // 取得今日台灣時間 (YYYY-MM-DD)，檢查當日是否具備配送時段
+      const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+
+      let hasTodayPickerSlots = false;
+      if (d.timeWindowPicker && Array.isArray(d.timeWindowPicker.dates)) {
+          const todayDateObj = d.timeWindowPicker.dates.find(dt => dt && dt.date === todayTw) || d.timeWindowPicker.dates[0];
+          if (todayDateObj && todayDateObj.date === todayTw) {
+              const listLen = Array.isArray(todayDateObj.listItems) ? todayDateObj.listItems.length : 0;
+              const winLen = Array.isArray(todayDateObj.timeWindows) ? todayDateObj.timeWindows.length : 0;
+              if (listLen > 0 || winLen > 0) {
+                  hasTodayPickerSlots = true;
+              }
+          }
+      }
+
+      let hasTodayDeliveryHours = true;
+      if (d.adaptedDeliveryHoursInfos && Array.isArray(d.adaptedDeliveryHoursInfos.dates) && d.adaptedDeliveryHoursInfos.dates.length > 0) {
+          hasTodayDeliveryHours = d.adaptedDeliveryHoursInfos.dates.includes(todayTw);
+      }
+
+      const isExplicitlySchedulable = Boolean(
           (d.scheduledOrderInfo && d.scheduledOrderInfo.isSchedulable === true) ||
-          hasPickerWindows
+          (ofl && ofl.bottomSheetPrimaryButtonAction === 'SCHEDULE') ||
+          (ofl && ofl.isSchedulable === true)
+      );
+
+      // 綜合判定可預約性：
+      // 1. 不能被 Uber 官方禁止 (isProhibitedByUber 為 false)
+      // 2. 當日必須有外送時段 (hasTodayDeliveryHours 為 true)
+      // 3. 當日必須有可選預約時段 (hasTodayPickerSlots 為 true)
+      // 4. 同時具備顯式預約授權或時段
+      const isSchedulable = !isProhibitedByUber && hasTodayDeliveryHours && hasTodayPickerSlots && Boolean(
+          isExplicitlySchedulable || hasTodayPickerSlots
       );
 
       // 生鮮雜貨與餐廳皆需通過可接單檢查
       const isGrocery = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
 
-      // 解析所有可用時段，供預約與即時單狀態判斷
+      // 解析當日所有可用時段，供預約與即時單狀態判斷 (若店家禁止預約，時段一律為空)
       let availableWindows = [];
-      if (d.timeWindowPicker && d.timeWindowPicker.dates) {
+      if (isSchedulable && d.timeWindowPicker && d.timeWindowPicker.dates) {
           d.timeWindowPicker.dates.forEach(dateObj => {
-              if (dateObj.listItems) {
-                  dateObj.listItems.forEach(item => {
-                      if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
-                          availableWindows.push(item.timeWindowViewModel.timeWindow);
-                      }
-                  });
+              if (dateObj.date === todayTw) {
+                  if (dateObj.listItems) {
+                      dateObj.listItems.forEach(item => {
+                          if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
+                              availableWindows.push(item.timeWindowViewModel.timeWindow);
+                          }
+                      });
+                  }
+                  if (dateObj.timeWindows) {
+                      dateObj.timeWindows.forEach(tw => {
+                          availableWindows.push(tw);
+                      });
+                  }
               }
           });
       }
@@ -9426,16 +9516,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
       const isStoreOpen = (d.isOpen !== false && d.isOrderable !== false && !isStoreClosedByUber);
 
-      let strictScheduleCheck = false;
-      if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
-          // 預約單模式：店家必須支援預約時段
-          strictScheduleCheck = !isSchedulable;
-      } else {
-          // 即時單模式：除生鮮雜貨外，若店家已關閉且無任何預約時段，才判定無法接單
-          if (!isGrocery && !isStoreOpen && !isSchedulable) {
-              strictScheduleCheck = true;
-          }
-      }
+      // 即時單與預約單統一嚴格標準：營業中或未營業，只要不能預約，一律不准進入菜單點餐
+      const strictScheduleCheck = !isSchedulable;
 
       if (isTooFar || strictScheduleCheck) {
           const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
@@ -9445,9 +9527,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           }
 
           const tType = isGrocery ? '商店' : '餐廳';
-          let errorMsg = isTooFar ? `店家太遠無法外送，請選擇其他${tType}。` : `此${tType}目前未營業，無法訂餐。請選擇其他${tType}。`;
+          let errorTitle = '無法為您代購';
+          let errorMsg = `此${tType}無法代訂，請選擇其他${tType}`;
+          if (isTooFar) {
+              errorTitle = '超出外送範圍';
+              errorMsg = `店家太遠無法外送，請選擇其他${tType}`;
+          }
 
-          showModal('店家未營業', errorMsg, true, `<div style="text-align:center;">${errorMsg}</div>`);
+          showModal(errorTitle, errorMsg, true);
 
           resultsDiv.innerHTML = oldHtml;
           const cardEl = document.getElementById('card_' + storeUuid);
@@ -9576,8 +9663,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
               const tType2 = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
               const targetTimeNotice = storeClosedNotice ? `（${escapeHTML(storeClosedNotice)}）` : (effectiveDisplayTime ? `預計 <b>${escapeHTML(effectiveDisplayTime)}</b> 開始營業` : `目前尚未營業`);
 
-              // 看這家店是不是能預約
-              if (availableWindows.length > 0) {
+                            // 看這家店是不是能預約
+              if (isSchedulable && availableWindows.length > 0) {
                   // 關閉等待彈窗，準備進行轉場進入餐廳
                   document.getElementById('errorModalOverlay').style.display = 'none';
                   showSchedModalAfterRender = true;
@@ -11139,6 +11226,9 @@ function buildSplitSuggestionHtml(result) {
     window.errorModalCloseCallback = (typeof onClose === 'function') ? onClose : null;
     if (typeof text === 'string' && (text.includes('<div') || text.includes('<button') || text.includes('<span') || text.includes('<p') || text.includes('<br>')) && !htmlContent) {
         htmlContent = text;
+        text = '';
+    }
+    if (text && htmlContent && htmlContent.includes(text)) {
         text = '';
     }
 
