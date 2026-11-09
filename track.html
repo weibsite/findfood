@@ -1258,6 +1258,11 @@
         function isOrderCanceled(term) {
             if (!term) return false;
 
+            // 🌟 絕對防誤判：若訂單已被標記為送達或已完成，絕不可判為取消
+            if (term.isDelivered === true || term.status === 'concluded' || term.orderPhase === 'COMPLETED') {
+                return false;
+            }
+
             // 若 API 回傳 error 但非明確的 Uber 取消標記，絕不可誤判為取消 (例如查無進行中外送資料)
             if (term.status === 'error' && term.isCanceled !== true) return false;
 
@@ -2517,17 +2522,17 @@
                 // 1. 優先查詢進行中狀態 (即時 GPS、ETA、備餐/取餐/外送中狀態、PIN碼、外送員)
                 const activeRes = await fetchActiveOrder(uuid, url, trackApiBase);
 
-                if (activeRes && activeRes.status === 'success') {
+                if (activeRes && (activeRes.status === 'success' || activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
                     if (activeRes.isDelivered || activeRes.status === 'concluded' || activeRes.orderPhase === 'COMPLETED') {
                         // 後端已具備 terminated 24小時快取，若有留置照片則合併，否則非同步背景獲取
                         const termRes = await fetchTerminatedOrder(uuid, url, trackApiBase);
-                        const finalRes = { ...activeRes, ...(termRes && termRes.status === 'success' ? termRes : {}), url, orderUuid: uuid, isDelivered: true, isLiveActive: false };
+                        const finalRes = { ...activeRes, ...(termRes && termRes.status === 'success' ? termRes : {}), url, orderUuid: uuid, isDelivered: true, isCanceled: false, isLiveActive: false };
                         window._FRONTEND_SUB_CACHE[uuid] = finalRes;
                         return finalRes;
                     }
 
                     if (isOrderCanceled(activeRes)) {
-                        const finalRes = { ...activeRes, url, orderUuid: uuid, isCanceled: true, isLiveActive: false };
+                        const finalRes = { ...activeRes, url, orderUuid: uuid, isCanceled: true, isDelivered: false, isLiveActive: false };
                         window._FRONTEND_SUB_CACHE[uuid] = finalRes;
                         return finalRes;
                     }
@@ -2537,13 +2542,13 @@
 
                 // 2. 備援查 terminated (已結單或取消)
                 const termRes = await fetchTerminatedOrder(uuid, url, trackApiBase);
-                if (isOrderCanceled(termRes)) {
-                    const finalRes = { ...termRes, url, orderUuid: uuid, isCanceled: true, isLiveActive: false };
+                if (termRes && (termRes.isDelivered || (termRes.status === 'success' && !isOrderCanceled(termRes)))) {
+                    const finalRes = { ...termRes, url, orderUuid: uuid, isDelivered: true, isCanceled: false, isLiveActive: false };
                     window._FRONTEND_SUB_CACHE[uuid] = finalRes;
                     return finalRes;
                 }
-                if (termRes && termRes.status === 'success') {
-                    const finalRes = { ...termRes, url, orderUuid: uuid, isDelivered: true, isLiveActive: false };
+                if (isOrderCanceled(termRes)) {
+                    const finalRes = { ...termRes, url, orderUuid: uuid, isCanceled: true, isDelivered: false, isLiveActive: false };
                     window._FRONTEND_SUB_CACHE[uuid] = finalRes;
                     return finalRes;
                 }
@@ -3546,9 +3551,12 @@
                 const u = extractOrderUuid(rawItem) || (rawItem.startsWith('http') ? '' : rawItem);
                 const url = (!rawItem) ? '' : (rawItem.startsWith('http') ? rawItem : (u ? `https://www.ubereats.com/tw/orders/${u}` : ''));
                 const res = await getSubOrderStatus(u, url, window.trackApiBase);
+                // 只有在明確未送達且非完成狀態下，才允許外部標記取消
                 if (rawData?.sub_canceled && rawData.sub_canceled[idx]) {
-                    res.isCanceled = true;
-                    res.status = 'canceled';
+                    if (!res.isDelivered && res.status !== 'concluded' && res.orderPhase !== 'COMPLETED') {
+                        res.isCanceled = true;
+                        res.status = 'canceled';
+                    }
                 }
                 return { ...res, url, idx, orderUuid: u || '' };
             }));
@@ -3587,7 +3595,8 @@
                     trackingUrl: trackingUrls[i] || '',
                     subResult: subResults[i] || {},
                     split: (safeParsedData.splits && safeParsedData.splits[i]) ? safeParsedData.splits[i] : null,
-                    extOrderId: (safeRawData.ext_order_ids && safeRawData.ext_order_ids[i]) ? safeRawData.ext_order_ids[i] : ''
+                    extOrderId: (safeRawData.ext_order_ids && safeRawData.ext_order_ids[i]) ? safeRawData.ext_order_ids[i] : '',
+                    subCanceled: (safeRawData.sub_canceled && safeRawData.sub_canceled[i]) ? safeRawData.sub_canceled[i] : false
                 });
             }
 
@@ -3595,6 +3604,8 @@
             function checkSubIsCanceled(item) {
                 const sub = item.subResult;
                 if (sub) {
+                    // 🌟 絕對防誤判：若該單確認送達或完成，絕不判定為取消
+                    if (sub.isDelivered === true || sub.status === 'concluded' || sub.orderPhase === 'COMPLETED') return false;
                     if (sub.isCanceled === true || sub.status === 'canceled' || sub.status === 'deleted' || sub.isUntracked === true) return true;
                     if (typeof isOrderCanceled === 'function' && isOrderCanceled(sub)) return true;
                     if (typeof getSubOrderConciseStatus === 'function') {
@@ -3606,6 +3617,7 @@
                 }
                 const split = item.split;
                 if (split) {
+                    if (sub && (sub.isDelivered === true || sub.status === 'concluded' || sub.orderPhase === 'COMPLETED')) return false;
                     if (typeof isOrderCanceled === 'function' && isOrderCanceled(split)) return true;
                     if (split.isCanceled === true || split.status === 'canceled') return true;
                     const sTitle = (split.title || split.cancelReason || '').trim();
@@ -3640,9 +3652,11 @@
             const sortedSubResults = combinedList.map(it => it.subResult);
             const sortedSplits = combinedList.map(it => it.split).filter(Boolean);
             const sortedExtOrderIds = combinedList.map(it => it.extOrderId);
+            const sortedSubCanceled = combinedList.map(it => it.subCanceled);
 
             safeParsedData.splits = sortedSplits;
             safeRawData.ext_order_ids = sortedExtOrderIds;
+            safeRawData.sub_canceled = sortedSubCanceled;
             window.currentMultiUuidList = sortedUuidList;
 
             // 產生狀態特徵簽章 (Signature) 用於比對 (Diffing)
@@ -4605,12 +4619,16 @@
 
                     const activeRes = await fetchActiveOrder(singleUuid, urlParams.get('url'), trackApiBase);
 
-                    if (activeRes && activeRes.status === 'success' && !activeRes.isDelivered) {
-
-                        renderActiveDeliveryStage(activeRes, {}, {}, singleUuid);
-
+                    if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
+                        const termRes = await fetchTerminatedOrder(singleUuid, urlParams.get('url'), trackApiBase);
+                        const finalData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                        renderDeliveredStage(finalData, { address: '', items: [] }, {}, urlParams.get('url') || `https://www.ubereats.com/tw/orders/${singleUuid}`);
                         return;
+                    }
 
+                    if (activeRes && activeRes.status === 'success' && !activeRes.isDelivered) {
+                        renderActiveDeliveryStage(activeRes, {}, {}, singleUuid);
+                        return;
                     }
 
                     const termRes = await fetchTerminatedOrder(singleUuid, urlParams.get('url'), trackApiBase);
@@ -6943,37 +6961,20 @@
 
 
 
-                        // 若整筆訂單已被取消或刪除，或單筆且無追蹤網址被標記為取消
-
-                        if (data.order_status === 'canceled' || data.order_status === 'deleted' || isOrderCanceled(data)) {
-
+                        // 若整筆訂單已被取消或刪除，且無任何有效追蹤網址，直接進入取消頁面
+                        // （若具備有效追蹤網址，則必須繼續向 Uber Eats 查驗真實配送/送達狀態，避免誤判已送達的訂單）
+                        if ((data.order_status === 'canceled' || data.order_status === 'deleted' || isOrderCanceled(data)) && !hasTracking) {
                             if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-
                             countdownState = null;
 
-                            if (isMulti && hasTracking) {
-
-                                await loadAndRenderMultiOrders(rawTrackUrls, parsedData, data, isBackgroundRefresh);
-
-                                return;
-
-                            } else {
-
-                                const cancelRes = {
-                                    isCanceled: true,
-                                    cancelTitle: data.cancel_reason || '訂單已取消',
-                                    cancelReason: data.cancel_reason || '此訂單已被取消或店家無法接單。',
-
-                                    storeName: parsedData.store || '合作店家'
-
-                                };
-
-                                renderCanceledStage(cancelRes, parsedData, data, validTrackUrls[0] || '');
-
-                                return;
-
-                            }
-
+                            const cancelRes = {
+                                isCanceled: true,
+                                cancelTitle: data.cancel_reason || '訂單已取消',
+                                cancelReason: data.cancel_reason || '此訂單已被取消或店家無法接單。',
+                                storeName: parsedData.store || '合作店家'
+                            };
+                            renderCanceledStage(cancelRes, parsedData, data, '');
+                            return;
                         }
 
 
@@ -7080,43 +7081,27 @@
 
 
 
-                                    // A. 檢查是否為取消 (優先處理)
-
-                                    if (isOrderCanceled(activeRes)) {
-
-                                        if (window.currentRenderedStage !== 'canceled') {
-
-                                            console.log('❌ 檢測到外送行程已取消！切換至已取消階段');
-
-                                            renderCanceledStage(activeRes, parsedData, data, primaryTrackUrl);
-
-                                        }
-
-                                        return;
-
-                                    }
-
-
-
-                                    // B. 檢查是否已送達 (送達完成判定絕對優先於預約排程)
-
+                                    // A. 檢查是否已送達 (送達完成判定絕對優先，防止誤判為取消)
                                     if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
-
                                         if (window.currentRenderedStage !== 'delivered') {
-
                                             console.log('🎉 檢測到外送夥伴已抵達送達！進一步獲取留置拍照與送達明細...');
-
                                             const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
-
                                             const finalDeliveredData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
-
                                             renderDeliveredStage(finalDeliveredData, parsedData, data, primaryTrackUrl);
-
                                         }
-
                                         return;
-
                                     }
+
+                                    // B. 檢查是否為取消
+                                    if (isOrderCanceled(activeRes)) {
+                                        if (window.currentRenderedStage !== 'canceled') {
+                                            console.log('❌ 檢測到外送行程已取消！切換至已取消階段');
+                                            renderCanceledStage(activeRes, parsedData, data, primaryTrackUrl);
+                                        }
+                                        return;
+                                    }
+
+
 
 
 
@@ -7390,16 +7375,20 @@
 
                                 const activeRes = await fetchActiveOrder(singleU, '', trackApiBase);
 
-                                if (activeRes && activeRes.status === 'success') {
-
-                                    if (window.currentRenderedStage !== 'active') {
-
-                                        renderActiveDeliveryStage(activeRes, {}, {}, singleU);
-
+                                if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
+                                    const termRes = await fetchTerminatedOrder(singleU, '', trackApiBase);
+                                    const finalData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                                    if (window.currentRenderedStage !== 'delivered') {
+                                        renderDeliveredStage(finalData, {}, {}, `https://www.ubereats.com/tw/orders/${singleU}`);
                                     }
-
                                     return;
+                                }
 
+                                if (activeRes && activeRes.status === 'success') {
+                                    if (window.currentRenderedStage !== 'active') {
+                                        renderActiveDeliveryStage(activeRes, {}, {}, singleU);
+                                    }
+                                    return;
                                 }
 
                                 const termRes = await fetchTerminatedOrder(singleU, '', trackApiBase);
