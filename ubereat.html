@@ -437,6 +437,11 @@
           <div id="addrResults" class="addr-results" style="margin:0; gap:6px;"></div>
         </div>
       </div>
+      <!-- 限定 8 縣市 D 券即時提示徽章 -->
+      <div id="dCountyNoticeBadge" style="display:none; margin:8px 16px 4px; padding:7px 12px; background:#fef3c7; border:1px solid #fcd34d; border-radius:10px; font-size:12.5px; color:#b45309; font-weight:700; align-items:center; gap:6px;">
+        <span>📍</span>
+        <span>已偵測到特惠地區 (苗/彰/投/嘉/雲/南/屏/宜)，已為您自動套用限定 D 券！</span>
+      </div>
       <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer;" onclick="openTimePickerModal()">
         <div style="width:44px; height:44px; border-radius:14px; background:#f5f0ee; color:#44403c; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
           <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="22"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
@@ -2620,11 +2625,49 @@ window.addrDebounceTimer = null;
 
 
 
+  
+  // ================= 8 縣市限定 D 券判定邏輯 =================
+  const RE_D_COUNTIES = /(?:苗栗[縣县]?|彰化[縣县市]?|南投[縣县市]?|嘉義[縣县市]?|雲林[縣县]?|云林[縣县]?|[台臺]南[縣县市]?|屏東[縣县市]?|屏东[縣县市]?|宜蘭[縣县市]?|宜兰[縣县市]?)/;
+  const D_TOWNSHIPS = [
+      "頭份", "竹南", "後龍", "通霄", "苑裡", "卓蘭", "造橋", "三灣", "南庄", "頭屋", "獅潭", "公館", "銅鑼", "三義", "西湖", "大湖", "泰安",
+      "鹿港", "和美", "北斗", "員林", "溪湖", "田中", "二林", "線西", "伸港", "福興", "秀水", "花壇", "芬園", "大村", "埔鹽", "埔心", "永靖", "社頭", "二水", "田尾", "埤頭", "芳苑", "大城", "竹塘", "溪州",
+      "埔里", "草屯", "竹山", "集集", "名間", "鹿谷", "中寮", "魚池", "國姓", "水里", "信義", "仁愛",
+      "太保", "朴子", "布袋", "大林", "民雄", "溪口", "新港", "六腳", "東石", "義竹", "鹿草", "水上", "中埔", "竹崎", "梅山", "番路", "大埔", "阿里山",
+      "斗六", "斗南", "虎尾", "西螺", "土庫", "北港", "古坑", "大埤", "莿桐", "林內", "二崙", "崙背", "麥寮", "東勢", "褒忠", "臺西", "台西", "元長", "四湖", "口湖", "水林",
+      "新營", "鹽水", "白河", "柳營", "後壁", "東山", "麻豆", "下營", "六甲", "官田", "大內", "佳里", "學甲", "西港", "七股", "將軍", "北門", "新化", "善化", "新市", "安定", "山上", "玉井", "楠西", "南化", "左鎮", "仁德", "歸仁", "關廟", "龍崎", "永康",
+      "潮州", "東港", "恆春", "萬丹", "長治", "麟洛", "九如", "里港", "鹽埔", "高樹", "萬巒", "內埔", "竹田", "新埤", "枋寮", "新園", "崁頂", "林邊", "南州", "佳冬", "琉球", "車城", "滿州", "枋山", "三地門", "霧臺", "霧台", "瑪家", "泰武", "來義", "春日", "獅子", "牡丹",
+      "羅東", "蘇澳", "頭城", "礁溪", "壯圍", "員山", "冬山", "五結", "三星", "大同", "南澳"
+  ];
+
+  function isAddressEligibleForCouponD(address) {
+      if (!address || typeof address !== 'string') return false;
+      let cleaned = address.trim().replace(/^\d{3,5}\s*/, '');
+      if (cleaned.includes('台灣') || cleaned.includes('臺灣')) {
+          cleaned = cleaned.replace(/^.*?臺?灣省?/, '');
+      }
+      if (RE_D_COUNTIES.test(cleaned)) return true;
+      for (const t of D_TOWNSHIPS) {
+          if (cleaned.startsWith(t)) return true;
+      }
+      return false;
+  }
+
+  function updateDCountyNoticeBadge(addr) {
+      const badge = document.getElementById('dCountyNoticeBadge');
+      if (!badge) return;
+      if (isAddressEligibleForCouponD(addr)) {
+          badge.style.display = 'flex';
+      } else {
+          badge.style.display = 'none';
+      }
+  }
+
   function handleAddrInput() {
 
     isAddressSet = false;
 
     updateAddrTitleState('default');
+    updateDCountyNoticeBadge(document.getElementById('addrInput')?.value);
 
     
 
@@ -2647,6 +2690,7 @@ window.addrDebounceTimer = null;
     clearTimeout(window.addrDebounceTimer);
 
     const q = document.getElementById('addrInput').value.trim();
+    updateDCountyNoticeBadge(q);
 
     if (q) {
 
@@ -6763,7 +6807,8 @@ function openCheckoutSummary() {
 // Plan A
 html += `<div id="planACard" style="background:#f9f9f9; padding:10px; border-radius:8px; border:2px solid #f43f5e; text-align:center; font-size:14px; position:relative;">`;
 
-let origTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">結帳明細 ($150內半價)</div>`;
+const isDCounty = isAddressEligibleForCouponD(addr || document.getElementById('addrInput')?.value);
+let origTable = `<div style="font-weight:bold; margin-bottom:2px; color:#f43f5e;">${isDCounty ? '結帳明細 (限定 D 券特惠 - $150內半價)' : '結帳明細 ($150內半價)'}</div>`;
 origTable += `<table style="margin: 0 auto; color: #666; font-size: 14px; border-collapse: collapse; text-align: left; margin-top:10px;">`;
 origTable += `<tr><td style="text-align:right; padding:2px 4px 2px 0;">小計:</td><td style="padding:2px 0 2px 4px;">$${total}</td></tr>`;
 origTable += total >= 150 ? `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$75</td></tr>` : `<tr><td style="text-align:right; padding:2px 4px 2px 0; color:#f43f5e;">優惠折抵:</td><td style="padding:2px 0 2px 4px; color:#f43f5e;">-$${Math.floor(total/2)}</td></tr>`;
@@ -8171,7 +8216,10 @@ costRes.bins.forEach((bin, bIdx) => {
       if (gwStep2) gwStep2.innerHTML = '<span>⏳</span> 正在連線伺服器建立訂單...';
       const isGrocerySub = Boolean(window.isGroceryStore || (currentStoreName && (currentStoreName.includes('優市') || currentStoreName.includes('全聯') || currentStoreName.includes('家樂福') || currentStoreName.includes('大潤發') || currentStoreName.includes('愛買') || currentStoreName.includes('美廉社'))));
       const is150Sub = (currentStoreName && currentStoreName.includes('優市'));
-      const cTypeSub = isGrocerySub ? (is150Sub ? '150' : '225') : 'A';
+      const deliveryAddrSub = (typeof addr !== 'undefined' && addr) ? addr : (document.getElementById('addrInput')?.value || '');
+      const isDSub = !isGrocerySub && isAddressEligibleForCouponD(deliveryAddrSub);
+      const cTypeSub = isGrocerySub ? (is150Sub ? '150' : '225') : (isDSub ? 'D' : 'A');
+      const planTypeSub = isGrocerySub ? (is150Sub ? '150' : '225') : (isDSub ? 'D' : '150');
       const res = await fetch(API_BASE_URL + '/api/store_v3', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -8195,8 +8243,8 @@ costRes.bins.forEach((bin, bIdx) => {
                   notes: (typeof finalNote !== 'undefined' && finalNote) ? finalNote : '',
                   timeText: (typeof timeText !== 'undefined' && timeText) ? timeText : '盡快送達',
                   food_notes: foodNotes,
-                  plan_type: '150',
-                  coupon_type: 'A',
+                  plan_type: planTypeSub,
+                  coupon_type: cTypeSub,
                   schedule_data: (function() {
                       try {
                           const schedElem = document.getElementById('scheduleTime');
