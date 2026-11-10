@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>獨角獸的療癒花園 - 智慧客服與真人協同系統演示</title>
+    <style>
+        :root {
+            --primary: #7c3aed;
+            --primary-light: #f5f3ff;
+            --primary-hover: #6d28d9;
+            --secondary: #ec4899;
+            --bg-gray: #f1f5f9;
+            --text-main: #0f172a;
+            --text-sub: #64748b;
+            --border: #e2e8f0;
+            --ig-bubble-bot: #f1f5f9;
+            --ig-bubble-user: #8b5cf6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-gray);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* 頂部簡潔導航欄 */
+        header {
+            background: #ffffff;
+            border-bottom: 1px solid var(--border);
+            padding: 12px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+
+        .brand-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #7c3aed, #ec4899);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            box-shadow: 0 2px 6px rgba(124, 58, 237, 0.25);
+        }
+
+        .brand-title h1 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e1b4b;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand-title p {
+            font-size: 12px;
+            color: var(--text-sub);
+            margin-top: 2px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: none;
+        }
+
+        .btn-outline {
+            background: white;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+        }
+
+        .btn-outline:hover {
+            background: #f8fafc;
+            border-color: #94a3b8;
+        }
+
+        .btn-alert {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+
+        .btn-alert:hover {
+            background: #fee2e2;
+        }
+
+        /* 主要雙欄展示區 */
+        main {
+            flex: 1;
+            max-width: 1560px;
+            width: 100%;
+            margin: 16px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 390px 1fr;
+            gap: 24px;
+            align-items: stretch;
+            height: calc(100vh - 90px);
+            min-height: 720px;
+        }
+
+        /* 左側：手機外框 (Instagram DM) */
+        .phone-mockup {
+            background: #18181b;
+            border-radius: 40px;
+            padding: 12px;
+            box-shadow: 0 16px 36px rgba(0,0,0,0.18), 0 0 0 2px #27272a;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .phone-inner {
+            flex: 1;
+            background: #ffffff;
+            border-radius: 30px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .phone-notch {
+            height: 20px;
+            background: #18181b;
+            width: 120px;
+            margin: 0 auto;
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 12px;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+        }
+
+        .ig-header {
+            padding: 24px 14px 10px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #fff;
+        }
+
+        .ig-profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .ig-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ec4899, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+        }
+
+        .ig-name {
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .ig-status {
+            font-size: 11px;
+            color: #10b981;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.3s;
+        }
+
+        .ig-status::before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background: #10b981;
+            border-radius: 50%;
+        }
+
+        .ig-status.human-mode {
+            color: #ef4444;
+        }
+
+        .ig-status.human-mode::before {
+            background: #ef4444;
+        }
+
+        .chat-area {
+            flex: 1;
+            padding: 14px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #fafafa;
+        }
+
+        .msg-bubble {
+            max-width: 84%;
+            padding: 10px 13px;
+            border-radius: 16px;
+            font-size: 12.5px;
+            line-height: 1.5;
+            word-break: break-word;
+            animation: fadeIn 0.25s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .bot-msg {
+            background: var(--ig-bubble-bot);
+            color: #1e293b;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            border: 1px solid #e2e8f0;
+            white-space: pre-wrap;
+        }
+
+        .user-msg {
+            background: var(--ig-bubble-user);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .agent-msg {
+            background: #fdf2f8;
+            color: #9d174d;
+            border: 1.5px solid #fbcfe8;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 6px rgba(244, 63, 94, 0.08);
+        }
+
+        .agent-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            background: #f43f5e;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-bottom: 4px;
+        }
+
+        .quick-replies-area {
+            padding: 10px 12px;
+            background: #fff;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .qr-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-sub);
+            letter-spacing: 0.5px;
+        }
+
+        .qr-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .qr-btn {
+            background: #f3e8ff;
+            color: #6b21a8;
+            border: 1px solid #d8b4fe;
+            padding: 6px 11px;
+            font-size: 11.5px;
+            font-weight: 500;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: left;
+        }
+
+        .qr-btn:hover {
+            background: #e9d5ff;
+            border-color: #c084fc;
+            transform: translateY(-1px);
+        }
+
+        .qr-btn.special-agent {
+            background: #fef2f2;
+            color: #b91c1c;
+            border-color: #fca5a5;
+            font-weight: 600;
+        }
+
+        .qr-btn.special-agent:hover {
+            background: #fee2e2;
+            border-color: #f87171;
+        }
+
+        .recommend-card {
+            background: linear-gradient(135deg, #fdf4ff, #faf5ff);
+            border: 1.5px solid #d8b4fe;
+            border-radius: 14px;
+            padding: 12px;
+            margin-top: 6px;
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.08);
+        }
+
+        .recommend-title {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #7e22ce;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .recommend-body {
+            font-size: 11.5px;
+            color: #3b0764;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        /* 右側：真人客服工作台 (Chatwoot 介面風格) */
+        .chatwoot-window {
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+            border: 1px solid var(--border);
+            height: 100%;
+            display: grid;
+            grid-template-columns: 240px 1fr 240px;
+            overflow: hidden;
+        }
+
+        /* 欄 1: 對話收件箱清單 */
+        .cw-inbox-col {
+            border-right: 1px solid var(--border);
+            background: #f8fafc;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .cw-inbox-header {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 700;
+            font-size: 13.5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+        }
+
+        .cw-conv-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .cw-conv-item {
+            padding: 12px 14px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: all 0.15s;
+            background: white;
+        }
+
+        .cw-conv-item:hover {
+            background: #f8fafc;
+        }
+
+        .cw-conv-item.active {
+            background: #ede9fe;
+            border-left: 4px solid var(--primary);
+        }
+
+        .cw-conv-name {
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .cw-conv-preview {
+            font-size: 11px;
+            color: var(--text-sub);
+            margin-top: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cw-status-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .badge-bot {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .badge-human-waiting {
+            background: #fee2e2;
+            color: #b91c1c;
+            animation: pulse 1.5s infinite;
+        }
+
+        .badge-human-chatting {
+            background: #dcfce7;
+            color: #15803d;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.96); opacity: 0.85; }
+            50% { transform: scale(1.04); opacity: 1; }
+            100% { transform: scale(0.96); opacity: 0.85; }
+        }
+
+        /* 欄 2: 中間主對話視窗 */
+        .cw-chat-col {
+            display: flex;
+            flex-direction: column;
+            background: #ffffff;
+            border-right: 1px solid var(--border);
+        }
+
+        .cw-chat-header {
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fafafa;
+        }
+
+        .cw-user-meta {
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .cw-chat-messages {
+            flex: 1;
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #fdfdfd;
+        }
+
+        .cw-bubble-system {
+            align-self: center;
+            background: #f1f5f9;
+            color: #64748b;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            border: 1px dashed #cbd5e1;
+        }
+
+        .cw-bubble-user {
+            align-self: flex-start;
+            background: #f1f5f9;
+            color: #1e293b;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            max-width: 80%;
+            line-height: 1.4;
+        }
+
+        .cw-bubble-agent {
+            align-self: flex-end;
+            background: #ede9fe;
+            color: #5b21b6;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            max-width: 80%;
+            line-height: 1.4;
+            border: 1px solid #ddd6fe;
+        }
+
+        .cw-composer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: #fafafa;
+        }
+
+        .cw-quick-canned {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .canned-btn {
+            background: white;
+            border: 1px solid #cbd5e1;
+            color: #475569;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .canned-btn:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+        }
+
+        .cw-input-box {
+            display: flex;
+            gap: 8px;
+        }
+
+        .cw-textarea {
+            flex: 1;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12.5px;
+            resize: none;
+            height: 44px;
+            outline: none;
+        }
+
+        .cw-textarea:focus {
+            border-color: var(--primary);
+        }
+
+        .cw-send-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0 16px;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .cw-send-btn:hover {
+            background: var(--primary-hover);
+        }
+
+        /* 欄 3: 顧客檔案與自動收集標籤 */
+        .cw-profile-col {
+            padding: 16px;
+            background: #f8fafc;
+            overflow-y: auto;
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .cw-profile-card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .cw-profile-card h5 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-sub);
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .cw-attr-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #f8fafc;
+            font-size: 11.5px;
+        }
+
+        .cw-attr-label {
+            color: var(--text-sub);
+        }
+
+        .cw-attr-val {
+            font-weight: 600;
+            color: var(--text-main);
+            text-align: right;
+            max-width: 120px;
+            word-break: break-all;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .user-tag {
+            background: #f3e8ff;
+            border: 1px solid #d8b4fe;
+            color: #6b21a8;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .diagnosis-timeline {
+            font-size: 11.5px;
+            color: #334155;
+            line-height: 1.5;
+        }
+
+        .timeline-step {
+            padding: 4px 0;
+            border-left: 2px solid #cbd5e1;
+            padding-left: 8px;
+            margin-left: 4px;
+            margin-bottom: 4px;
+        }
+
+        .timeline-step strong {
+            color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand-area">
+            <div class="brand-icon">🦄</div>
+            <div class="brand-title">
+                <h1>獨角獸的療癒花園 — 智慧客服與真人協同展示</h1>
+                <p>左側：顧客 Instagram 私訊視角（機器人問答引導） ｜ 右側：品牌小幫手客服後台（即時標籤同步與真人無縫接管）</p>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-alert" onclick="triggerHumanRequest()">🚨 模擬顧客呼叫真人</button>
+            <button class="btn btn-outline" onclick="restartDemo()">🔄 重置演示</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- 左側：手機外框 (Instagram DM) -->
+        <div class="phone-mockup">
+            <div class="phone-notch"></div>
+            <div class="phone-inner">
+                <div class="ig-header">
+                    <div class="ig-profile">
+                        <div class="ig-avatar">🦄</div>
+                        <div>
+                            <div class="ig-name">獨角獸的療癒花園</div>
+                            <div class="ig-status" id="igStatusText">機器人自動服務中</div>
+                        </div>
+                    </div>
+                    <div style="font-size: 18px; color: #64748b; cursor: pointer;" onclick="restartDemo()">⋮</div>
+                </div>
+
+                <div class="chat-area" id="chat"></div>
+
+                <!-- 快速回覆按鈕區 -->
+                <div class="quick-replies-area" id="quickReplies">
+                    <div class="qr-label">請點選選項回覆：</div>
+                    <div class="qr-buttons" id="qrButtons"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側：真人客服工作台 (Chatwoot 介面風格) -->
+        <div class="chatwoot-window">
+            <!-- 欄 1: 對話收件箱清單 -->
+            <div class="cw-inbox-col">
+                <div class="cw-inbox-header">
+                    <span>對話收件箱 (3)</span>
+                    <span style="font-size: 11px; color: var(--primary); font-weight: 600;">未解決</span>
+                </div>
+                <div class="cw-conv-list">
+                    <div class="cw-conv-item active" id="convItemActive">
+                        <div class="cw-conv-name">
+                            <span>@client_amy</span>
+                            <span class="cw-status-badge badge-bot" id="cwConvBadge">Bot 處理中</span>
+                        </div>
+                        <div class="cw-conv-preview" id="cwConvPreview">正在進行愛情問卷診斷...</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">剛剛 • Instagram DM</div>
+                    </div>
+
+                    <div class="cw-conv-item">
+                        <div class="cw-conv-name">
+                            <span>@john_chen</span>
+                            <span class="cw-status-badge badge-human-chatting">真人服務中</span>
+                        </div>
+                        <div class="cw-conv-preview">請問這週有空檔占卜嗎？</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">15分鐘前 • FB Messenger</div>
+                    </div>
+
+                    <div class="cw-conv-item">
+                        <div class="cw-conv-name">
+                            <span>@lisa_lin</span>
+                            <span class="cw-status-badge" style="background:#f1f5f9; color:#64748b;">已結案</span>
+                        </div>
+                        <div class="cw-conv-preview">謝謝小幫手，儀式效果很好！</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">昨天 • Instagram DM</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 欄 2: 中間對話視窗與真人回覆框 -->
+            <div class="cw-chat-col">
+                <div class="cw-chat-header">
+                    <div>
+                        <div class="cw-user-meta">顧客：@client_amy (來自 Instagram)</div>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                            目前狀態：<span id="cwHeaderStatus" style="font-weight: 600; color: #2563eb;">🤖 機器人引導問答中</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-alert" style="font-size: 11px; padding: 4px 10px;" onclick="takeoverByAgent()">🚨 切換為真人接手</button>
+                </div>
+
+                <div class="cw-chat-messages" id="cwChatMessages"></div>
+
+                <!-- 客服輸入框與快速回覆模板 -->
+                <div class="cw-composer">
+                    <div class="cw-quick-canned">
+                        <span style="font-size: 11px; color: #64748b; align-self: center;">常用範本：</span>
+                        <button class="canned-btn" onclick="applyCanned('您好！我是小幫手佩佩，看到您目前的感情狀況，想先抱抱您，請問有什麼細節想先跟小幫手聊聊嗎？')">🤗 溫暖問候</button>
+                        <button class="canned-btn" onclick="applyCanned('收到您的願望！這項能量補充儀式在我們學員中反饋非常好，通常2-3週會有明顯的氛圍改變喔！')">✨ 儀式推薦解說</button>
+                        <button class="canned-btn" onclick="applyCanned('方便請教您與對方目前是否有保持最基本的傳訊呢？')">💬 追問細節</button>
+                    </div>
+
+                    <div class="cw-input-box">
+                        <textarea class="cw-textarea" id="agentInput" placeholder="在右側輸入小幫手回覆，點擊「發送」會即時傳送到左側手機..."></textarea>
+                        <button class="cw-send-btn" onclick="sendAgentMessage()">發送回覆</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 欄 3: 顧客檔案與自動收集標籤 -->
+            <div class="cw-profile-col">
+                <div class="cw-profile-card">
+                    <h5>顧客基本資料</h5>
+                    <div class="cw-attr-row">
+                        <span class="cw-attr-label">Instagram</span>
+                        <span class="cw-attr-val">@client_amy</span>
+                    </div>
+                    <div class="cw-attr-row">
+                        <span class="cw-attr-label">來源管道</span>
+                        <span class="cw-attr-val">IG 私訊</span>
+                    </div>
+                    <div class="cw-attr-row">
+                        <span class="cw-attr-label">諮詢類別</span>
+                        <span class="cw-attr-val" id="profileCategory">改善愛情關係</span>
+                    </div>
+                </div>
+
+                <div class="cw-profile-card">
+                    <h5>自動標籤（Tags）</h5>
+                    <div class="tag-list" id="profileTags">
+                        <span class="user-tag">新進訪客</span>
+                    </div>
+                </div>
+
+                <div class="cw-profile-card" style="flex: 1;">
+                    <h5>診斷問卷歷程</h5>
+                    <div class="diagnosis-timeline" id="profileTimeline">
+                        <div class="timeline-step"><strong>進入對話</strong>：讀取歡迎詞與倫理提醒</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const FLOW_DATA = {"welcome_message": "歡迎來到獨角獸的療癒花園\n\n我們從2018年開始，陪伴超過1,500位有緣人探索愛情、金錢、事業與自我療癒。\n\n無論你已經有明確的願望，或是還不知道該從哪裡開始，都可以透過以下選項，找到適合自己的服務\n\n小提醒：\n如果您與對方已經分開，而對方目前已有新的戀情，或是您希望發展感情的對象已有正式交往對象、婚姻關係，這類情況並不適合進行我們的愛情儀式。\n我們尊重每一段關係與當事人的選擇，也衷心祝福您能遇見真正適合自己、彼此珍惜的美好感情。\n\n請問今天想要了解什麼呢？", "main_menu": ["改善愛情與感情關係", "提升財運與金錢豐盛", "改善工作與事業發展", "自我成長與個人狀態改善", "占卜、課程"], "love_relationships": [{"category_name": "已婚", "q1": {"title": "請問你目前最希望改善婚姻中的哪個部分？", "options": ["夫妻感情冷淡、缺乏親密感", "經常爭吵、溝通不順暢", "缺乏信任、安全感不足", "希望增加甜蜜、浪漫與幸福感", "希望伴侶更重視自己、願意付出", "第三者介入或外界干擾", "希望婚姻更加穩定、長久", "對方提出離婚、關係面臨危機"]}, "q2": {"title": "為了更了解你們目前的婚姻狀況，請問你們現在的相處模式是？", "options": ["目前同住，每天都有互動", "目前同住，但很少交流", "因工作或其他原因分隔兩地", "已經分居，但仍有聯絡", "已經分居，幾乎沒有聯絡", "正在討論分居或離婚", "親友介入、干擾婚姻"]}, "q3": {"title": "請問你們目前的婚姻問題，已經持續多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三至五年", "五年以上", "從結婚前就一直存在"]}, "q4": {"title": "如果婚姻關係能夠朝著你期待的方向改善，你最希望實現什麼願望？", "wishes": [{"option": "重新找回戀愛時的甜蜜與浪漫", "recommendation": "推薦產品：\n\n親密愛人小儀式\n30天主題式能量補充（雙方）：感情升溫／關係和諧／關係修復／穩定彼此的情感連結\n30天伴侶關係療癒"}, {"option": "希望伴侶願意共同努力、用心經營婚姻", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：提升對未來的共識／減少誤會與衝突／關係和諧／關係修復\n30天伴侶關係療癒"}, {"option": "改善溝通，減少爭吵與誤會、找到共識", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：提升對未來的共識／減少誤會與衝突／溝通順暢／溫柔對待彼此\n30天水星魔法儀式"}, {"option": "修復過去的傷害，重新建立信任與安全感", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：關係修復／清理負面連結／穩定彼此的情感連結／放下過往心結與疙瘩\n30天伴侶關係療癒"}, {"option": "減少第三者或外界因素對婚姻的干擾", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：保護關係、避免流言蜚語的介入／清理外界對關係的負向干擾／強化關係中的忠誠／提升對彼此的專一／穩定彼此的情感連結\n30天伴侶關係療癒"}, {"option": "化解離婚危機，讓婚姻重新恢復穩定", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天伴侶關係療癒\n30天水星魔法儀式\n30天土星魔法療癒"}]}}, {"category_name": "交往中，但感情出現問題", "q1": {"title": "請問你們目前最主要的感情問題是什麼？", "options": ["對方變得冷淡、互動減少", "經常爭吵、溝通不順暢", "缺乏信任、容易猜疑", "對方不夠主動、不願意付出", "第三者介入或外界干擾", "感情逐漸變淡、缺乏甜蜜感", "對未來沒有共識、關係停滯", "對方提出分手、關係面臨危機"]}, "q2": {"title": "請問你們目前的互動狀況是？", "options": ["每天都有聯絡，但互動冷淡", "每天都有聯絡，但經常爭吵", "偶爾聯絡，互動明顯減少", "對方經常不讀不回、逃避溝通", "遠距離交往，互動受到影響", "目前處於冷戰或暫時不聯絡", "對方提出暫時分開、需要空間", "為了同樣的問題反覆爭吵，不知道該怎麼處理", "為了邊界感爭吵"]}, "q3": {"title": "請問你們目前的感情問題，已經持續多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三年以上"]}, "q4": {"title": "如果感情能夠朝著你期待的方向發展，你最希望實現什麼願望？", "wishes": [{"option": "感情回溫、關係熱絡", "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：感情升溫／關係和諧／減少誤會與衝突\n30天伴侶關係療癒"}, {"option": "改善溝通方式，減少爭吵與誤會", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：溝通順暢／減少誤會與衝突／提升對彼此的包容與理解\n30天水星魔法儀式"}, {"option": "修復過去的心結，重新建立信任與安全感", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：放下過往心結與疙瘩／清理負面連結／關係修復／信任重建\n30天伴侶關係療癒"}, {"option": "減少第三者或外界因素對感情的干擾", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象（第三者）／聖光人際關係斷捨離-不指定對象（清理外界干擾）\n30天主題式能量補充（雙方）：清理外界對關係的負向干擾／保護關係、避免流言蜚語的介入／穩定彼此的情感連結\n30天土星魔法療癒"}, {"option": "希望感情更加穩定，順利進入下一個階段", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：提升對未來的共識／關係健康發展／順利結婚\n30天伴侶關係療癒"}, {"option": "化解分手危機，讓彼此願意繼續經營感情", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天伴侶關係療癒\n30天水星魔法儀式\n30天土星魔法療癒"}]}}, {"category_name": "已經分手，希望復合", "q1": {"title": "請問你們目前最主要的復合阻礙是什麼？", "options": ["對方已經不願意聯絡", "對方封鎖我、拒絕溝通", "過去經常爭吵、累積許多心結", "第三者介入或外界干擾", "對方已經不愛我、感情變淡", "因為誤會或信任問題而分手", "不清楚對方為什麼提出分手/不願意復合"]}, "q2": {"title": "請問你們分手後，目前的聯絡狀況是？", "options": ["每天都有聯絡互動，相處跟分手前差不多", "偶爾聯絡，對方願意回覆", "偶爾聯絡，但對方態度冷淡", "已經沒有聯絡，但沒有封鎖", "對方已經封鎖我", "對方明確表示不希望再聯絡", "分手後仍然同住或有生活上的往來", "分手後仍然維持性關係", "有共同友人/工作的交集"]}, "q3": {"title": "請問你們已經分手多久了？", "options": ["一週以內", "一週至一個月", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三年以上", "分分合合，已經不只一次分手"]}, "q4": {"title": "如果這段感情有機會重新開始，你目前最希望實現什麼願望？", "wishes": [{"option": "希望對方解除封鎖、恢復聯絡", "recommendation": "推薦產品：\n\n30天主題式能量補充（雙方）：增加聯絡機會／溝通順暢／關係修復／增加復合的契機／增加對彼此的想念\n30天伴侶關係療癒\n30天水星魔法儀式"}, {"option": "希望增加聯絡、重新建立互動", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：增加聯絡機會／增加相處機會／穩定彼此的情感連結／增加復合的契機\n30天伴侶關係療癒"}, {"option": "希望化解過去的誤會與心結", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：放下過往心結與疙瘩／清理負面連結／溝通順暢／增加復合的契機\n30天伴侶關係療癒"}, {"option": "希望減少第三者或外界因素的干擾", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：保護關係、避免流言蜚語的介入／清理外界對關係的負向干擾／強化關係中的忠誠／提升對彼此的專一／穩定彼此的情感連結\n30天伴侶關係療癒"}, {"option": "希望順利復合，重新建立穩定的感情", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：溝通順暢／穩定彼此的情感連結／提升彼此的愛意／增加復合的轉機／增加復合的契機\n30天伴侶關係療癒"}]}}, {"category_name": "曖昧中，希望進一步發展", "q1": {"title": "請問你目前最希望改善哪個部分？", "options": ["希望增加聊天與見面的機會", "希望確認交往關係", "對方忽冷忽熱、態度不明確", "擔心對方同時與其他人曖昧", "希望彼此更加親密、增加甜蜜感"]}, "q2": {"title": "請問你們目前的互動狀況是？", "options": ["每天聊天，也經常見面", "每天聊天，但很少見面", "偶爾聊天，有時會約會", "大多是我主動聯絡對方", "對方會主動，但忽冷忽熱", "最近互動明顯減少", "已經很久沒有聯絡", "曾經告白過，但被拒絕", "沒有接受對方曾經的告白"]}, "q3": {"title": "請問你們目前的曖昧關係，已經持續多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至兩年", "兩年以上", "曾經曖昧中斷，最近重新開始互動"]}, "q4": {"title": "你最希望這段曖昧關係接下來有什麼進展？", "wishes": [{"option": "增加聊天、約會與相處的機會", "recommendation": "推薦產品：\n\n精靈魔法療癒儀式\n30天主題式能量補充（雙方）：感情升溫／增加聯絡機會／增加相處機會\n30天伴侶關係療癒"}, {"option": "希望雙方確認心意，順利成為戀人", "recommendation": "推薦產品：\n\n精靈魔法療癒儀式\n30天主題式能量補充（雙方）：穩定彼此的情感連結／關係健康發展／感情升溫\n30天伴侶關係療癒"}, {"option": "關係更親近，有機會確認交往關係", "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：穩定彼此的情感連結／關係健康發展／感情升溫\n30天伴侶關係療癒"}]}}, {"category_name": "單戀，希望對方喜歡自己", "q1": {"title": "請問你目前最希望改善哪個部分？", "options": ["希望對方注意到自己、提升自己對對方的吸引力", "希望增加認識與互動的機會", "希望未來能夠順利交往"]}, "q2": {"title": "請問你和喜歡的人目前是什麼關係？", "options": ["朋友，平常有互動", "同事、同學或生活圈認識的人", "網路認識，尚未實際見面", "認識但不熟悉，很少互動", "經常見面，但沒有私下聯絡", "對方知道我的心意，但沒有明確回應", "對方曾經拒絕我的告白"]}, "q3": {"title": "請問你喜歡對方多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至兩年", "兩至五年", "五年以上"]}, "q4": {"title": "如果你和喜歡的人能夠有更多發展，你最希望實現什麼願望？", "wishes": [{"option": "增加認識、聊天與相處的機會", "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：增加相處機會／增加聯絡機會／感情升溫／減少關係裡的內耗\n30天伴侶關係療癒"}, {"option": "提升自己的魅力，讓對方有機會注意到我", "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：增加對彼此的想念／感情升溫／減少關係裡的內耗\n15天愛情天使祝福能量傳送"}, {"option": "希望彼此有更多單獨約會的機會", "recommendation": "推薦產品：\n\n強效版感情小儀式\n30天主題式能量補充（雙方）：增加相處機會／增加聯絡機會／感情升溫\n15天愛情天使祝福能量傳送"}]}}, {"category_name": "單身，希望遇見理想對象", "q1": {"title": "請問你目前最希望改善哪個部分？", "options": ["吸引適合自己的理想伴侶", "提升個人魅力與吸引力", "改善總是遇到不適合對象的情況", "放下過去感情帶來的影響", "提升自信與感情中的安全感"]}, "q2": {"title": "請問你目前的感情狀態比較接近哪一種？", "options": ["已經單身一段時間，生活圈較少認識新對象", "有認識新對象，但很難發展成穩定關係", "經常遇到不適合或不認真的對象", "有桃花機會，但自己不容易心動", "想談戀愛，但對感情缺乏信心", "過去的感情仍然影響自己", "母胎單身，不知道怎麼開啟戀情"]}, "q3": {"title": "請問你目前已經單身多久了？", "options": ["三個月以內", "三至六個月", "半年至一年", "一至三年", "三至五年", "五年以上", "從來沒有交往經驗"]}, "q4": {"title": "你最希望接下來的感情生活有什麼改變？", "wishes": [{"option": "增加桃花機會，認識更多適合的對象", "recommendation": "推薦產品：\n\n強效版感情小儀式\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／清理自我毀滅的傾向／愛自己\n30天生命道路校正"}, {"option": "提升個人魅力、自信與吸引力", "recommendation": "推薦產品：\n\n強效版豐盛小儀式\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己\n30天富饒能量調整"}, {"option": "改善反覆遇到不適合對象的情況", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-不指定對象\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／清理重複卡關的模式／愛自己\n30天生命道路校正"}, {"option": "放下過去的感情傷害，重新敞開心扉", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：提升自信心／提升自我價值（配得感）／消融對自己的詛咒（唱雖自己、總是說自己不好、說很多貶低自己的話）／愛自己／清理負面的預設／清理負面想法與情緒／清理糾結、內耗的循環／清理自我批判的傾向\n30天生命道路校正\n30天土星魔法療癒"}, {"option": "建立健康的感情觀與安全感", "recommendation": "推薦產品：\n\n遠距祝福能量傳送\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己\n30天生命道路校正"}, {"option": "提升配得感，吸引善待自己的對象", "recommendation": "推薦產品：\n\n遠距祝福能量傳送\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／提升桃花運勢／愛自己\n30天富饒能量調整"}]}}, {"category_name": "想放下過去的感情", "q1": {"title": "請問你目前的狀態是什麼？", "options": ["還是很想念對方、無法停止思念", "對過去的傷害與委屈耿耿於懷", "無法接受分手或關係結束", "對對方仍然抱有期待", "容易反覆查看對方的動態", "因為過去的感情而失去自信", "害怕再次受傷、不敢開始新感情", "希望徹底放下心結、迎接新戀情"]}, "q2": {"title": "請問過去的感情，對你造成什麼影響？", "options": ["曾經被對方PUA，導致沒自信、不敢再對別人敞開心扉", "過去的陰影影響現在的感情", "想要把重心放在自己身上", "不甘心、無法接受過去的經歷", "對過去產生仇恨值，希望自己能恢復平靜"]}, "q3": {"title": "請問過去這段感情，已經影響你多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三至五年", "五年以上", "雖然已經過去很久，但最近又被觸發"]}, "q4": {"title": "如果能夠慢慢走出過去的感情，你最希望自己有什麼改變？", "wishes": [{"option": "減少對對方的想念與依戀，找回自己的生活", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：減少得失心／提升自信心／提升自我價值（配得感）／將抱怨轉化為祝福／愛自己\n30天生命道路校正"}, {"option": "放下過去的委屈、憤怒與不甘心", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自我尊重（提升對自己與他人的對自己的尊重）／提升自我價值（配得感）／將抱怨轉化為祝福／愛自己\n30天土星魔法療癒"}, {"option": "接受關係已經結束，不再反覆期待", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己／減少得失心\n30天生命道路校正"}, {"option": "修復過去受傷的自信與自我價值", "recommendation": "推薦產品：\n\n遠距祝福能量傳送\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己\n30天生命道路校正"}, {"option": "重新敞開心扉，迎接新的感情", "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／愛自己\n七天強效版能量補充（愛情／大型）"}]}}, {"category_name": "想跟對方和平分手／離婚", "q1": {"title": "請問你目前最希望改善哪個部分？", "options": ["希望對方能夠接受分手／離婚", "希望減少爭吵與情緒衝突", "希望雙方能夠理性溝通、達成共識", "希望順利結束關係、減少糾纏", "希望減少分手／離婚對孩子或家人的影響", "希望放下愧疚、恐懼與心理壓力"]}, "q2": {"title": "請問你們目前的關係進展到哪個階段？", "options": ["我想分開，但還沒有告訴對方", "已經提出分手／離婚，但對方不同意", "雙方都有分開的想法，但尚未達成共識", "對方情緒反應較大，難以好好溝通", "因為孩子、家庭或財務問題而無法順利分開", "已經分開，但對方仍持續聯絡或糾纏", "覺得自己虧欠對方、有愧疚感", "兩人的利益關係難以分割"]}, "q3": {"title": "請問你想結束這段關係的念頭，已經持續多久了？", "options": ["最近一個月才開始有這個想法", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三年以上"]}, "q4": {"title": "如果能夠順利結束這段關係，你最希望達成什麼結果？", "wishes": [{"option": "希望對方理解並接受分手／離婚的決定", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢\n30天土星魔法療癒"}, {"option": "減少彼此的爭吵、衝突與情緒傷害", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢\n30天土星魔法療癒"}, {"option": "希望雙方能夠理性溝通，達成分開的共識", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"option": "希望順利處理共同生活、家庭與財務問題", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"option": "希望減少分開對孩子及家人的影響", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"option": "希望對方尊重彼此的界線，不再糾纏", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"option": "放下愧疚、恐懼與心理壓力，安心做出決定", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"option": "希望和平結束關係，祝福雙方都能重新開始", "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}]}}]};
+
+        let currentCategory = null;
+        let isAgentTakeover = false;
+
+        // 手機端新增訊息
+        function addMobileMsg(sender, text, isAgent = false, isHtml = false) {
+            const chat = document.getElementById('chat');
+            const bubble = document.createElement('div');
+            
+            if (isAgent) {
+                bubble.className = 'msg-bubble agent-msg';
+                bubble.innerHTML = `<span class="agent-badge">👩‍💼 真人小幫手佩佩</span><br>${text}`;
+            } else {
+                bubble.className = 'msg-bubble ' + (sender === 'bot' ? 'bot-msg' : 'user-msg');
+                if (isHtml) bubble.innerHTML = text;
+                else bubble.innerText = text;
+            }
+            
+            chat.appendChild(bubble);
+            chat.scrollTop = chat.scrollHeight;
+
+            // 同步至右側客服工作台
+            syncToAgentDashboard(sender, text, isAgent);
+        }
+
+        // 同步訊息至右側客服工作台
+        function syncToAgentDashboard(sender, text, isAgent) {
+            const cwBox = document.getElementById('cwChatMessages');
+            const bubble = document.createElement('div');
+
+            if (isAgent) {
+                bubble.className = 'cw-bubble-agent';
+                bubble.innerHTML = `<strong>👩‍💼 小幫手佩佩：</strong> ${text}`;
+            } else if (sender === 'user') {
+                bubble.className = 'cw-bubble-user';
+                bubble.innerHTML = `<strong>@client_amy：</strong> ${text}`;
+                document.getElementById('cwConvPreview').innerText = text;
+            } else {
+                bubble.className = 'cw-bubble-system';
+                bubble.innerText = `🤖 [Bot] ${text.length > 32 ? text.substring(0, 32) + '...' : text}`;
+            }
+
+            cwBox.appendChild(bubble);
+            cwBox.scrollTop = cwBox.scrollHeight;
+        }
+
+        // 設定快速回覆按鈕
+        function setQuickReplies(buttons, showAgentBtn = true) {
+            const container = document.getElementById('qrButtons');
+            container.innerHTML = '';
+            
+            buttons.forEach(btn => {
+                const b = document.createElement('button');
+                b.className = 'qr-btn';
+                b.innerText = btn.label;
+                b.onclick = () => btn.action();
+                container.appendChild(b);
+            });
+
+            if (showAgentBtn) {
+                const agentBtn = document.createElement('button');
+                agentBtn.className = 'qr-btn special-agent';
+                agentBtn.innerText = '🙋 轉接真人小幫手';
+                agentBtn.onclick = () => triggerHumanRequest();
+                container.appendChild(agentBtn);
+            }
+
+            document.getElementById('quickReplies').scrollTop = 0;
+        }
+
+        // 加入標籤
+        function addTag(tagName) {
+            const tagContainer = document.getElementById('profileTags');
+            const t = document.createElement('span');
+            t.className = 'user-tag';
+            t.innerText = tagName;
+            tagContainer.appendChild(t);
+        }
+
+        // 加入時間軸
+        function addTimeline(stepName, content) {
+            const timeline = document.getElementById('profileTimeline');
+            const item = document.createElement('div');
+            item.className = 'timeline-step';
+            item.innerHTML = `<strong>${stepName}</strong>：${content}`;
+            timeline.appendChild(item);
+        }
+
+        // 重置演示
+        function restartDemo() {
+            document.getElementById('chat').innerHTML = '';
+            document.getElementById('cwChatMessages').innerHTML = '';
+            document.getElementById('profileTags').innerHTML = '<span class="user-tag">新進訪客</span>';
+            document.getElementById('profileTimeline').innerHTML = '<div class="timeline-step"><strong>進入對話</strong>：讀取歡迎詞與倫理提醒</div>';
+            document.getElementById('profileCategory').innerText = '改善愛情關係';
+            
+            isAgentTakeover = false;
+            document.getElementById('igStatusText').innerText = '機器人自動服務中';
+            document.getElementById('igStatusText').classList.remove('human-mode');
+            document.getElementById('cwConvBadge').className = 'cw-status-badge badge-bot';
+            document.getElementById('cwConvBadge').innerText = 'Bot 處理中';
+            document.getElementById('cwHeaderStatus').innerHTML = '🤖 機器人引導問答中';
+            document.getElementById('cwHeaderStatus').style.color = '#2563eb';
+
+            // 發送迎賓詞
+            addMobileMsg('bot', FLOW_DATA.welcome_message);
+
+            const mainButtons = FLOW_DATA.main_menu.map(item => ({
+                label: item,
+                action: () => handleMainMenu(item)
+            }));
+
+            setQuickReplies(mainButtons, false);
+        }
+
+        // 選擇主選單
+        function handleMainMenu(item) {
+            addMobileMsg('user', item);
+            addTag(item);
+            addTimeline('主選單', item);
+
+            if (item === '改善愛情與感情關係') {
+                setTimeout(() => {
+                    addMobileMsg('bot', '了解！請告訴我您目前的感情狀態，以利為您推薦最適合的療癒方案：');
+                    const catButtons = FLOW_DATA.love_relationships.map(cat => ({
+                        label: cat.category_name,
+                        action: () => handleSelectCategory(cat)
+                    }));
+                    setQuickReplies(catButtons, true);
+                }, 300);
+            } else {
+                setTimeout(() => {
+                    addMobileMsg('bot', `您選擇了【${item}】，此專區方案目前規劃中，歡迎點選「改善愛情與感情關係」體驗完整診斷漏斗！`);
+                    restartDemo();
+                }, 300);
+            }
+        }
+
+        // 選擇 8 大感情狀態
+        function handleSelectCategory(cat) {
+            currentCategory = cat;
+            addMobileMsg('user', cat.category_name);
+            addTag(cat.category_name);
+            document.getElementById('profileCategory').innerText = cat.category_name;
+            addTimeline('感情狀態', cat.category_name);
+
+            setTimeout(() => {
+                addMobileMsg('bot', cat.q1.title);
+                const q1Btns = cat.q1.options.map(opt => ({
+                    label: opt.length > 20 ? opt.substring(0, 19) + '…' : opt,
+                    action: () => handleQ1(opt)
+                }));
+                setQuickReplies(q1Btns, true);
+            }, 300);
+        }
+
+        function handleQ1(answer) {
+            addMobileMsg('user', answer);
+            addTag(answer);
+            addTimeline('Q1 核心問題', answer);
+
+            setTimeout(() => {
+                addMobileMsg('bot', currentCategory.q2.title);
+                const q2Btns = currentCategory.q2.options.map(opt => ({
+                    label: opt.length > 20 ? opt.substring(0, 19) + '…' : opt,
+                    action: () => handleQ2(opt)
+                }));
+                setQuickReplies(q2Btns, true);
+            }, 300);
+        }
+
+        function handleQ2(answer) {
+            addMobileMsg('user', answer);
+            addTag(answer);
+            addTimeline('Q2 相處現況', answer);
+
+            setTimeout(() => {
+                addMobileMsg('bot', currentCategory.q3.title);
+                const q3Btns = currentCategory.q3.options.map(opt => ({
+                    label: opt,
+                    action: () => handleQ3(opt)
+                }));
+                setQuickReplies(q3Btns, true);
+            }, 300);
+        }
+
+        function handleQ3(answer) {
+            addMobileMsg('user', answer);
+            addTag(answer);
+            addTimeline('Q3 持續時間', answer);
+
+            setTimeout(() => {
+                addMobileMsg('bot', currentCategory.q4.title);
+                const wishBtns = currentCategory.q4.wishes.map(item => ({
+                    label: item.option.length > 20 ? item.option.substring(0, 19) + '…' : item.option,
+                    action: () => handleQ4(item)
+                }));
+                setQuickReplies(wishBtns, true);
+            }, 300);
+        }
+
+        function handleQ4(wishObj) {
+            addMobileMsg('user', wishObj.option);
+            addTag('願望：' + wishObj.option);
+            addTimeline('Q4 最終願望', wishObj.option);
+            addTimeline('推薦方案', wishObj.recommendation.split('\n')[2] || '專屬能量調整');
+
+            setTimeout(() => {
+                const cardHtml = `
+                    <div class="recommend-card">
+                        <div class="recommend-title">✨ 為您量身推薦適合的儀式服務</div>
+                        <div class="recommend-body">${wishObj.recommendation}</div>
+                        <div style="margin-top: 10px; font-size: 11px; color: #7e22ce;">💌 若想進一步預約或了解細節，可直接點選下方轉接小幫手！</div>
+                    </div>
+                `;
+                addMobileMsg('bot', cardHtml, false, true);
+
+                setQuickReplies([
+                    { label: '🔄 重新體驗問卷', action: () => restartDemo() }
+                ], true);
+            }, 350);
+        }
+
+        // 轉接真人小幫手
+        function triggerHumanRequest() {
+            addMobileMsg('user', '我想轉接真人小幫手諮詢');
+            isAgentTakeover = true;
+
+            setTimeout(() => {
+                addMobileMsg('bot', '好的！已為您通知線上小幫手，佩佩馬上過來陪伴您～請稍候片刻！');
+
+                // 更新狀態
+                document.getElementById('igStatusText').innerText = '👩‍💼 小幫手佩佩已連線';
+                document.getElementById('igStatusText').classList.add('human-mode');
+
+                document.getElementById('cwConvBadge').className = 'cw-status-badge badge-human-waiting';
+                document.getElementById('cwConvBadge').innerText = '🚨 呼叫真人';
+
+                document.getElementById('cwHeaderStatus').innerHTML = '<span style="color:#dc2626;">🚨 客戶呼叫真人！請在下方輸入回覆</span>';
+                addTag('呼叫真人');
+                addTimeline('轉接狀態', '客戶點選轉接真人客服');
+            }, 300);
+        }
+
+        // 客服後台強制切換為真人接手
+        function takeoverByAgent() {
+            triggerHumanRequest();
+            alert('已將對話切換為真人接手模式！您可以在右下方輸入文字並發送給顧客。');
+        }
+
+        // 常用範本快速填入
+        function applyCanned(text) {
+            document.getElementById('agentInput').value = text;
+        }
+
+        // 真人發送訊息
+        function sendAgentMessage() {
+            const input = document.getElementById('agentInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            addMobileMsg('agent', text, true);
+            input.value = '';
+
+            document.getElementById('cwConvBadge').className = 'cw-status-badge badge-human-chatting';
+            document.getElementById('cwConvBadge').innerText = '真人對話中';
+            document.getElementById('cwHeaderStatus').innerHTML = '<span style="color:#15803d; font-weight:700;">👩‍💼 由小幫手佩佩接管中</span>';
+        }
+
+        window.onload = function() {
+            restartDemo();
+        };
+    </script>
+</body>
+</html>
