@@ -2,15 +2,15 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>獨角獸的療癒花園 - 智慧客服與真人協同系統演示</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>獨角獸的療癒花園 - 客服機器人展示</title>
     <style>
         :root {
             --primary: #7c3aed;
             --primary-light: #f5f3ff;
             --primary-hover: #6d28d9;
             --secondary: #ec4899;
-            --bg-gray: #f1f5f9;
+            --bg-gray: #f8fafc;
             --text-main: #0f172a;
             --text-sub: #64748b;
             --border: #e2e8f0;
@@ -23,6 +23,7 @@
             margin: 0;
             padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -34,47 +35,49 @@
             overflow-x: hidden;
         }
 
-        /* 頂部簡潔導航欄 */
+        /* 頂部簡潔品牌列 */
         header {
             background: #ffffff;
             border-bottom: 1px solid var(--border);
-            padding: 12px 28px;
+            padding: 10px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
 
         .brand-area {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .brand-icon {
-            width: 38px;
-            height: 38px;
-            border-radius: 10px;
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
             background: linear-gradient(135deg, #7c3aed, #ec4899);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 18px;
             color: white;
-            box-shadow: 0 2px 6px rgba(124, 58, 237, 0.25);
+            box-shadow: 0 2px 6px rgba(124, 58, 237, 0.2);
+            flex-shrink: 0;
         }
 
         .brand-title h1 {
-            font-size: 16px;
+            font-size: 14.5px;
             font-weight: 700;
             color: #1e1b4b;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            line-height: 1.2;
         }
 
         .brand-title p {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-sub);
             margin-top: 2px;
         }
@@ -82,20 +85,21 @@
         .header-actions {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 6px;
         }
 
         .btn {
-            padding: 7px 14px;
-            border-radius: 8px;
-            font-size: 12.5px;
+            padding: 6px 12px;
+            border-radius: 7px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.15s;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
             border: none;
+            white-space: nowrap;
         }
 
         .btn-outline {
@@ -104,9 +108,8 @@
             color: #334155;
         }
 
-        .btn-outline:hover {
-            background: #f8fafc;
-            border-color: #94a3b8;
+        .btn-outline:active {
+            background: #f1f5f9;
         }
 
         .btn-alert {
@@ -115,31 +118,122 @@
             border: 1px solid #fecaca;
         }
 
-        .btn-alert:hover {
+        .btn-alert:active {
             background: #fee2e2;
         }
 
-        /* 主要雙欄展示區 */
+        /* 手機專屬：視角切換器 (Segmented Control) */
+        .mobile-view-switcher {
+            display: none;
+            background: #ffffff;
+            padding: 6px 14px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 55px;
+            z-index: 90;
+        }
+
+        .switcher-box {
+            display: flex;
+            background: #f1f5f9;
+            padding: 3px;
+            border-radius: 9px;
+            position: relative;
+        }
+
+        .switcher-tab {
+            flex: 1;
+            text-align: center;
+            padding: 7px 0;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #64748b;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            position: relative;
+        }
+
+        .switcher-tab.active {
+            background: #ffffff;
+            color: var(--primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .badge-dot {
+            width: 7px;
+            height: 7px;
+            background: #ef4444;
+            border-radius: 50%;
+            display: none;
+        }
+
+        .badge-dot.show {
+            display: inline-block;
+            animation: pulse 1.5s infinite;
+        }
+
+        /* 浮動提示 Toast */
+        .toast-banner {
+            display: none;
+            position: fixed;
+            top: 105px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e1b4b;
+            color: white;
+            padding: 9px 16px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 500;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            z-index: 1000;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            animation: slideDown 0.3s ease;
+            max-width: 90%;
+        }
+
+        @keyframes slideDown {
+            from { transform: translate(-50%, -15px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        .toast-btn {
+            background: var(--secondary);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        /* 主容器 */
         main {
             flex: 1;
             max-width: 1560px;
             width: 100%;
-            margin: 16px auto;
-            padding: 0 20px;
+            margin: 0 auto;
+            padding: 14px 16px;
             display: grid;
             grid-template-columns: 390px 1fr;
-            gap: 24px;
+            gap: 20px;
             align-items: stretch;
-            height: calc(100vh - 90px);
-            min-height: 720px;
+            height: calc(100vh - 75px);
+            min-height: 650px;
         }
 
         /* 左側：手機外框 (Instagram DM) */
         .phone-mockup {
             background: #18181b;
-            border-radius: 40px;
-            padding: 12px;
-            box-shadow: 0 16px 36px rgba(0,0,0,0.18), 0 0 0 2px #27272a;
+            border-radius: 38px;
+            padding: 10px;
+            box-shadow: 0 16px 36px rgba(0,0,0,0.16), 0 0 0 2px #27272a;
             position: relative;
             display: flex;
             flex-direction: column;
@@ -149,7 +243,7 @@
         .phone-inner {
             flex: 1;
             background: #ffffff;
-            border-radius: 30px;
+            border-radius: 28px;
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -157,12 +251,12 @@
         }
 
         .phone-notch {
-            height: 20px;
+            height: 18px;
             background: #18181b;
-            width: 120px;
+            width: 110px;
             margin: 0 auto;
-            border-bottom-left-radius: 12px;
-            border-bottom-right-radius: 12px;
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
             position: absolute;
             top: 0;
             left: 50%;
@@ -171,12 +265,13 @@
         }
 
         .ig-header {
-            padding: 24px 14px 10px;
+            padding: 22px 14px 10px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
             background: #fff;
+            flex-shrink: 0;
         }
 
         .ig-profile {
@@ -195,10 +290,11 @@
             justify-content: center;
             color: white;
             font-size: 16px;
+            flex-shrink: 0;
         }
 
         .ig-name {
-            font-size: 13px;
+            font-size: 13.5px;
             font-weight: 700;
         }
 
@@ -239,10 +335,10 @@
         }
 
         .msg-bubble {
-            max-width: 84%;
+            max-width: 86%;
             padding: 10px 13px;
             border-radius: 16px;
-            font-size: 12.5px;
+            font-size: 13px;
             line-height: 1.5;
             word-break: break-word;
             animation: fadeIn 0.25s ease;
@@ -275,7 +371,7 @@
             border: 1.5px solid #fbcfe8;
             align-self: flex-start;
             border-bottom-left-radius: 4px;
-            box-shadow: 0 2px 6px rgba(244, 63, 94, 0.08);
+            box-shadow: 0 2px 6px rgba(244, 63, 94, 0.06);
         }
 
         .agent-badge {
@@ -296,8 +392,9 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
-            max-height: 220px;
+            max-height: 230px;
             overflow-y: auto;
+            flex-shrink: 0;
         }
 
         .qr-label {
@@ -317,19 +414,19 @@
             background: #f3e8ff;
             color: #6b21a8;
             border: 1px solid #d8b4fe;
-            padding: 6px 11px;
-            font-size: 11.5px;
+            padding: 7px 12px;
+            font-size: 12px;
             font-weight: 500;
             border-radius: 14px;
             cursor: pointer;
             transition: all 0.15s;
             text-align: left;
+            touch-action: manipulation;
         }
 
-        .qr-btn:hover {
+        .qr-btn:active {
             background: #e9d5ff;
-            border-color: #c084fc;
-            transform: translateY(-1px);
+            transform: scale(0.98);
         }
 
         .qr-btn.special-agent {
@@ -339,9 +436,8 @@
             font-weight: 600;
         }
 
-        .qr-btn.special-agent:hover {
+        .qr-btn.special-agent:active {
             background: #fee2e2;
-            border-color: #f87171;
         }
 
         .recommend-card {
@@ -354,7 +450,7 @@
         }
 
         .recommend-title {
-            font-size: 12.5px;
+            font-size: 13px;
             font-weight: 700;
             color: #7e22ce;
             display: flex;
@@ -364,7 +460,7 @@
         }
 
         .recommend-body {
-            font-size: 11.5px;
+            font-size: 12px;
             color: #3b0764;
             line-height: 1.6;
             white-space: pre-wrap;
@@ -378,7 +474,7 @@
             border: 1px solid var(--border);
             height: 100%;
             display: grid;
-            grid-template-columns: 240px 1fr 240px;
+            grid-template-columns: 230px 1fr 230px;
             overflow: hidden;
         }
 
@@ -391,10 +487,10 @@
         }
 
         .cw-inbox-header {
-            padding: 14px 16px;
+            padding: 12px 14px;
             border-bottom: 1px solid var(--border);
             font-weight: 700;
-            font-size: 13.5px;
+            font-size: 13px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -407,14 +503,14 @@
         }
 
         .cw-conv-item {
-            padding: 12px 14px;
+            padding: 11px 13px;
             border-bottom: 1px solid #f1f5f9;
             cursor: pointer;
             transition: all 0.15s;
             background: white;
         }
 
-        .cw-conv-item:hover {
+        .cw-conv-item:active {
             background: #f8fafc;
         }
 
@@ -424,7 +520,7 @@
         }
 
         .cw-conv-name {
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 700;
             display: flex;
             justify-content: space-between;
@@ -434,7 +530,7 @@
         .cw-conv-preview {
             font-size: 11px;
             color: var(--text-sub);
-            margin-top: 4px;
+            margin-top: 3px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -478,7 +574,7 @@
         }
 
         .cw-chat-header {
-            padding: 12px 18px;
+            padding: 10px 14px;
             border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
@@ -487,14 +583,14 @@
         }
 
         .cw-user-meta {
-            font-size: 13.5px;
+            font-size: 13px;
             font-weight: 700;
             color: #1e293b;
         }
 
         .cw-chat-messages {
             flex: 1;
-            padding: 16px;
+            padding: 14px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -519,7 +615,7 @@
             padding: 8px 12px;
             border-radius: 10px;
             font-size: 12px;
-            max-width: 80%;
+            max-width: 82%;
             line-height: 1.4;
         }
 
@@ -530,17 +626,17 @@
             padding: 8px 12px;
             border-radius: 10px;
             font-size: 12px;
-            max-width: 80%;
+            max-width: 82%;
             line-height: 1.4;
             border: 1px solid #ddd6fe;
         }
 
         .cw-composer {
-            padding: 12px 16px;
+            padding: 10px 14px;
             border-top: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
             background: #fafafa;
         }
 
@@ -549,6 +645,7 @@
             gap: 6px;
             overflow-x: auto;
             padding-bottom: 4px;
+            -webkit-overflow-scrolling: touch;
         }
 
         .canned-btn {
@@ -562,9 +659,8 @@
             white-space: nowrap;
         }
 
-        .canned-btn:hover {
+        .canned-btn:active {
             background: #f1f5f9;
-            border-color: #94a3b8;
         }
 
         .cw-input-box {
@@ -576,10 +672,10 @@
             flex: 1;
             border: 1px solid #cbd5e1;
             border-radius: 8px;
-            padding: 8px 12px;
-            font-size: 12.5px;
+            padding: 7px 10px;
+            font-size: 12px;
             resize: none;
-            height: 44px;
+            height: 40px;
             outline: none;
         }
 
@@ -592,40 +688,40 @@
             color: white;
             border: none;
             border-radius: 8px;
-            padding: 0 16px;
-            font-size: 12.5px;
+            padding: 0 14px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             transition: background 0.15s;
         }
 
-        .cw-send-btn:hover {
+        .cw-send-btn:active {
             background: var(--primary-hover);
         }
 
         /* 欄 3: 顧客檔案與自動收集標籤 */
         .cw-profile-col {
-            padding: 16px;
+            padding: 14px;
             background: #f8fafc;
             overflow-y: auto;
             font-size: 12px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 14px;
         }
 
         .cw-profile-card {
             background: white;
             border: 1px solid var(--border);
             border-radius: 10px;
-            padding: 12px;
+            padding: 11px;
         }
 
         .cw-profile-card h5 {
             font-size: 11px;
             text-transform: uppercase;
             color: var(--text-sub);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             letter-spacing: 0.5px;
             display: flex;
             justify-content: space-between;
@@ -634,7 +730,7 @@
         .cw-attr-row {
             display: flex;
             justify-content: space-between;
-            padding: 5px 0;
+            padding: 4px 0;
             border-bottom: 1px solid #f8fafc;
             font-size: 11.5px;
         }
@@ -647,60 +743,218 @@
             font-weight: 600;
             color: var(--text-main);
             text-align: right;
-            max-width: 120px;
+            max-width: 110px;
             word-break: break-all;
         }
 
         .tag-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            gap: 5px;
         }
 
         .user-tag {
             background: #f3e8ff;
             border: 1px solid #d8b4fe;
             color: #6b21a8;
-            padding: 3px 8px;
-            border-radius: 6px;
+            padding: 3px 7px;
+            border-radius: 5px;
             font-size: 11px;
             font-weight: 500;
         }
 
         .diagnosis-timeline {
-            font-size: 11.5px;
+            font-size: 11px;
             color: #334155;
             line-height: 1.5;
         }
 
         .timeline-step {
-            padding: 4px 0;
+            padding: 3px 0;
             border-left: 2px solid #cbd5e1;
-            padding-left: 8px;
-            margin-left: 4px;
-            margin-bottom: 4px;
+            padding-left: 7px;
+            margin-left: 3px;
+            margin-bottom: 3px;
         }
 
         .timeline-step strong {
             color: var(--primary);
         }
+
+        /* 手機模式專屬客服子頁籤 */
+        .agent-mobile-tabs {
+            display: none;
+            background: #f1f5f9;
+            padding: 4px 10px;
+            gap: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .agent-tab-btn {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 6px;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #64748b;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .agent-tab-btn.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+
+        /* =======================================================
+           關鍵響應式設計：針對手機螢幕 (< 900px) 自動優化
+           ======================================================= */
+        @media (max-width: 899px) {
+            header {
+                padding: 8px 12px;
+            }
+
+            .brand-title p {
+                display: none; /* 手機端節省空間，隱藏次要副標 */
+            }
+
+            .mobile-view-switcher {
+                display: block; /* 手機端開啟視角切換器 */
+            }
+
+            main {
+                display: block;
+                padding: 0;
+                margin: 0;
+                height: calc(100vh - 105px);
+                min-height: auto;
+            }
+
+            /* 手機端：移除黑色外殼，讓顧客視角如同真正的原生 IG App */
+            .phone-mockup {
+                width: 100% !important;
+                height: 100% !important;
+                border-radius: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                box-shadow: none !important;
+            }
+
+            .phone-notch {
+                display: none !important; /* 手機端不需要假的黑色瀏海 */
+            }
+
+            .phone-inner {
+                border-radius: 0 !important;
+                height: 100% !important;
+            }
+
+            .ig-header {
+                padding: 10px 14px !important;
+            }
+
+            /* 手機端客服後台改造為單欄可切換 */
+            .chatwoot-window {
+                width: 100% !important;
+                height: 100% !important;
+                border-radius: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+                display: flex !important;
+                flex-direction: column !important;
+            }
+
+            .agent-mobile-tabs {
+                display: flex !important;
+            }
+
+            .cw-inbox-col {
+                display: none !important; /* 手機客服預設收起其他對話清單，專注當前對話 */
+            }
+
+            .cw-chat-col {
+                flex: 1 !important;
+                height: auto !important;
+                border-right: none !important;
+            }
+
+            .cw-profile-col {
+                display: none !important;
+                flex: 1 !important;
+                height: auto !important;
+            }
+
+            /* 根據切換器顯示或隱藏視角 */
+            body.view-customer .phone-mockup {
+                display: flex !important;
+            }
+
+            body.view-customer .chatwoot-window {
+                display: none !important;
+            }
+
+            body.view-agent .phone-mockup {
+                display: none !important;
+            }
+
+            body.view-agent .chatwoot-window {
+                display: flex !important;
+            }
+
+            /* 客服後台的子頁籤切換 */
+            body.view-agent-chat .cw-chat-col {
+                display: flex !important;
+            }
+            body.view-agent-chat .cw-profile-col {
+                display: none !important;
+            }
+
+            body.view-agent-profile .cw-chat-col {
+                display: none !important;
+            }
+            body.view-agent-profile .cw-profile-col {
+                display: flex !important;
+            }
+        }
     </style>
 </head>
-<body>
+<body class="view-customer view-agent-chat">
 
+    <!-- 頂部品牌導航 -->
     <header>
         <div class="brand-area">
             <div class="brand-icon">🦄</div>
             <div class="brand-title">
-                <h1>獨角獸的療癒花園 — 智慧客服與真人協同展示</h1>
-                <p>左側：顧客 Instagram 私訊視角（機器人問答引導） ｜ 右側：品牌小幫手客服後台（即時標籤同步與真人無縫接管）</p>
+                <h1>獨角獸的療癒花園</h1>
+                <p>左側：顧客 IG 私訊問卷 ｜ 右側：小幫手客服後台</p>
             </div>
         </div>
         <div class="header-actions">
-            <button class="btn btn-alert" onclick="triggerHumanRequest()">🚨 模擬顧客呼叫真人</button>
-            <button class="btn btn-outline" onclick="restartDemo()">🔄 重置演示</button>
+            <button class="btn btn-alert" onclick="triggerHumanRequest()">🚨 呼叫真人</button>
+            <button class="btn btn-outline" onclick="restartDemo()">🔄 重置</button>
         </div>
     </header>
+
+    <!-- 手機專屬：視角切換器 (顧客手機 vs 客服後台) -->
+    <div class="mobile-view-switcher">
+        <div class="switcher-box">
+            <div class="switcher-tab active" id="tabCustomer" onclick="switchMobileView('customer')">
+                <span>📱 顧客 IG 私訊</span>
+            </div>
+            <div class="switcher-tab" id="tabAgent" onclick="switchMobileView('agent')">
+                <span>👩‍💼 小幫手後台</span>
+                <span class="badge-dot" id="agentBadgeDot"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 跨視角動態提示浮窗 (Toast) -->
+    <div class="toast-banner" id="toastBanner" onclick="onToastClick()">
+        <span id="toastText">🚨 客戶呼叫真人！</span>
+        <span class="toast-btn" id="toastBtnText">切換查看</span>
+    </div>
 
     <main>
         <!-- 左側：手機外框 (Instagram DM) -->
@@ -715,7 +969,7 @@
                             <div class="ig-status" id="igStatusText">機器人自動服務中</div>
                         </div>
                     </div>
-                    <div style="font-size: 18px; color: #64748b; cursor: pointer;" onclick="restartDemo()">⋮</div>
+                    <div style="font-size: 16px; color: #64748b; cursor: pointer; padding: 4px;" onclick="restartDemo()">⋮</div>
                 </div>
 
                 <div class="chat-area" id="chat"></div>
@@ -730,20 +984,26 @@
 
         <!-- 右側：真人客服工作台 (Chatwoot 介面風格) -->
         <div class="chatwoot-window">
-            <!-- 欄 1: 對話收件箱清單 -->
+            <!-- 手機專用客服子切換頁籤 -->
+            <div class="agent-mobile-tabs">
+                <button class="agent-tab-btn active" id="btnAgentChat" onclick="switchAgentSubTab('chat')">💬 即時對話與回覆</button>
+                <button class="agent-tab-btn" id="btnAgentProfile" onclick="switchAgentSubTab('profile')">🏷️ 顧客標籤與歷程</button>
+            </div>
+
+            <!-- 欄 1: 對話收件箱清單 (電腦版顯示) -->
             <div class="cw-inbox-col">
                 <div class="cw-inbox-header">
                     <span>對話收件箱 (3)</span>
                     <span style="font-size: 11px; color: var(--primary); font-weight: 600;">未解決</span>
                 </div>
                 <div class="cw-conv-list">
-                    <div class="cw-conv-item active" id="convItemActive">
+                    <div class="cw-conv-item active">
                         <div class="cw-conv-name">
                             <span>@client_amy</span>
                             <span class="cw-status-badge badge-bot" id="cwConvBadge">Bot 處理中</span>
                         </div>
                         <div class="cw-conv-preview" id="cwConvPreview">正在進行愛情問卷診斷...</div>
-                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">剛剛 • Instagram DM</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">剛剛 • IG 私訊</div>
                     </div>
 
                     <div class="cw-conv-item">
@@ -752,16 +1012,7 @@
                             <span class="cw-status-badge badge-human-chatting">真人服務中</span>
                         </div>
                         <div class="cw-conv-preview">請問這週有空檔占卜嗎？</div>
-                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">15分鐘前 • FB Messenger</div>
-                    </div>
-
-                    <div class="cw-conv-item">
-                        <div class="cw-conv-name">
-                            <span>@lisa_lin</span>
-                            <span class="cw-status-badge" style="background:#f1f5f9; color:#64748b;">已結案</span>
-                        </div>
-                        <div class="cw-conv-preview">謝謝小幫手，儀式效果很好！</div>
-                        <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">昨天 • Instagram DM</div>
+                        <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">15分鐘前 • FB</div>
                     </div>
                 </div>
             </div>
@@ -770,12 +1021,12 @@
             <div class="cw-chat-col">
                 <div class="cw-chat-header">
                     <div>
-                        <div class="cw-user-meta">顧客：@client_amy (來自 Instagram)</div>
+                        <div class="cw-user-meta">顧客：@client_amy (來自 IG 私訊)</div>
                         <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
-                            目前狀態：<span id="cwHeaderStatus" style="font-weight: 600; color: #2563eb;">🤖 機器人引導問答中</span>
+                            狀態：<span id="cwHeaderStatus" style="font-weight: 600; color: #2563eb;">🤖 機器人引導問答中</span>
                         </div>
                     </div>
-                    <button class="btn btn-alert" style="font-size: 11px; padding: 4px 10px;" onclick="takeoverByAgent()">🚨 切換為真人接手</button>
+                    <button class="btn btn-alert" style="font-size: 11px; padding: 3px 8px;" onclick="takeoverByAgent()">🚨 接管</button>
                 </div>
 
                 <div class="cw-chat-messages" id="cwChatMessages"></div>
@@ -783,15 +1034,14 @@
                 <!-- 客服輸入框與快速回覆模板 -->
                 <div class="cw-composer">
                     <div class="cw-quick-canned">
-                        <span style="font-size: 11px; color: #64748b; align-self: center;">常用範本：</span>
-                        <button class="canned-btn" onclick="applyCanned('您好！我是小幫手佩佩，看到您目前的感情狀況，想先抱抱您，請問有什麼細節想先跟小幫手聊聊嗎？')">🤗 溫暖問候</button>
+                        <span style="font-size: 11px; color: #64748b; align-self: center;">範本：</span>
+                        <button class="canned-btn" onclick="applyCanned('您好！我是小幫手佩佩，看到您目前的感情狀況，想先抱抱您，請問有什麼想跟小幫手聊聊嗎？')">🤗 溫暖問候</button>
                         <button class="canned-btn" onclick="applyCanned('收到您的願望！這項能量補充儀式在我們學員中反饋非常好，通常2-3週會有明顯的氛圍改變喔！')">✨ 儀式推薦解說</button>
-                        <button class="canned-btn" onclick="applyCanned('方便請教您與對方目前是否有保持最基本的傳訊呢？')">💬 追問細節</button>
                     </div>
 
                     <div class="cw-input-box">
-                        <textarea class="cw-textarea" id="agentInput" placeholder="在右側輸入小幫手回覆，點擊「發送」會即時傳送到左側手機..."></textarea>
-                        <button class="cw-send-btn" onclick="sendAgentMessage()">發送回覆</button>
+                        <textarea class="cw-textarea" id="agentInput" placeholder="輸入小幫手回覆，點發送將同步至顧客端..."></textarea>
+                        <button class="cw-send-btn" onclick="sendAgentMessage()">發送</button>
                     </div>
                 </div>
             </div>
@@ -836,6 +1086,59 @@
 
         let currentCategory = null;
         let isAgentTakeover = false;
+        let currentToastTarget = null;
+
+        // 手機端視角切換 (顧客 vs 客服)
+        function switchMobileView(view) {
+            document.body.classList.remove('view-customer', 'view-agent');
+            document.getElementById('tabCustomer').classList.remove('active');
+            document.getElementById('tabAgent').classList.remove('active');
+
+            if (view === 'customer') {
+                document.body.classList.add('view-customer');
+                document.getElementById('tabCustomer').classList.add('active');
+            } else {
+                document.body.classList.add('view-agent');
+                document.getElementById('tabAgent').classList.add('active');
+                // 點擊後清除未讀紅點
+                document.getElementById('agentBadgeDot').classList.remove('show');
+            }
+            hideToast();
+        }
+
+        // 客服後台的手機子頁籤切換 (對話 vs 標籤檔案)
+        function switchAgentSubTab(subTab) {
+            document.body.classList.remove('view-agent-chat', 'view-agent-profile');
+            document.getElementById('btnAgentChat').classList.remove('active');
+            document.getElementById('btnAgentProfile').classList.remove('active');
+
+            if (subTab === 'chat') {
+                document.body.classList.add('view-agent-chat');
+                document.getElementById('btnAgentChat').classList.add('active');
+            } else {
+                document.body.classList.add('view-agent-profile');
+                document.getElementById('btnAgentProfile').classList.add('active');
+            }
+        }
+
+        // 浮動提示 Toast 控制
+        function showToast(text, btnText, targetView) {
+            const toast = document.getElementById('toastBanner');
+            document.getElementById('toastText').innerText = text;
+            document.getElementById('toastBtnText').innerText = btnText;
+            currentToastTarget = targetView;
+            toast.style.display = 'flex';
+        }
+
+        function hideToast() {
+            document.getElementById('toastBanner').style.display = 'none';
+        }
+
+        function onToastClick() {
+            if (currentToastTarget) {
+                switchMobileView(currentToastTarget);
+            }
+        }
 
         // 手機端新增訊息
         function addMobileMsg(sender, text, isAgent = false, isHtml = false) {
@@ -854,11 +1157,11 @@
             chat.appendChild(bubble);
             chat.scrollTop = chat.scrollHeight;
 
-            // 同步至右側客服工作台
+            // 同步至客服工作台
             syncToAgentDashboard(sender, text, isAgent);
         }
 
-        // 同步訊息至右側客服工作台
+        // 同步訊息至客服工作台
         function syncToAgentDashboard(sender, text, isAgent) {
             const cwBox = document.getElementById('cwChatMessages');
             const bubble = document.createElement('div');
@@ -872,7 +1175,7 @@
                 document.getElementById('cwConvPreview').innerText = text;
             } else {
                 bubble.className = 'cw-bubble-system';
-                bubble.innerText = `🤖 [Bot] ${text.length > 32 ? text.substring(0, 32) + '...' : text}`;
+                bubble.innerText = `🤖 [Bot] ${text.length > 30 ? text.substring(0, 30) + '...' : text}`;
             }
 
             cwBox.appendChild(bubble);
@@ -903,7 +1206,6 @@
             document.getElementById('quickReplies').scrollTop = 0;
         }
 
-        // 加入標籤
         function addTag(tagName) {
             const tagContainer = document.getElementById('profileTags');
             const t = document.createElement('span');
@@ -912,7 +1214,6 @@
             tagContainer.appendChild(t);
         }
 
-        // 加入時間軸
         function addTimeline(stepName, content) {
             const timeline = document.getElementById('profileTimeline');
             const item = document.createElement('div');
@@ -936,6 +1237,8 @@
             document.getElementById('cwConvBadge').innerText = 'Bot 處理中';
             document.getElementById('cwHeaderStatus').innerHTML = '🤖 機器人引導問答中';
             document.getElementById('cwHeaderStatus').style.color = '#2563eb';
+            document.getElementById('agentBadgeDot').classList.remove('show');
+            hideToast();
 
             // 發送迎賓詞
             addMobileMsg('bot', FLOW_DATA.welcome_message);
@@ -948,7 +1251,6 @@
             setQuickReplies(mainButtons, false);
         }
 
-        // 選擇主選單
         function handleMainMenu(item) {
             addMobileMsg('user', item);
             addTag(item);
@@ -965,13 +1267,12 @@
                 }, 300);
             } else {
                 setTimeout(() => {
-                    addMobileMsg('bot', `您選擇了【${item}】，此專區方案目前規劃中，歡迎點選「改善愛情與感情關係」體驗完整診斷漏斗！`);
+                    addMobileMsg('bot', `您選擇了【${item}】，此專區方案目前規劃中，歡迎點選「改善愛情與感情關係」體驗完整問卷！`);
                     restartDemo();
                 }, 300);
             }
         }
 
-        // 選擇 8 大感情狀態
         function handleSelectCategory(cat) {
             currentCategory = cat;
             addMobileMsg('user', cat.category_name);
@@ -1064,7 +1365,6 @@
             setTimeout(() => {
                 addMobileMsg('bot', '好的！已為您通知線上小幫手，佩佩馬上過來陪伴您～請稍候片刻！');
 
-                // 更新狀態
                 document.getElementById('igStatusText').innerText = '👩‍💼 小幫手佩佩已連線';
                 document.getElementById('igStatusText').classList.add('human-mode');
 
@@ -1074,16 +1374,20 @@
                 document.getElementById('cwHeaderStatus').innerHTML = '<span style="color:#dc2626;">🚨 客戶呼叫真人！請在下方輸入回覆</span>';
                 addTag('呼叫真人');
                 addTimeline('轉接狀態', '客戶點選轉接真人客服');
+
+                // 手機端紅點提示與 Toast 提示切換
+                document.getElementById('agentBadgeDot').classList.add('show');
+                if (window.innerWidth < 900 && document.body.classList.contains('view-customer')) {
+                    showToast('🚨 客戶已呼叫真人！', '切換至後台接管 👉', 'agent');
+                }
             }, 300);
         }
 
-        // 客服後台強制切換為真人接手
         function takeoverByAgent() {
             triggerHumanRequest();
-            alert('已將對話切換為真人接手模式！您可以在右下方輸入文字並發送給顧客。');
+            alert('已將對話切換為真人接手模式！您可以在下方輸入文字並發送給顧客。');
         }
 
-        // 常用範本快速填入
         function applyCanned(text) {
             document.getElementById('agentInput').value = text;
         }
@@ -1100,6 +1404,11 @@
             document.getElementById('cwConvBadge').className = 'cw-status-badge badge-human-chatting';
             document.getElementById('cwConvBadge').innerText = '真人對話中';
             document.getElementById('cwHeaderStatus').innerHTML = '<span style="color:#15803d; font-weight:700;">👩‍💼 由小幫手佩佩接管中</span>';
+
+            // 若在手機端且目前在客服視角，提示切回顧客手機看成果
+            if (window.innerWidth < 900 && document.body.classList.contains('view-agent')) {
+                showToast('✅ 小幫手已發送回覆！', '切換回手機端查看 👉', 'customer');
+            }
         }
 
         window.onload = function() {
