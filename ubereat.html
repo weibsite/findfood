@@ -8485,10 +8485,26 @@ costRes.bins.forEach((bin, bIdx) => {
             fastCartBtnHtml = `<button onclick="window.open('${statusUrl}', '_blank')" style="width:100%; padding:14px; background:#059669; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; margin-bottom:12px; box-shadow:0 4px 12px rgba(5,150,105,0.3);">🔍 立即查詢訂單狀態</button>`;
         }
     }
-    const copyBtnHtml = `<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:#f43f5e; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer;">請按此複製訂單訊息 (貼回聊天室)</button>`;
+    let modalTitle = '偵測到非手機登入';
+    let copyPromptHtml = '<div style="text-align:center; font-size:16px; color:#555; margin-bottom: 16px;">無法自動為您送出至 LINE</div>';
+    let copyBtnText = '請按此複製訂單訊息 (貼回聊天室)';
+    let copyBtnBg = '#f43f5e';
+    if (submittedOrderId) {
+        modalTitle = '📋 訂單與餐點已成功預存！';
+        copyPromptHtml = `
+          <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:12px; margin-bottom:14px; text-align:left; font-size:14px; color:#166534; line-height:1.6;">
+            ✅ <b>餐點與客製化內容已成功存入伺服器！</b><br>
+            因您使用的是電腦版或外部瀏覽器，請點擊下方按鈕複製訂單文字，並<b>貼回官方 LINE 聊天室</b>。<br>
+            系統將自動為您認領訂單並立即開啟裝好餐點的專屬團購單！
+          </div>
+        `;
+        copyBtnText = '📋 複製訂單文字 (貼回 LINE 聊天室認領)';
+        copyBtnBg = '#059669';
+    }
+    const copyBtnHtml = `${copyPromptHtml}${fastCartBtnHtml}<button onclick="copyToClipboardFallback(decodeURIComponent('${encodeURIComponent(msgText).replace(/'/g, "%27")}'), this)" style="width:100%; padding:14px; background:${copyBtnBg}; color:#fff; border:none; border-radius:12px; font-weight:bold; font-size:16px; cursor:pointer; box-shadow:0 4px 12px rgba(5,150,105,0.25);">${copyBtnText}</button>`;
 
     hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
-    showModal('偵測到非手機登入', '', true, copyBtnHtml, true);
+    showModal(modalTitle, '', true, copyBtnHtml, true);
     return;
   }
 
