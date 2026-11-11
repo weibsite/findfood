@@ -1690,7 +1690,7 @@ let isAddressSet = false;
     if (modalSelect && scheduleSelect && modalSelect.options.length > 0 && modalSelect.options[0].value !== '') {
         if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
             if (scheduleSelect.options.length === 0) {
-                const targetIdx = modalSelect.options.length > 1 ? 1 : 0;
+                const targetIdx = modalSelect.selectedIndex >= 0 ? modalSelect.selectedIndex : (modalSelect.options.length > 1 ? 1 : 0);
                 const newOpt = document.createElement('option');
                 newOpt.value = modalSelect.options[targetIdx].value;
                 newOpt.text = modalSelect.options[targetIdx].text;
@@ -1716,8 +1716,9 @@ function autoFixEmptyTime() {
                 if (scheduleSelect && typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
                     scheduleSelect.innerHTML = '';
                     const newOpt = document.createElement('option');
-                    newOpt.value = modalSelect.options[0].value;
-                    newOpt.text = modalSelect.options[0].text;
+                    const selIdx = modalSelect.selectedIndex >= 0 ? modalSelect.selectedIndex : 0;
+                    newOpt.value = modalSelect.options[selIdx].value;
+                    newOpt.text = modalSelect.options[selIdx].text;
                     scheduleSelect.appendChild(newOpt);
                     if (typeof updateTriggerText === 'function') updateTriggerText();
                 }
@@ -1849,11 +1850,65 @@ function renderModalTimes() {
         emptyOpt.disabled = true;
         emptyOpt.selected = true;
         timeSelect.appendChild(emptyOpt);
+    } else {
+        // 換日時自動移到當前時段，而不是固定最上面時間
+        let targetIdx = 0;
+        let found = false;
+
+        // 1. 優先尋找涵蓋當前時間的時段 (startTime <= currentMinutes < endTime)
+        // 若有多個時段重疊（例如生鮮雜貨 3 小時時段與 30 分鐘/1 小時時段），優先選擇區間較短的標準時段
+        let bestCoverDiff = Infinity;
+        let bestCoverIdx = -1;
+        for (let i = 0; i < timeSelect.options.length; i++) {
+            try {
+                const optData = JSON.parse(timeSelect.options[i].value);
+                if (optData && typeof optData.startTime === 'number' && typeof optData.endTime === 'number') {
+                    if (optData.startTime <= currentMinutes && currentMinutes < optData.endTime) {
+                        const duration = optData.endTime - optData.startTime;
+                        if (duration < bestCoverDiff) {
+                            bestCoverDiff = duration;
+                            bestCoverIdx = i;
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+
+        if (bestCoverIdx !== -1) {
+            targetIdx = bestCoverIdx;
+            found = true;
+        }
+
+        // 2. 若無涵蓋當前時間的時段，尋找當前時間之後的第一個時段 (startTime >= currentMinutes)
+        if (!found) {
+            for (let i = 0; i < timeSelect.options.length; i++) {
+                try {
+                    const optData = JSON.parse(timeSelect.options[i].value);
+                    if (optData && typeof optData.startTime === 'number') {
+                        if (optData.startTime >= currentMinutes) {
+                            targetIdx = i;
+                            found = true;
+                            break;
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+
+        // 3. 若當天所有時段都在當前時間之前（例如當前時間已過該店家營業時間），選最接近當前時間的時段（最後一個時段）
+        if (!found) {
+            targetIdx = timeSelect.options.length - 1;
+        }
+
+        if (targetIdx >= 0 && targetIdx < timeSelect.options.length) {
+            timeSelect.selectedIndex = targetIdx;
+            timeSelect.options[targetIdx].selected = true;
+        }
     }
 
     if (typeof updateModalDiscountNotice === 'function') updateModalDiscountNotice();
     
-    // 即時同步第一個時段到畫面 (若非即時訂單模式)
+    // 即時同步時段到畫面 (若非即時訂單模式)
     if (typeof syncSelectedTimeToHome === 'function' && typeof scheduleMode !== 'undefined' && scheduleMode !== 'ASAP' && validCount > 0) {
         syncSelectedTimeToHome();
     }
