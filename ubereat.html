@@ -844,6 +844,21 @@ window.currentSelectedPlan = '150'; // 預設使用 150 方案
 window.couponBEnabled = true;       // 300 方案 (B券) 開啟狀態
 window._userManuallySelectedPlan = false; // 是否由使用者手動切換方案
 
+function getPlan300MinHours() {
+  const st = (typeof window !== 'undefined') ? window.lastServerStoreStatus : null;
+  if (!st || !st.type) return 10;
+  const t = String(st.type).toLowerCase();
+  const txt = String(st.text || '');
+  if (t === 'preorder' || t === 'closed' || t === 'offline' || txt.includes('休息中') || txt.includes('無法接單')) {
+    return 10;
+  }
+  if (t === 'open' || t === 'busy') {
+    return 3;
+  }
+  return 10;
+}
+window.getPlan300MinHours = getPlan300MinHours;
+
 function isPlan300Eligible() {
   if (window.isGroceryStore) return false;
   if (typeof scheduleMode === 'undefined' || scheduleMode !== 'SCHEDULE') return false;
@@ -866,24 +881,8 @@ function isPlan300Eligible() {
 
   const now = Date.now();
   const diffMs = schedTs - now;
-  // 1. 目前時間最少 10 小時以上
-  if (diffMs < 10 * 3600 * 1000) return false;
-
-  // 2. 隔日後（預訂日期必須在明天及之後，當日預訂不符合隔日後）
-  let schedDateStr = '';
-  const schedSelect = document.getElementById('scheduleTime');
-  if (schedSelect && schedSelect.value) {
-      try {
-          const parsed = JSON.parse(schedSelect.value);
-          if (parsed && parsed.date) schedDateStr = parsed.date;
-      } catch(e) {}
-  }
-  if (!schedDateStr) {
-      schedDateStr = new Date(schedTs).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-  }
-
-  const todayTwStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-  if (schedDateStr <= todayTwStr) return false;
+  const minHours = (typeof getPlan300MinHours === 'function') ? getPlan300MinHours() : 10;
+  if (diffMs < minHours * 3600 * 1000) return false;
 
   return true;
 }
@@ -893,7 +892,11 @@ window.switchPlanTab = function(newPlan) {
   if (window.isGroceryStore) return;
   if (newPlan === '300') {
     if (!isPlan300Eligible()) {
-      if (typeof showToast === 'function') showToast('⚠️ 300 方案僅限預訂目前時間最少 10 小時以上之隔日訂單');
+      const reqHours = (typeof getPlan300MinHours === 'function') ? getPlan300MinHours() : 10;
+      const tipMsg = (reqHours >= 10)
+        ? '⚠️ 目前伺服器為休息中，300 方案需預訂至少 10 小時以後的時段'
+        : '⚠️ 300 方案僅限預訂目前時間最少 3 小時以上的時段';
+      if (typeof showToast === 'function') showToast(tipMsg);
       return;
     }
     if (!window.couponBEnabled) {
@@ -7788,7 +7791,24 @@ async function _sendOrderToLine(forceSubmit = false) {
   let is150Sub = Boolean(typeof currentStoreName !== 'undefined' && currentStoreName && currentStoreName.includes('優市'));
   let deliveryAddrSub = '';
   let isDSub = false;
+  if (!isGrocerySub && window.currentSelectedPlan === '300' && typeof loadServerStatusDot === 'function') {
+      try { await loadServerStatusDot(); } catch (e) {}
+  }
   let canUsePlan300 = (!isGrocerySub && typeof isPlan300Eligible === 'function' && isPlan300Eligible());
+  if (!isGrocerySub && window.currentSelectedPlan === '300' && !canUsePlan300) {
+      window.currentSelectedPlan = '150';
+      hideOrderWaitingOverlay(); hideGroceryWaitingOverlay();
+      const submitBtn = document.getElementById('checkoutSubmitBtn');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = '送出訂單'; submitBtn.style.opacity = '1'; }
+      const reqHours = (typeof getPlan300MinHours === 'function') ? getPlan300MinHours() : 10;
+      const reasonDesc = (reqHours >= 10)
+          ? '目前伺服器為「休息中（可接預約單）」狀態，300 方案需預訂至少 10 小時以後的時段，系統已自動為您切換至「⚡ 150 內半價」方案，請確認明細後重新送出。'
+          : '目前預約時段未滿 300 方案所需之 3 小時提前限制，系統已自動為您切換至「⚡ 150 內半價」方案，請確認明細後重新送出。';
+      showModal('⚠️ 300 方案資格不符', reasonDesc, false, `
+          <button onclick="document.getElementById('errorModalOverlay').style.display='none'; openCheckoutSummary();" style="width:100%; padding:12px; background:#f43f5e; color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">查看 150 方案明細並送出</button>
+      `, true);
+      return;
+  }
   let currentPlanType = (canUsePlan300 && window.currentSelectedPlan === '300') ? '300' : '150';
 
       if (forceSubmit === 'planA' ) {
@@ -13226,8 +13246,18 @@ async function loadServerStatusDot() {
         if (!response.ok) throw new Error('API Error');
         
         const data = await response.json();
+        const prevType = window.lastServerStoreStatus ? window.lastServerStoreStatus.type : null;
         window.lastServerStoreStatus = data;
         updateStatusDot(data.type);
+        if (prevType && prevType !== data.type) {
+            const cv = document.getElementById('checkoutView');
+            if (cv && cv.style.display !== 'none' && !window.isGroceryStore && typeof openCheckoutSummary === 'function') {
+                if (typeof isPlan300Eligible === 'function' && window.currentSelectedPlan === '300' && !isPlan300Eligible()) {
+                    window.currentSelectedPlan = '150';
+                    openCheckoutSummary();
+                }
+            }
+        }
         
         // 🌟 判斷伺服器營業狀態是否為「休息中(無法接單)」(由 LINE 控制：type === 'closed' 或文字包含「無法接單」)
         const isClosed = data.type === 'closed' || (data.text && data.text.includes('無法接單'));
@@ -13261,6 +13291,7 @@ async function loadServerStatusDot() {
         }
     } catch (err) {
         console.error("Status check error", err);
+        window.lastServerStoreStatus = { type: 'offline', text: '連線失敗' };
         updateStatusDot('offline');
         
         if (!offlineCheckInterval) {
