@@ -484,8 +484,8 @@
           
           <div style="display:flex; gap:10px; align-items:center;">
             <div class="delivery-method-toggle" style="flex:1; margin-bottom:0;">
-              <button type="button" id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交')" style="word-break: keep-all; line-height: 1.2;">當面<wbr>點交</button>
-              <button type="button" id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口')" style="word-break: keep-all; line-height: 1.2;">放在<wbr>門口</button>
+              <button type="button" id="btnMethodFace" class="active" onclick="setDeliveryMethod('當面點交', true)" style="word-break: keep-all; line-height: 1.2;">當面<wbr>點交</button>
+              <button type="button" id="btnMethodDoor" class="inactive" onclick="setDeliveryMethod('放在門口', true)" style="word-break: keep-all; line-height: 1.2;">放在<wbr>門口</button>
             </div>
             <select id="deliveryMethod" style="display:none;">
               <option value="當面點交" selected>當面點交</option>
@@ -950,7 +950,7 @@ window.alert = function(msg) {
 };
 
 // New specific function to handle delivery method toggle since we hid the original select
-function setDeliveryMethod(method) {
+function setDeliveryMethod(method, fromUser = false) {
     const isDoor = (method === 'door' || method === '放在門口');
     const actualMethod = isDoor ? '放在門口' : '當面點交';
     window.selectedDeliveryMethod = actualMethod;
@@ -958,8 +958,13 @@ function setDeliveryMethod(method) {
     const sel = document.getElementById('deliveryMethod');
     if (sel) {
         if (sel.value !== actualMethod) {
-            sel.value = actualMethod;
-            sel.dispatchEvent(new Event('change'));
+            window._syncingDeliveryMethodDom = true;
+            try {
+                sel.value = actualMethod;
+                sel.dispatchEvent(new Event('change'));
+            } finally {
+                window._syncingDeliveryMethodDom = false;
+            }
         }
     }
     const otherIds = ['checkoutDeliveryMethod', 'groceryDeliveryMethod'];
@@ -977,6 +982,9 @@ function setDeliveryMethod(method) {
     } else {
         if (f) f.className = 'active';
         if (d) d.className = 'inactive';
+    }
+    if (fromUser && !window._restoringAddrDeliveryPrefs && typeof window.saveCurrentPrefsToAddress === 'function') {
+        window.saveCurrentPrefsToAddress();
     }
 }
 window.setDeliveryMethod = setDeliveryMethod;
@@ -1147,6 +1155,127 @@ let isAddressSet = false;
 
   let addressHistory = [];
 
+  function normalizeAddrPrefKey(title) {
+    return String(title || '').replace(/^📍\s*/, '').split(',')[0].trim();
+  }
+  window.normalizeAddrPrefKey = normalizeAddrPrefKey;
+
+  function findAddrHistoryIndex(history, targetKey) {
+    if (!Array.isArray(history) || !targetKey) return -1;
+    return history.findIndex(item => item && normalizeAddrPrefKey(item.title) === targetKey);
+  }
+
+  function pickPreservedAddrPrefs(sources) {
+    for (const src of sources) {
+      if (!src || typeof src !== 'object') continue;
+      const out = {};
+      if (src.deliveryMethod === '當面點交' || src.deliveryMethod === '放在門口') {
+        out.deliveryMethod = src.deliveryMethod;
+      }
+      if (typeof src.deliveryNotes === 'string') {
+        out.deliveryNotes = src.deliveryNotes;
+      }
+      if (typeof src.prefUpdatedAt === 'number') {
+        out.prefUpdatedAt = src.prefUpdatedAt;
+      }
+      if (Object.keys(out).length > 0) return out;
+    }
+    return {};
+  }
+
+  function applyDeliveryPrefsUI(method, notes) {
+    window._restoringAddrDeliveryPrefs = true;
+    try {
+      if (method === '當面點交' || method === '放在門口') {
+        localStorage.setItem('userDeliveryMethod', method);
+        if (typeof window.setDeliveryMethod === 'function') {
+          window.setDeliveryMethod(method, false);
+        }
+      }
+      if (typeof notes === 'string') {
+        localStorage.setItem('userDeliveryNotes', notes);
+        ['deliveryNotes', 'checkoutDeliveryNotes', 'groceryDeliveryNotes'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && el.value !== notes) el.value = notes;
+        });
+      }
+    } finally {
+      window._restoringAddrDeliveryPrefs = false;
+    }
+  }
+  window.applyDeliveryPrefsUI = applyDeliveryPrefsUI;
+
+  function saveCurrentPrefsToAddress(targetTitle) {
+    if (window._restoringAddrDeliveryPrefs) return;
+    if (window.currentGroupBuyId) return;
+    const rawAddr = targetTitle || (typeof currentAddrTitle !== 'undefined' ? currentAddrTitle : '') || (document.getElementById('addrInput')?.value || '');
+    const key = normalizeAddrPrefKey(rawAddr);
+    if (!key) return;
+    if (!targetTitle && typeof isAddressSet !== 'undefined' && !isAddressSet) return;
+
+    const methodEl = document.getElementById('deliveryMethod');
+    const currentMethod = (window.selectedDeliveryMethod === '放在門口' || (methodEl && methodEl.value === '放在門口'))
+      ? '放在門口'
+      : '當面點交';
+    const noteEl = document.getElementById('deliveryNotes');
+    const currentNotes = noteEl ? noteEl.value.trim() : (localStorage.getItem('userDeliveryNotes') || '');
+
+    let history = [];
+    try {
+      history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
+    } catch (e) { history = []; }
+    const idx = findAddrHistoryIndex(history, key);
+    if (idx === -1) return;
+
+    history[idx] = {
+      ...history[idx],
+      deliveryMethod: currentMethod,
+      deliveryNotes: currentNotes,
+      prefUpdatedAt: Date.now()
+    };
+    localStorage.setItem('finddog_history_address', JSON.stringify(history));
+    addressHistory = history;
+  }
+  window.saveCurrentPrefsToAddress = saveCurrentPrefsToAddress;
+
+  function restorePrefsForAddress(targetTitle) {
+    if (window.currentGroupBuyId) return;
+    const key = normalizeAddrPrefKey(targetTitle);
+    if (!key) return;
+
+    let history = [];
+    try {
+      history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
+    } catch (e) { history = []; }
+    const idx = findAddrHistoryIndex(history, key);
+    if (idx === -1) return;
+
+    const item = history[idx];
+    const hasMethod = item && (item.deliveryMethod === '當面點交' || item.deliveryMethod === '放在門口');
+    const hasNotes = item && typeof item.deliveryNotes === 'string';
+    // 方案二：若目標地址曾記錄過習慣則還原；若是從未紀錄過的全新地址，保留畫面上現行方式與備註，待修改時再覆寫
+    if (hasMethod || hasNotes) {
+      applyDeliveryPrefsUI(
+        hasMethod ? item.deliveryMethod : undefined,
+        hasNotes ? item.deliveryNotes : undefined
+      );
+    }
+  }
+  window.restorePrefsForAddress = restorePrefsForAddress;
+
+  function handleDeliveryNoteChange(val) {
+    const strVal = (val === undefined || val === null) ? '' : String(val);
+    localStorage.setItem('userDeliveryNotes', strVal);
+    ['deliveryNotes', 'checkoutDeliveryNotes', 'groceryDeliveryNotes'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.value !== strVal) el.value = strVal;
+    });
+    if (!window._restoringAddrDeliveryPrefs) {
+      saveCurrentPrefsToAddress();
+    }
+  }
+  window.handleDeliveryNoteChange = handleDeliveryNoteChange;
+
   
 
   function loadHistory() {
@@ -1203,6 +1332,9 @@ let isAddressSet = false;
 
         scrollAddrToEnd();
         revealSubSections();
+        if (typeof restorePrefsForAddress === 'function') {
+          restorePrefsForAddress(lastAddr.title);
+        }
         if (lastAddr.lat && lastAddr.lng) {
           setAddress(lastAddr.lat, lastAddr.lng, lastAddr.title);
         }
@@ -1305,21 +1437,27 @@ let isAddressSet = false;
             if (typeof scrollAddrToEnd === 'function') scrollAddrToEnd();
           }
 
-          // 寫入 localStorage 儲存
+          // 寫入 localStorage 儲存 (保留既有地址之外送方式與備註習慣，上限維持 5 筆)
           let history = [];
           try {
             history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
           } catch(e) { history = []; }
-          history = history.filter(item => item && item.title !== finalResolvedTitle && item.title !== cleanTitle);
+          const resolvedKey = normalizeAddrPrefKey(finalResolvedTitle);
+          const cleanKey = normalizeAddrPrefKey(cleanTitle);
+          const matchedPrev = history.find(item => item && (normalizeAddrPrefKey(item.title) === resolvedKey || normalizeAddrPrefKey(item.title) === cleanKey));
+          const preservedPrefs = pickPreservedAddrPrefs([matchedPrev, fallbackItem]);
+          history = history.filter(item => item && normalizeAddrPrefKey(item.title) !== resolvedKey && normalizeAddrPrefKey(item.title) !== cleanKey);
           history.unshift({
             lat: locData.lat,
             lng: locData.lng,
             title: finalResolvedTitle,
             savedAt: Date.now(),
-            uberVerified: true
+            uberVerified: true,
+            ...preservedPrefs
           });
           if (history.length > 5) history = history.slice(0, 5);
           localStorage.setItem('finddog_history_address', JSON.stringify(history));
+          addressHistory = history;
 
           if (typeof updateAddrTitleState === 'function') updateAddrTitleState('ok');
           if (typeof fetchDeliveryTimes === 'function') fetchDeliveryTimes();
@@ -1355,13 +1493,19 @@ let isAddressSet = false;
 
   function saveAddressHistory(lat, lng, title, placeId) {
 
-    let history = JSON.parse(localStorage.getItem('finddog_history_address')) || [];
+    let history = [];
+    try {
+      history = JSON.parse(localStorage.getItem('finddog_history_address') || '[]') || [];
+    } catch (e) { history = []; }
 
-    history = history.filter(item => item.title !== title);
+    const targetKey = normalizeAddrPrefKey(title);
+    const existingItem = history.find(item => item && normalizeAddrPrefKey(item.title) === targetKey);
+    const preservedPrefs = pickPreservedAddrPrefs([existingItem]);
+    history = history.filter(item => item && normalizeAddrPrefKey(item.title) !== targetKey);
 
-    // [修補] 加入儲存時間戳與 place_id，方便後續精準還原 Place ID
+    // [修補] 加入儲存時間戳與 place_id，並保留該地址原有之外送方式與備註習慣
     const pid = placeId || (window.currentPlaceId || '');
-    history.unshift({ lat, lng, title, place_id: pid, savedAt: Date.now() });
+    history.unshift({ lat, lng, title, place_id: pid, savedAt: Date.now(), ...preservedPrefs });
 
     if (history.length > 5) history = history.slice(0, 5);
 
@@ -1394,19 +1538,19 @@ let isAddressSet = false;
           if (savedMethod !== null) el.value = savedMethod;
           el.addEventListener('change', (e) => {
               const val = e.target.value;
+              const isUserChange = !window._syncingDeliveryMethodDom && !window._restoringAddrDeliveryPrefs;
               localStorage.setItem('userDeliveryMethod', val);
-              // sync others
               methodIds.forEach(otherId => {
                  if (otherId !== id && document.getElementById(otherId)) document.getElementById(otherId).value = val;
               });
               if (typeof setDeliveryMethod === 'function') {
-                  setDeliveryMethod(val);
+                  setDeliveryMethod(val, isUserChange);
               }
           });
       }
   });
   if (savedMethod && typeof setDeliveryMethod === 'function') {
-      setDeliveryMethod(savedMethod);
+      setDeliveryMethod(savedMethod, false);
   }
 
   noteIds.forEach(id => {
@@ -1414,11 +1558,7 @@ let isAddressSet = false;
       if (el) {
           if (savedNotes !== null) el.value = savedNotes;
           el.addEventListener('input', (e) => {
-              localStorage.setItem('userDeliveryNotes', e.target.value);
-              // sync others
-              noteIds.forEach(otherId => {
-                 if (otherId !== id && document.getElementById(otherId)) document.getElementById(otherId).value = e.target.value;
-              });
+              handleDeliveryNoteChange(e.target.value);
           });
       }
   });
@@ -3361,6 +3501,9 @@ window.addrDebounceTimer = null;
           if (document.getElementById('fullScreenLoader')) document.getElementById('fullScreenLoader').style.display = 'none';
           revealSubSections();
           saveAddressHistory(lat, lng, title, placeId);
+          if (typeof restorePrefsForAddress === 'function') {
+              restorePrefsForAddress(displayTitle);
+          }
 
         updateAddrTitleState('ok');
         fetchDeliveryTimes();
@@ -6995,7 +7138,7 @@ function openCheckoutSummary() {
 
         <div style="display:flex; gap:8px;">
 
-          <select id="checkoutDeliveryMethod" style="flex:0 0 auto; padding:8px; border:1px solid #ccc; border-radius:6px; background:#fff; outline:none; cursor:pointer;">
+          <select id="checkoutDeliveryMethod" onchange="if(typeof setDeliveryMethod==='function') setDeliveryMethod(this.value, true);" style="flex:0 0 auto; padding:8px; border:1px solid #ccc; border-radius:6px; background:#fff; outline:none; cursor:pointer;">
 
             <option value="當面點交" ${selectedMethod === '當面點交' ? 'selected' : ''}>當面點交</option>
 
@@ -7003,7 +7146,7 @@ function openCheckoutSummary() {
 
           </select>
 
-          <input type="text" id="checkoutDeliveryNotes" value="${escapeHTML(oldDeliveryNotes)}" placeholder="例如：到了打電話..." style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+          <input type="text" id="checkoutDeliveryNotes" value="${escapeHTML(oldDeliveryNotes)}" oninput="if(typeof handleDeliveryNoteChange==='function') handleDeliveryNoteChange(this.value);" onchange="if(typeof saveSimpleHistory==='function') saveSimpleHistory('deliveryNotes');" placeholder="例如：到了打電話..." style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
 
         </div>
 
@@ -7450,7 +7593,7 @@ function openGroceryCheckoutSummary() {
 
         <div style="display:flex; gap:8px;">
 
-          <select id="groceryDeliveryMethod" style="flex:0 0 auto; padding:8px; border:1px solid #ccc; border-radius:6px; background:#fff; outline:none; cursor:pointer;">
+          <select id="groceryDeliveryMethod" onchange="if(typeof setDeliveryMethod==='function') setDeliveryMethod(this.value, true);" style="flex:0 0 auto; padding:8px; border:1px solid #ccc; border-radius:6px; background:#fff; outline:none; cursor:pointer;">
 
             <option value="當面點交" ${selectedMethod === '當面點交' ? 'selected' : ''}>當面點交</option>
 
@@ -7458,7 +7601,7 @@ function openGroceryCheckoutSummary() {
 
           </select>
 
-          <input type="text" id="groceryDeliveryNotes" value="${escapeHTML(oldDeliveryNotes)}" placeholder="例如：到了打電話..." style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+          <input type="text" id="groceryDeliveryNotes" value="${escapeHTML(oldDeliveryNotes)}" oninput="if(typeof handleDeliveryNoteChange==='function') handleDeliveryNoteChange(this.value);" onchange="if(typeof saveSimpleHistory==='function') saveSimpleHistory('deliveryNotes');" placeholder="例如：到了打電話..." style="flex:1; padding:8px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
 
         </div>
 
@@ -7913,7 +8056,7 @@ async function _sendOrderToLine(forceSubmit = false) {
 
          <div style="display:flex; gap:10px; margin-top:20px;">
 
-           <button onclick="document.getElementById('${prefix}DeliveryMethod').value='放在門口'; document.getElementById('errorModalOverlay').style.display='none'; window._ignoreMethodCheck=true; sendOrderToLine('${forceSubmit === 'split' ? 'split' : (forceSubmit ? forceSubmit : '')}');" style="flex:1; padding:12px; background:#f43f5e; color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px;">是(放在門口)</button>
+           <button onclick="document.getElementById('${prefix}DeliveryMethod').value='放在門口'; if(typeof setDeliveryMethod==='function') setDeliveryMethod('放在門口', true); document.getElementById('errorModalOverlay').style.display='none'; window._ignoreMethodCheck=true; sendOrderToLine('${forceSubmit === 'split' ? 'split' : (forceSubmit ? forceSubmit : '')}');" style="flex:1; padding:12px; background:#f43f5e; color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px;">是(放在門口)</button>
 
            <button onclick="document.getElementById('errorModalOverlay').style.display='none'; window._ignoreMethodCheck=true; sendOrderToLine('${forceSubmit === 'split' ? 'split' : (forceSubmit ? forceSubmit : '')}');" style="flex:1; padding:12px; background:#888; color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px;">否(就是當面點交沒錯)</button>
 
@@ -12269,9 +12412,9 @@ window.switchSplitTab = function(plan, dir) {
 
 
 // Specific function to handle delivery method toggle
-function setDeliveryMethod(method) {
+function setDeliveryMethod(method, fromUser = false) {
     if (typeof window.setDeliveryMethod === 'function') {
-        window.setDeliveryMethod(method);
+        window.setDeliveryMethod(method, fromUser);
     }
 }
 
@@ -12495,9 +12638,9 @@ function showToast(msg) {
 
 
 // Specific function to handle delivery method toggle
-function setDeliveryMethod(method) {
+function setDeliveryMethod(method, fromUser = false) {
     if (typeof window.setDeliveryMethod === 'function') {
-        window.setDeliveryMethod(method);
+        window.setDeliveryMethod(method, fromUser);
     }
 }
 
@@ -13891,7 +14034,14 @@ window.getDiffHistoryAddresses = function() {
         const cleanTitle = item.title.replace(/^📍\s*/, '').trim();
         if (!cleanTitle || cleanTitle === currentVal || seen.has(cleanTitle)) continue;
         seen.add(cleanTitle);
-        diffList.push({ lat: item.lat, lng: item.lng, title: cleanTitle });
+        diffList.push({
+            lat: item.lat,
+            lng: item.lng,
+            title: cleanTitle,
+            place_id: item.place_id || '',
+            deliveryMethod: item.deliveryMethod,
+            deliveryNotes: item.deliveryNotes
+        });
     }
     return diffList;
 };
@@ -13912,11 +14062,23 @@ window.renderHistoryAddrCandidates = function(items) {
     }
     resEl.innerHTML = items.slice(0, 6).map((item, idx) => {
         const safeTitle = typeof escapeHTML === 'function' ? escapeHTML(item.title) : item.title;
+        const prefParts = [];
+        if (item.deliveryMethod === '放在門口' || item.deliveryMethod === '當面點交') {
+            prefParts.push((item.deliveryMethod === '放在門口' ? '📦 ' : '🤝 ') + item.deliveryMethod);
+        }
+        if (typeof item.deliveryNotes === 'string' && item.deliveryNotes.trim()) {
+            const safeNote = typeof escapeHTML === 'function' ? escapeHTML(item.deliveryNotes.trim()) : item.deliveryNotes.trim();
+            prefParts.push(safeNote);
+        }
+        const prefHtml = prefParts.length > 0
+            ? `<div style="font-size:12px; color:#78716c; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;">${prefParts.join(' · ')}</div>`
+            : '';
         return `<div class="addr-item" onmousedown="event.preventDefault();" onclick="window.selectHistoryAddrCandidate(${idx})" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:11px 13px; border:1px solid #f0e4e2; border-radius:14px; background:#fffaf8; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
             <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
                 <span style="font-size:17px; flex-shrink:0;">🕒</span>
                 <div style="min-width:0; flex:1;">
                     <div style="font-size:15px; font-weight:800; color:#1c1917; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeTitle}</div>
+                    ${prefHtml}
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
@@ -14124,15 +14286,20 @@ window.handleHeroClick = async function(vertical) {
 };
 
 // 9. Keep delivery method toggle working
-window.setDeliveryMethod = function(method) {
+window.setDeliveryMethod = function(method, fromUser = false) {
     const isDoor = (method === 'door' || method === '放在門口');
     const actualMethod = isDoor ? '放在門口' : '當面點交';
     window.selectedDeliveryMethod = actualMethod;
     
     const sel = document.getElementById('deliveryMethod');
     if (sel && sel.value !== actualMethod) {
-        sel.value = actualMethod;
-        sel.dispatchEvent(new Event('change'));
+        window._syncingDeliveryMethodDom = true;
+        try {
+            sel.value = actualMethod;
+            sel.dispatchEvent(new Event('change'));
+        } finally {
+            window._syncingDeliveryMethodDom = false;
+        }
     }
     const otherIds = ['checkoutDeliveryMethod', 'groceryDeliveryMethod'];
     otherIds.forEach(id => {
@@ -14149,6 +14316,9 @@ window.setDeliveryMethod = function(method) {
     } else {
         if (f) f.className = 'active';
         if (d) d.className = 'inactive';
+    }
+    if (fromUser && !window._restoringAddrDeliveryPrefs && typeof window.saveCurrentPrefsToAddress === 'function') {
+        window.saveCurrentPrefsToAddress();
     }
 };
 
