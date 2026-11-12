@@ -821,6 +821,24 @@ function decodeStoreUuid(raw) {
 }
 window.decodeStoreUuid = decodeStoreUuid;
 
+function normalizeUberActionPath(rawUrl) {
+    let cleaned = String(rawUrl || '').trim();
+    if (!cleaned) return '';
+    // Strip one or more leading https://www.ubereats.com(/tw) or /tw prefixes so full URLs never double-prefix
+    cleaned = cleaned.replace(/^(?:https?:\/\/www\.ubereats\.com(?:\/tw)?|\/tw(?=\/|$))+/i, '');
+    cleaned = cleaned.replace(/([?&])diningMode=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+    if (cleaned && !cleaned.startsWith('/')) cleaned = '/' + cleaned;
+    return cleaned;
+}
+window.normalizeUberActionPath = normalizeUberActionPath;
+
+function normalizeUberStoreUrl(rawUrl) {
+    let cleaned = String(rawUrl || '').trim();
+    if (!cleaned) return '';
+    return cleaned.replace(/^(?:https?:\/\/www\.ubereats\.com(?:\/tw)?)+/i, 'https://www.ubereats.com/tw');
+}
+window.normalizeUberStoreUrl = normalizeUberStoreUrl;
+
 // ========== 雙方案全域狀態管理 (150內半價 vs 300內半價) ==========
 window.currentSelectedPlan = '150'; // 預設使用 150 方案
 window.couponBEnabled = true;       // 300 方案 (B券) 開啟狀態
@@ -2130,6 +2148,7 @@ function checkStoreSchedulability(rawData, overrideTargetDate) {
     const titleMsg = (ofl && ofl.bottomSheetTitleMessage) ? String(ofl.bottomSheetTitleMessage) : '';
     const blockedPhrases = [
         '要等到營業時間才會接受訂單',
+        '不接受預約訂單',
         '不接受預約',
         '目前不接受預約',
         '不支援預約',
@@ -2142,12 +2161,19 @@ function checkStoreSchedulability(rawData, overrideTargetDate) {
         !rawData ||
         (ofl && (
             ofl.bottomSheetPrimaryButtonAction === 'DISMISS' ||
+            ofl.bottomSheetPrimaryButtonAction === 'SWITCH_ASAP' ||
             ofl.bottomSheetPrimaryButtonMessage === '查看商家' ||
             blockedPhrases.some(k => subMsg.includes(k) || titleMsg.includes(k)) ||
             ofl.isSchedulable === false
         )) ||
         (rawData.scheduledOrderInfo && rawData.scheduledOrderInfo.isSchedulable === false) ||
         (rawData.isSchedulable === false)
+    );
+
+    const isExplicitlySchedulable = Boolean(
+        (rawData && rawData.scheduledOrderInfo && rawData.scheduledOrderInfo.isSchedulable === true) ||
+        (ofl && ofl.isSchedulable === true) ||
+        (rawData && rawData.isSchedulable === true)
     );
 
     const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
@@ -2160,9 +2186,10 @@ function checkStoreSchedulability(rawData, overrideTargetDate) {
         hasTodayDeliveryHours = rawData.adaptedDeliveryHoursInfos.dates.includes(targetDate);
     }
 
-    const isSchedulable = !isProhibitedByUber && hasTodayDeliveryHours && hasTodayPickerSlots;
+    const isSchedulable = !isProhibitedByUber && isExplicitlySchedulable && hasTodayDeliveryHours && hasTodayPickerSlots;
     return {
         isProhibitedByUber,
+        isExplicitlySchedulable,
         targetDate,
         pickerWindows,
         hasTodayPickerSlots,
@@ -2172,17 +2199,30 @@ function checkStoreSchedulability(rawData, overrideTargetDate) {
 }
 window.checkStoreSchedulability = checkStoreSchedulability;
 
+function isPxmartAsapBypassAllowed(rawData, storeName) {
+    const mode = (typeof scheduleMode !== 'undefined' ? scheduleMode : window.scheduleMode) || 'ASAP';
+    if (mode !== 'ASAP') return false;
+    const sName = String(storeName || (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || (rawData && rawData.title) || '');
+    if (typeof isPxmartName !== 'function' || !isPxmartName(sName)) return false;
+    if (!rawData || rawData.isOpen === false || rawData.isOrderable === false) return false;
+    if (rawData.closedMessage && String(rawData.closedMessage).trim()) return false;
+    const sched = checkStoreSchedulability(rawData);
+    return !sched.isProhibitedByUber && sched.hasTodayDeliveryHours;
+}
+window.isPxmartAsapBypassAllowed = isPxmartAsapBypassAllowed;
+
 function validateStoreSchedule() {
     let windows = window.currentStoreAvailableWindows || [];
     const rawData = window.currentStoreRawData;
     const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
 
-    // 規範檢查：預約單與即時單均需確認店家支援預約且目標日具備有效配送時段
+    // 規範檢查：預約單與即時單均需確認店家明確支援預約且目標日具備有效配送時段（全聯即時營業特規除外）
     if (rawData) {
         const schedStatus = checkStoreSchedulability(rawData);
         const isSched = schedStatus.isSchedulable;
+        const pxmartAllowed = isPxmartAsapBypassAllowed(rawData, typeof currentStoreName !== 'undefined' ? currentStoreName : '');
 
-        if (windows.length === 0 && isSched) {
+        if (windows.length === 0 && (isSched || pxmartAllowed)) {
             windows = schedStatus.pickerWindows.slice();
             if (typeof interleaveThreeHourWindows === 'function') {
                 windows = interleaveThreeHourWindows(windows, currentStoreName, isGr);
@@ -2190,7 +2230,7 @@ function validateStoreSchedule() {
             window.currentStoreAvailableWindows = windows;
         }
 
-        if (!isSched || windows.length === 0) {
+        if (!pxmartAllowed && (!isSched || windows.length === 0)) {
             const tType = isGr ? '商店' : '餐廳';
             return { valid: false, reason: 'NOT_SCHEDULABLE', text: `此${tType}無法代訂，請選擇其他${tType}` };
         }
@@ -2292,7 +2332,7 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
     const tType = (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP') ? '商店' : '餐廳';
     const notice = window.currentStoreClosedNotice ? `（${escapeHTML(window.currentStoreClosedNotice)}）` : '';
     const safeName = (typeof currentStoreName !== 'undefined' && currentStoreName) ? currentStoreName.replace(/'/g, "%27") : '';
-    const safeAction = (typeof currentStoreUrl !== 'undefined' && currentStoreUrl) ? currentStoreUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
+    const safeAction = (typeof currentStoreUrl !== 'undefined' && currentStoreUrl) ? normalizeUberActionPath(currentStoreUrl).replace(/'/g, "%27") : '';
     const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : false;
 
     if (windows.length === 0 && !isCurrentlyOpen) {
@@ -8076,6 +8116,8 @@ costRes.bins.forEach((bin, bIdx) => {
 
             if (u) {
 
+                if (typeof normalizeUberStoreUrl === 'function') u = normalizeUberStoreUrl(u);
+
                 try { u = decodeURI(u); } catch(e) {}
 
                 msgText += `🔗 網址: ${u}\n`;
@@ -8178,6 +8220,8 @@ costRes.bins.forEach((bin, bIdx) => {
           if (!u && typeof currentStoreUrl !== 'undefined') u = currentStoreUrl;
 
           if (u) {
+
+              if (typeof normalizeUberStoreUrl === 'function') u = normalizeUberStoreUrl(u);
 
               try { u = decodeURI(u); } catch(e) {}
 
@@ -9702,7 +9746,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
     }
     window.currentStoreName = currentStoreName;
 
-    const cleanActionUrl = (actionUrl || '').replace(/([?&])diningMode=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+    const cleanActionUrl = (typeof normalizeUberActionPath === 'function')
+        ? normalizeUberActionPath(actionUrl)
+        : (actionUrl || '').replace(/([?&])diningMode=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
     if(cleanActionUrl) {
         currentStoreUrl = 'https://www.ubereats.com/tw' + cleanActionUrl + (cleanActionUrl.includes('?') ? '&' : '?') + 'diningMode=' + diningMode;
     } else {
@@ -9960,11 +10006,14 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const hasTodayDeliveryHours = schedStatus.hasTodayDeliveryHours;
       const isSchedulable = schedStatus.isSchedulable;
 
-      // 生鮮雜貨與餐廳皆需通過可接單檢查
+      // 生鮮雜貨與餐廳皆需通過可接單檢查（全聯 ASAP 營業中特規除外）
       const isGrocery = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+      const pxmartAsapAllowed = (typeof isPxmartAsapBypassAllowed === 'function')
+          ? isPxmartAsapBypassAllowed(d, (typeof currentStoreName !== 'undefined' ? currentStoreName : '') || (d && d.title) || '')
+          : false;
 
       // 解析目標預約日所有可用時段，供預約與即時單狀態判斷 (若店家禁止預約或無有效時段，一律為空)
-      let availableWindows = isSchedulable ? schedStatus.pickerWindows.slice() : [];
+      let availableWindows = (isSchedulable || pxmartAsapAllowed) ? schedStatus.pickerWindows.slice() : [];
       if (typeof interleaveThreeHourWindows === 'function') {
           availableWindows = interleaveThreeHourWindows(availableWindows, storeName, isGrocery);
       }
@@ -9986,8 +10035,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
       const isStoreOpen = (d.isOpen !== false && d.isOrderable !== false && !isStoreClosedByUber);
 
-      // 即時單與預約單統一嚴格標準：營業中或未營業，只要不能預約，一律不准進入菜單點餐
-      const strictScheduleCheck = !isSchedulable;
+      // 即時單與預約單統一嚴格標準：營業中或未營業，只要不能預約，一律不准進入菜單點餐（全聯 ASAP 營業中特規除外）
+      const strictScheduleCheck = !isSchedulable && !pxmartAsapAllowed;
 
       if (isTooFar || strictScheduleCheck) {
           const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
@@ -10145,7 +10194,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
                   // 組合預約時段選單
                   const safeName = storeName ? storeName.replace(/'/g, "%27") : '';
-                  const safeAction = actionUrl ? actionUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
+                  const safeAction = actionUrl ? normalizeUberActionPath(actionUrl).replace(/'/g, "%27") : '';
                   let btnsHtml = '';
                   const top5 = availableWindows.slice(0, 5);
                   top5.forEach(tw => {
@@ -10263,7 +10312,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                 window.mustSelectScheduleBeforeCheckout = true;
 
                 const safeName = storeName ? storeName.replace(/'/g, "%27") : '';
-                const safeAction = actionUrl ? actionUrl.replace('https://www.ubereats.com/tw', '').replace(/'/g, "%27") : '';
+                const safeAction = actionUrl ? normalizeUberActionPath(actionUrl).replace(/'/g, "%27") : '';
                 let btnsHtml = '';
 
                 // 如果店家當下正在營業，提供醒目的「改為即時單」按鈕
