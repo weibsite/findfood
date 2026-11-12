@@ -11861,7 +11861,7 @@ function buildSplitSuggestionHtml(result) {
     clearTimeout(window._sleepIconTimer);
     window._sleepIconTimer = setTimeout(() => {
         window._sleepIconClickCount = 0;
-    }, 2500);
+    }, 500);
 
     if (window._sleepIconClickCount >= 5) {
         window._sleepIconClickCount = 0;
