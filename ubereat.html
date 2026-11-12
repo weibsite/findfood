@@ -998,9 +998,9 @@ switchVertical = function(v) {
 
 // Restore visual state on load for delivery method
 try {
-    if (localStorage.getItem('unSchedulableCacheVer') !== '2') {
+    if (localStorage.getItem('unSchedulableCacheVer') !== '3') {
         localStorage.removeItem('unSchedulableStores');
-        localStorage.setItem('unSchedulableCacheVer', '2');
+        localStorage.setItem('unSchedulableCacheVer', '3');
     }
 } catch (e) {}
 
@@ -2202,17 +2202,10 @@ function checkStoreSchedulability(rawData, overrideTargetDate) {
     const hasAdaptedDates = Boolean(rawData && rawData.adaptedDeliveryHoursInfos && Array.isArray(rawData.adaptedDeliveryHoursInfos.dates) && rawData.adaptedDeliveryHoursInfos.dates.length > 0);
     let hasTodayDeliveryHours = hasAdaptedDates ? rawData.adaptedDeliveryHoursInfos.dates.includes(targetDate) : true;
 
-    const isClosedForToday = Boolean(rawData && (
-        (rawData.closedMessage && String(rawData.closedMessage).trim()) ||
-        (ofl && (ofl.autoSurfaceBottomSheet || (ofl.bottomSheetSubtitleMessage && String(ofl.bottomSheetSubtitleMessage).includes('沒有營業')))) ||
-        (rawData.tracking && rawData.tracking.storePayload && rawData.tracking.storePayload.storeAvailablityState === 'STORE_CLOSED') ||
-        (rawData.isOpen === false) || (rawData.isOrderable === false)
-    ));
-    const modeNow = (typeof scheduleMode !== 'undefined' ? scheduleMode : window.scheduleMode) || 'ASAP';
     let usedFutureFallbackDate = false;
 
-    // 若店家「今日已打烊（如晚上點早餐店）」或於預約模式選到今日已過時段，且 Uber 明確開放未來日期預約，則改取最近一個有效可預約日
-    if (!overrideTargetDate && !isProhibitedByUber && isExplicitlySchedulable && (!hasTodayPickerSlots || !hasTodayDeliveryHours) && (isClosedForToday || modeNow === 'SCHEDULE')) {
+    // 若今日無可預約時段（如晚上點早餐店，或打烊前最後一小時今日預約名額已關閉），且 Uber 明確開放未來日期預約，則改取最近一個有效可預約日
+    if (!overrideTargetDate && !isProhibitedByUber && isExplicitlySchedulable && (!hasTodayPickerSlots || !hasTodayDeliveryHours)) {
         const pickerDates = (rawData && rawData.timeWindowPicker && Array.isArray(rawData.timeWindowPicker.dates))
             ? rawData.timeWindowPicker.dates.slice()
             : [];
@@ -2262,6 +2255,17 @@ function isPxmartAsapBypassAllowed(rawData, storeName) {
     return !sched.isProhibitedByUber && sched.hasTodayDeliveryHours;
 }
 window.isPxmartAsapBypassAllowed = isPxmartAsapBypassAllowed;
+
+function isSelectedTimeWithinOpenTolerance(selectedTime, nowSec, availableWindows) {
+    if (!availableWindows || availableWindows.length === 0) return false;
+    if ((selectedTime - nowSec > 90 * 60) || (selectedTime < nowSec - 900)) return false;
+    const firstWin = availableWindows[0];
+    if (!firstWin || !firstWin.startTimeSeconds) return false;
+    const firstDuration = (firstWin.endTime && firstWin.startTime) ? (firstWin.endTime - firstWin.startTime) * 60 : 1800;
+    const selectedTwDate = new Date(selectedTime * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    const firstWinTwDate = firstWin.date || new Date(firstWin.startTimeSeconds * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    return (firstWinTwDate === selectedTwDate) && (selectedTime <= firstWin.startTimeSeconds + firstDuration);
+}
 
 function validateStoreSchedule() {
     let windows = window.currentStoreAvailableWindows || [];
@@ -2356,14 +2360,8 @@ function validateStoreSchedule() {
 
         const nowSec = Date.now() / 1000;
         const isCurrentlyOpen = (typeof checkStoreIsOpenNow === 'function' && rawData) ? checkStoreIsOpenNow(rawData) : false;
-        // 智慧容錯：若店家當下營業中 (isCurrentlyOpen)，且所選時段落在當前營業區間或最接近之可用預約時段內 (未來60~90分鐘以內)
-        if (!timeFound && isCurrentlyOpen && (selectedTime - nowSec <= 90 * 60) && (selectedTime >= nowSec - 900)) {
-            const firstWin = windows.length > 0 ? windows[0] : null;
-            const firstWinSec = firstWin ? firstWin.startTimeSeconds : (nowSec + 3600);
-            const firstDuration = (firstWin && firstWin.endTime && firstWin.startTime) ? (firstWin.endTime - firstWin.startTime) * 60 : 1800;
-            if (selectedTime <= firstWinSec + firstDuration) {
-                timeFound = true;
-            }
+        if (!timeFound && isCurrentlyOpen && isSelectedTimeWithinOpenTolerance(selectedTime, nowSec, windows)) {
+            timeFound = true;
         }
 
         if (!timeFound) {
@@ -10424,15 +10422,9 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
             }
         });
 
-        // 智慧容錯：若店家當下營業中 (isCurrentlyOpen)，且所選時段落在當前營業區間或最接近之可用預約時段內 (未來60~90分鐘以內)
-        // 此時段處於營業中可外送範圍內，認定為可接單，不阻擋客人
-        if (!timeFound && isCurrentlyOpen) {
-            const firstWin = availableWindows.length > 0 ? availableWindows[0] : null;
-            const firstWinSec = firstWin ? firstWin.startTimeSeconds : (nowSec + 3600);
-            const firstDuration = (firstWin && firstWin.endTime && firstWin.startTime) ? (firstWin.endTime - firstWin.startTime) * 60 : 1800;
-            if ((selectedTime - nowSec <= 90 * 60) && selectedTime <= firstWinSec + firstDuration && selectedTime >= nowSec - 900) {
-                timeFound = true;
-            }
+        // 智慧容錯：僅當同日仍存在可用預約時段且所選時段位於未來 60~90 分鐘內才視為有效，否則顯示改成即時單與未來建議預約時段
+        if (!timeFound && isCurrentlyOpen && isSelectedTimeWithinOpenTolerance(selectedTime, nowSec, availableWindows)) {
+            timeFound = true;
         }
 
         if (!timeFound) {
