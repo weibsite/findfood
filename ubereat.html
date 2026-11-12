@@ -997,6 +997,13 @@ switchVertical = function(v) {
 };
 
 // Restore visual state on load for delivery method
+try {
+    if (localStorage.getItem('unSchedulableCacheVer') !== '2') {
+        localStorage.removeItem('unSchedulableStores');
+        localStorage.setItem('unSchedulableCacheVer', '2');
+    }
+} catch (e) {}
+
 document.addEventListener("DOMContentLoaded", () => {
     if (typeof checkCouponSettings === 'function') {
         checkCouponSettings();
@@ -2040,6 +2047,14 @@ window.getTargetScheduleDate = getTargetScheduleDate;
 function checkStoreIsOpenNow(d, badgeTime) {
     try {
         if (!d) return false;
+        const oflNow = d.orderForLaterInfo;
+        const isExplicitlyClosedNow = Boolean(d.closedMessage && String(d.closedMessage).trim()) ||
+            Boolean(oflNow && (oflNow.autoSurfaceBottomSheet || (oflNow.bottomSheetSubtitleMessage && String(oflNow.bottomSheetSubtitleMessage).includes('沒有營業')))) ||
+            Boolean(d.tracking && d.tracking.storePayload && d.tracking.storePayload.storeAvailablityState === 'STORE_CLOSED') ||
+            (d.isOpen === false) || (d.isOrderable === false);
+        if (isExplicitlyClosedNow) {
+            return false;
+        }
 
         // 1. 若 Uber API 直接標記為營業中且可下單 (最直接權威狀態)
         if (d.isOpen === true && d.isOrderable === true && !d.closedMessage) {
@@ -2180,13 +2195,46 @@ function checkStoreSchedulability(rawData, overrideTargetDate) {
     );
 
     const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-    const targetDate = overrideTargetDate || ((typeof getTargetScheduleDate === 'function') ? getTargetScheduleDate(rawData) : todayTw);
-    const pickerWindows = extractStorePickerWindowsForDate(rawData, targetDate);
-    const hasTodayPickerSlots = pickerWindows.length > 0;
+    let targetDate = overrideTargetDate || ((typeof getTargetScheduleDate === 'function') ? getTargetScheduleDate(rawData) : todayTw);
+    let pickerWindows = extractStorePickerWindowsForDate(rawData, targetDate);
+    let hasTodayPickerSlots = pickerWindows.length > 0;
 
-    let hasTodayDeliveryHours = true;
-    if (rawData && rawData.adaptedDeliveryHoursInfos && Array.isArray(rawData.adaptedDeliveryHoursInfos.dates) && rawData.adaptedDeliveryHoursInfos.dates.length > 0) {
-        hasTodayDeliveryHours = rawData.adaptedDeliveryHoursInfos.dates.includes(targetDate);
+    const hasAdaptedDates = Boolean(rawData && rawData.adaptedDeliveryHoursInfos && Array.isArray(rawData.adaptedDeliveryHoursInfos.dates) && rawData.adaptedDeliveryHoursInfos.dates.length > 0);
+    let hasTodayDeliveryHours = hasAdaptedDates ? rawData.adaptedDeliveryHoursInfos.dates.includes(targetDate) : true;
+
+    const isClosedForToday = Boolean(rawData && (
+        (rawData.closedMessage && String(rawData.closedMessage).trim()) ||
+        (ofl && (ofl.autoSurfaceBottomSheet || (ofl.bottomSheetSubtitleMessage && String(ofl.bottomSheetSubtitleMessage).includes('沒有營業')))) ||
+        (rawData.tracking && rawData.tracking.storePayload && rawData.tracking.storePayload.storeAvailablityState === 'STORE_CLOSED') ||
+        (rawData.isOpen === false) || (rawData.isOrderable === false)
+    ));
+    const modeNow = (typeof scheduleMode !== 'undefined' ? scheduleMode : window.scheduleMode) || 'ASAP';
+    let usedFutureFallbackDate = false;
+
+    // 若店家「今日已打烊（如晚上點早餐店）」或於預約模式選到今日已過時段，且 Uber 明確開放未來日期預約，則改取最近一個有效可預約日
+    if (!overrideTargetDate && !isProhibitedByUber && isExplicitlySchedulable && (!hasTodayPickerSlots || !hasTodayDeliveryHours) && (isClosedForToday || modeNow === 'SCHEDULE')) {
+        const pickerDates = (rawData && rawData.timeWindowPicker && Array.isArray(rawData.timeWindowPicker.dates))
+            ? rawData.timeWindowPicker.dates.slice()
+            : [];
+        const sortedDates = pickerDates
+            .map(dObj => dObj && (dObj.date
+                || (Array.isArray(dObj.listItems) && dObj.listItems[0]?.timeWindowViewModel?.timeWindow?.date)
+                || (Array.isArray(dObj.timeWindows) && dObj.timeWindows[0]?.date)
+                || ''))
+            .filter(ds => ds && ds > todayTw)
+            .sort();
+        for (const candDate of sortedDates) {
+            if (hasAdaptedDates && !rawData.adaptedDeliveryHoursInfos.dates.includes(candDate)) continue;
+            const candWins = extractStorePickerWindowsForDate(rawData, candDate);
+            if (candWins.length > 0) {
+                targetDate = candDate;
+                pickerWindows = candWins;
+                hasTodayPickerSlots = true;
+                hasTodayDeliveryHours = true;
+                usedFutureFallbackDate = true;
+                break;
+            }
+        }
     }
 
     const isSchedulable = !isProhibitedByUber && isExplicitlySchedulable && hasTodayDeliveryHours && hasTodayPickerSlots;
@@ -2197,6 +2245,7 @@ function checkStoreSchedulability(rawData, overrideTargetDate) {
         pickerWindows,
         hasTodayPickerSlots,
         hasTodayDeliveryHours,
+        usedFutureFallbackDate,
         isSchedulable
     };
 }
@@ -2328,28 +2377,25 @@ function validateStoreSchedule() {
 }
 window.validateStoreSchedule = validateStoreSchedule;
 
+function formatScheduleSlotDayLabel(sd) {
+    const slotTw = sd.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    if (slotTw === todayTw) return '今天';
+    return `${sd.getMonth() + 1}/${sd.getDate()}`;
+}
+
 function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false } = {}) {
     let windows = window.currentStoreAvailableWindows || [];
     const rawData = window.currentStoreRawData;
     if (windows.length === 0 && rawData && rawData.timeWindowPicker && rawData.timeWindowPicker.dates) {
-        const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
-        const targetDate = (typeof getTargetScheduleDate === 'function') ? getTargetScheduleDate(rawData) : todayTw;
-        rawData.timeWindowPicker.dates.forEach(dateObj => {
-            if (dateObj.date === targetDate) {
-                if (dateObj.listItems) {
-                    dateObj.listItems.forEach(item => {
-                        if (item.timeWindowViewModel && item.timeWindowViewModel.timeWindow) {
-                            windows.push(item.timeWindowViewModel.timeWindow);
-                        }
-                    });
-                }
-                if (dateObj.timeWindows) {
-                    dateObj.timeWindows.forEach(tw => {
-                        windows.push(tw);
-                    });
-                }
-            }
-        });
+        const schedStatus = (typeof checkStoreSchedulability === 'function') ? checkStoreSchedulability(rawData) : null;
+        if (schedStatus && Array.isArray(schedStatus.pickerWindows) && schedStatus.pickerWindows.length > 0) {
+            windows = schedStatus.pickerWindows.slice();
+        } else {
+            const todayTw = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+            const targetDate = (typeof getTargetScheduleDate === 'function') ? getTargetScheduleDate(rawData) : todayTw;
+            windows = extractStorePickerWindowsForDate(rawData, targetDate);
+        }
         const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
         if (typeof interleaveThreeHourWindows === 'function') {
             windows = interleaveThreeHourWindows(windows, currentStoreName, isGr);
@@ -2395,7 +2441,7 @@ function showStoreScheduleModal({ invalidScheduleText = '', isCheckout = false }
                 const h12 = h % 12 || 12;
                 return (typeof getTimeEmoji === 'function' ? getTimeEmoji(h) : '📅') + ` ${ampm} ${h12}:${m}`;
             };
-            const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
+            const dayStr = formatScheduleSlotDayLabel(sd);
             const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
             const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
             let str;
@@ -10139,7 +10185,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
 
       const nowSec = Date.now() / 1000;
       const isNextWindowWithin30 = availableWindows.length > 0 && ((availableWindows[0].startTimeSeconds - nowSec) <= 30 * 60) && ((availableWindows[0].startTimeSeconds - nowSec) >= -15 * 60);
-      const isWithin30 = isOpeningWithin30Minutes(badgeTime || storeClosedNotice) || isNextWindowWithin30;
+      const isWithin30 = !schedStatus.usedFutureFallbackDate && (isOpeningWithin30Minutes(badgeTime || storeClosedNotice) || isNextWindowWithin30);
 
       const isTooFar = JSON.stringify(d).includes('"storeStatus":"TOO_FAR_TO_DELIVER"');
       const isStoreOpen = (d.isOpen !== false && d.isOrderable !== false && !isStoreClosedByUber);
@@ -10306,7 +10352,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                           return `${getTimeEmoji(h)} ${ampm} ${h12}:${m}`;
                       };
 
-                      const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
+                      const dayStr = formatScheduleSlotDayLabel(sd);
                       const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
                       const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
                       let str;
@@ -10431,7 +10477,7 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
                             const h12 = h % 12 || 12;
                             return `${getTimeEmoji(h)} ${ampm} ${h12}:${m}`;
                         };
-                        const dayStr = (sd.getDate() === new Date().getDate()) ? '今天' : `${sd.getMonth()+1}/${sd.getDate()}`;
+                        const dayStr = formatScheduleSlotDayLabel(sd);
                         const sAmpm = sd.getHours() >= 12 ? '下午' : '上午';
                         const eAmpm = ed.getHours() >= 12 ? '下午' : '上午';
                         let str;
@@ -11216,8 +11262,7 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
     // Switch to SCHEDULE mode
     scheduleMode = 'SCHEDULE';
     const targetDate = new Date(startTimeSeconds * 1000);
-    const pad = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
-    const targetDateStr = targetDate.getFullYear() + '-' + pad(targetDate.getMonth()+1) + '-' + pad(targetDate.getDate());
+    const targetDateStr = targetDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
     
     const modalDateSelect = document.getElementById('modalDateSelect');
     if (modalDateSelect) {
@@ -11325,6 +11370,55 @@ if (showSchedModalAfterRender && schedNoticeHtml) {
                     found = true;
                     break;
                 }
+            }
+        }
+        if (!found) {
+            const sd = targetDate;
+            const ed = new Date((startTimeSeconds + 1800) * 1000);
+            const fallbackStartMin = (customStartMin !== undefined && customEndMin !== undefined && customEndMin > customStartMin)
+                ? customStartMin
+                : (sd.getHours() * 60 + sd.getMinutes());
+            const fallbackEndMin = (customStartMin !== undefined && customEndMin !== undefined && customEndMin > customStartMin)
+                ? customEndMin
+                : (fallbackStartMin + 30);
+            const startH = Math.floor(fallbackStartMin / 60);
+            const startM = fallbackStartMin % 60;
+            const endH = Math.floor(fallbackEndMin / 60);
+            const endM = fallbackEndMin % 60;
+            const sAmpm = startH >= 12 ? '下午' : '上午';
+            const eAmpm = endH >= 12 ? '下午' : '上午';
+            const sH12 = startH % 12 || 12;
+            const eH12 = endH % 12 || 12;
+            const sMM = String(startM).padStart(2, '0');
+            const eMM = String(endM).padStart(2, '0');
+            const emoji = typeof getTimeEmoji === 'function' ? getTimeEmoji(startH) : '📅';
+            const customTitle = (sAmpm === eAmpm)
+                ? `${emoji} ${sAmpm} ${sH12}:${sMM} - ${eH12}:${eMM}`
+                : `${emoji} ${sAmpm} ${sH12}:${sMM} - ${typeof getTimeEmoji === 'function' ? getTimeEmoji(endH) : '📅'} ${eAmpm} ${eH12}:${eMM}`;
+            const diffMinutes = (startTimeSeconds * 1000 - Date.now()) / 60000;
+            const isGr = window.isGroceryStore || (typeof currentVertical !== 'undefined' && currentVertical === 'SHOP');
+            const disc = isGr ? 0 : ((diffMinutes >= 179) ? 10 : 5);
+            const discStr = (disc > 0) ? ` (-$${disc})` : '';
+            const optVal = JSON.stringify({
+                date: targetDateStr,
+                startTime: fallbackStartMin,
+                endTime: fallbackEndMin,
+                title: customTitle,
+                discount: disc
+            });
+            if (modalTimeSelect) {
+                const modalOpt = document.createElement('option');
+                modalOpt.value = optVal;
+                modalOpt.text = `${customTitle}${discStr}`;
+                modalTimeSelect.insertBefore(modalOpt, modalTimeSelect.firstChild);
+                modalTimeSelect.selectedIndex = 0;
+                found = true;
+            } else if (scheduleSelect) {
+                scheduleSelect.innerHTML = '';
+                const newOpt = document.createElement('option');
+                newOpt.value = optVal;
+                newOpt.text = `${customTitle}${discStr}`;
+                scheduleSelect.appendChild(newOpt);
             }
         }
         confirmTimePicker('SCHEDULE');
@@ -11984,10 +12078,14 @@ function buildSplitSuggestionHtml(result) {
 
   function isStoreSchedBlocked(uuid) {
     if (!uuid) return false;
+    const modeNow = (typeof scheduleMode !== 'undefined' ? scheduleMode : window.scheduleMode) || 'ASAP';
     if (window._sessionUnschedulableBlocked && window._sessionUnschedulableBlocked[uuid]) {
-        return true;
+        const entry = window._sessionUnschedulableBlocked[uuid];
+        if (entry.hard !== false || entry.mode === modeNow) {
+            return true;
+        }
     }
-    if (typeof scheduleMode !== 'undefined' && scheduleMode === 'SCHEDULE') {
+    if (modeNow === 'SCHEDULE') {
         try {
             const list = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
             if (Array.isArray(list) && list.includes(uuid)) return true;
@@ -11996,17 +12094,20 @@ function buildSplitSuggestionHtml(result) {
     return false;
   }
 
-  function markStoreUnschedulable(uuid, title = '無法為您代購', msg = '此餐廳無法預約或代訂，請選擇其他餐廳') {
+  function markStoreUnschedulable(uuid, title = '無法為您代購', msg = '此餐廳無法預約或代訂，請選擇其他餐廳', persistHard = true) {
     if (!window._sessionUnschedulableBlocked) window._sessionUnschedulableBlocked = {};
+    const modeNow = (typeof scheduleMode !== 'undefined' ? scheduleMode : window.scheduleMode) || 'ASAP';
     if (uuid) {
-        window._sessionUnschedulableBlocked[uuid] = { title, msg, ts: Date.now() };
-        try {
-            const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
-            if (!unSchedulableStores.includes(uuid)) {
-                unSchedulableStores.push(uuid);
-                localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
-            }
-        } catch (e) {}
+        window._sessionUnschedulableBlocked[uuid] = { title, msg, mode: modeNow, hard: Boolean(persistHard), ts: Date.now() };
+        if (persistHard) {
+            try {
+                const unSchedulableStores = JSON.parse(localStorage.getItem('unSchedulableStores') || '[]');
+                if (!unSchedulableStores.includes(uuid)) {
+                    unSchedulableStores.push(uuid);
+                    localStorage.setItem('unSchedulableStores', JSON.stringify(unSchedulableStores));
+                }
+            } catch (e) {}
+        }
     }
     if (!uuid || uuid === currentStoreUuid) {
         window.currentStoreSchedulable = false;
