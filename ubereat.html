@@ -11861,7 +11861,7 @@ function buildSplitSuggestionHtml(result) {
     clearTimeout(window._sleepIconTimer);
     window._sleepIconTimer = setTimeout(() => {
         window._sleepIconClickCount = 0;
-    }, 500);
+    }, 2500);
 
     if (window._sleepIconClickCount >= 5) {
         window._sleepIconClickCount = 0;
@@ -12015,7 +12015,11 @@ function buildSplitSuggestionHtml(result) {
     document.getElementById('errorModalOverlay').style.display = 'flex';
   }
 
-  function showHardBlockModal(title, text, onClose = null, cooldownMs = 2500, htmlContent = '') {
+  function showHardBlockModal(title, text, onClose = null, cooldownMs = 500, htmlContent = '') {
+    if (window._hardModalTimer) {
+        clearInterval(window._hardModalTimer);
+        window._hardModalTimer = null;
+    }
     const noticeHtml = htmlContent || `
       <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px 12px; color:#b91c1c; font-size:13px; font-weight:700; line-height:1.5;">
         🚫 此店家目前無法接受預約或代訂，請勿重複點擊，請改選其他餐廳。
@@ -12038,7 +12042,7 @@ function buildSplitSuggestionHtml(result) {
         const updateBtnCountdown = () => {
             const remMs = (window._hardModalUnlockAt || 0) - Date.now();
             if (remMs > 0) {
-                const sec = Math.ceil(remMs / 1000);
+                const sec = (remMs > 1000) ? Math.ceil(remMs / 1000) : (remMs / 1000).toFixed(1);
                 btn.disabled = true;
                 btn.style.background = '#9ca3af';
                 btn.style.opacity = '0.85';
@@ -12058,7 +12062,7 @@ function buildSplitSuggestionHtml(result) {
         };
         updateBtnCountdown();
         if (window._hardModalUnlockAt > Date.now()) {
-            window._hardModalTimer = setInterval(updateBtnCountdown, 250);
+            window._hardModalTimer = setInterval(updateBtnCountdown, 100);
         }
     }
   }
