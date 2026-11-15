@@ -714,6 +714,61 @@
 
         }
 
+        .card-switch-btn {
+            appearance: none;
+            border: 1px solid #fdba74;
+            background: #fff7ed;
+            color: #c2410c;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 999px;
+            cursor: pointer;
+            white-space: nowrap;
+            line-height: 1.35;
+            box-shadow: 0 1px 3px rgba(194, 65, 12, 0.12);
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+        }
+        .card-switch-btn:hover { background: #ffedd5; border-color: #fb923c; }
+        .card-switch-btn:active { transform: scale(0.97); }
+        .card-switch-btn.is-contact {
+            border-color: #fca5a5;
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+        .card-switch-btn.is-contact:hover { background: #fee2e2; }
+        .card-switch-btn.is-loading { opacity: 0.65; cursor: wait; }
+        .card-switch-notice {
+            margin-top: 8px;
+            padding: 7px 10px;
+            border-radius: 8px;
+            font-size: 11.5px;
+            line-height: 1.45;
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .card-switch-notice.is-info {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #1e40af;
+        }
+        .card-switch-notice-close {
+            border: none;
+            background: transparent;
+            color: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 0 2px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
     </style>
 
 </head>
@@ -1094,7 +1149,7 @@
 
             }
 
-            return { status: 'error', message: '發送訊息連線失敗' };
+            return { status: 'error', message: '通訊斷線中，請聯絡代訂處理' };
 
         }
 
@@ -1464,6 +1519,791 @@
 
 
 
+        // ============================================================
+        // 🔍 錯單混淆偵測、真實店家優先顯示、單卡獨立切換管理器 (方案 A/B)
+        // ============================================================
+        const _SWITCH_PLACEHOLDER_STORES = new Set([
+            '', '外送合作店家', '合作店家', '未知店家', '外送商家', '指定店家',
+            'ubereats', 'uber eats', 'store', 'unknown', 'none', 'null'
+        ]);
+
+        function _cleanSwitchStoreName(name) {
+            const s = String(name || '').trim();
+            return _SWITCH_PLACEHOLDER_STORES.has(s.toLowerCase()) ? '' : s;
+        }
+
+        function _normSwitchStoreName(name) {
+            const raw = _cleanSwitchStoreName(name);
+            if (!raw) return { raw: '', clean: '', brand: '', core: '' };
+            let norm = '';
+            try { norm = raw.normalize('NFKC').toLowerCase().trim(); } catch (e) { norm = raw.toLowerCase().trim(); }
+            const brandRaw = norm.split(/[\s\(\)（）【】\[\]\-–—]+/)[0] || '';
+            const punctRe = /[\s\-_・·•()（）\[\]【】「」『』.,，。:：\/\\&+'’"~〜!！?？]+/g;
+            const clean = norm.replace(punctRe, '');
+            const brand = brandRaw.replace(punctRe, '');
+            let core = clean;
+            const suffixRe = /(?:便當|飯包|飲料|茶飲|飲品|咖啡|牛排|火鍋|鍋物|臭臭鍋|鹽水雞|鹹水雞|早餐|早午餐|小吃店?|麵館|牛肉麵|餐廳|美食|門市|分店|專賣店)$/;
+            for (let i = 0; i < 2; i++) {
+                const stripped = core.replace(suffixRe, '');
+                if (stripped.length >= 2 && stripped !== core) core = stripped;
+                else break;
+            }
+            if (core.endsWith('店') && core.length >= 3) core = core.slice(0, -1);
+            return { raw, clean, brand, core };
+        }
+
+        function _storesLikelyMatchFront(expected, actual) {
+            const e = _normSwitchStoreName(expected);
+            const a = _normSwitchStoreName(actual);
+            if (!e.clean || !a.clean) return null;
+            if (e.clean === a.clean) return true;
+            if (Math.min(e.clean.length, a.clean.length) >= 2 && (e.clean.includes(a.clean) || a.clean.includes(e.clean))) return true;
+            if (Math.min(e.brand.length, a.brand.length) >= 2 && ((e.brand && a.clean.includes(e.brand)) || (a.brand && e.clean.includes(a.brand)))) return true;
+            if (Math.min(e.core.length, a.core.length) >= 2 && (e.core.includes(a.core) || a.core.includes(e.core))) return true;
+            const s1 = e.core || e.clean;
+            const s2 = a.core || a.clean;
+            if (s1.length >= 2 && s2.length >= 2) {
+                const bg1 = new Set();
+                for (let i = 0; i < s1.length - 1; i++) bg1.add(s1.slice(i, i + 2));
+                let inter = 0;
+                const total2 = s2.length - 1;
+                for (let i = 0; i < total2; i++) {
+                    if (bg1.has(s2.slice(i, i + 2))) inter++;
+                }
+                if (bg1.size + total2 > 0 && ((2 * inter) / (bg1.size + total2)) >= 0.45) return true;
+            }
+            return false;
+        }
+
+        // 不禁止備援套用，僅確立「Uber 真實店家優先顯示」順位
+        function _pickPreferredStoreName({ uberStore, orderStore, fallbackStore, defaultName = '外送合作店家' }) {
+            return _cleanSwitchStoreName(uberStore)
+                || _cleanSwitchStoreName(orderStore)
+                || _cleanSwitchStoreName(fallbackStore)
+                || defaultName;
+        }
+
+        function _extractSwitchUberStore(payload) {
+            if (!payload || typeof payload !== 'object') return '';
+            const explicit = _cleanSwitchStoreName(payload.uberStoreName || payload.realStoreName);
+            if (explicit) return explicit;
+            if (!payload.store && payload.storeName) {
+                return _cleanSwitchStoreName(payload.storeName);
+            }
+            if ((payload.isDelivered || payload.isCanceled || payload.status === 'concluded' || payload.status === 'canceled') && payload.storeName && (!payload.store || payload.store.name !== payload.storeName)) {
+                return _cleanSwitchStoreName(payload.storeName);
+            }
+            return '';
+        }
+
+        function _escJsAttr(s) {
+            return escapeHtml(String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+        }
+
+        window._cardSwitchState = window._cardSwitchState || {};
+        window._cardSwitchPromises = window._cardSwitchPromises || {};
+
+        function _stopSingleLivePollTimer() {
+            try {
+                if (typeof liveActivePollTimer !== 'undefined' && liveActivePollTimer) {
+                    clearInterval(liveActivePollTimer);
+                    liveActivePollTimer = null;
+                }
+                if (typeof liveEtaCountdownTimer !== 'undefined' && liveEtaCountdownTimer) {
+                    clearInterval(liveEtaCountdownTimer);
+                    liveEtaCountdownTimer = null;
+                }
+            } catch (e) {}
+        }
+
+        function _getCardSwitchButtonSpec(state) {
+            if (!state || (!state.suspected && state.cursor < 0)) return null;
+            if (!state.checked && state.checking) {
+                return { text: '比對可能訂單中...', isContact: false, disabled: true, loading: true };
+            }
+            const cands = Array.isArray(state.candidates) ? state.candidates : [];
+            const n = cands.length;
+            if (state.checked && n === 0) {
+                return { text: '訂單疑似有誤?請聯絡代訂', isContact: true, disabled: false, loading: false };
+            }
+            if (state.cursor < 0) {
+                return { text: '訂單錯了?點這試試', isContact: false, disabled: false, loading: false };
+            }
+            if (state.cursor < n - 1) {
+                return { text: `還是不是?換下一筆 (${state.cursor + 1}/${n})`, isContact: false, disabled: false, loading: false };
+            }
+            return { text: '還是不是?請聯絡代訂', isContact: true, disabled: false, loading: false };
+        }
+
+        function _renderSwitchNoticeHtml(state, dismissFnExpr) {
+            if (!state || !state.noticeMsg) return '';
+            const cls = state.noticeType === 'info' ? 'card-switch-notice is-info' : 'card-switch-notice';
+            return `
+                <div class="${cls}">
+                    <span>${escapeHtml(state.noticeMsg)}</span>
+                    <button type="button" class="card-switch-notice-close" onclick="${dismissFnExpr}" title="關閉提示">✕</button>
+                </div>
+            `;
+        }
+
+        async function fetchTrackCandidates(payload) {
+            const epList = resolveApiEndpoints('/api/track_candidates', window.trackApiBase);
+            for (const ep of epList) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) return await res.json();
+                } catch (e) {
+                    console.warn('[TrackCandidates] 端點查詢失敗:', ep, e);
+                }
+            }
+            return null;
+        }
+
+        function _evaluateLocalConfusion(expectedStore, uberStoreName, hint) {
+            const storeCmp = _storesLikelyMatchFront(expectedStore, uberStoreName);
+            const hasHint = hint && (
+                hint.cross_dup ||
+                hint.hist_extra ||
+                hint.non_split_multi_url ||
+                (hint.ext_window_conflict && storeCmp !== true)
+            );
+            return Boolean((storeCmp === false) || hasHint);
+        }
+
+        function _ensureSwitchSlotState(slotKey, meta) {
+            const existing = window._cardSwitchState[slotKey];
+            const cacheKey = `${meta.orderId || ''}::${meta.origUuid || ''}::${slotKey}`;
+            if (existing && existing._cacheKey === cacheKey) {
+                if (meta.expectedStore && !existing.expectedStore) existing.expectedStore = meta.expectedStore;
+                if (meta.uberStoreName && !existing.origUberStore) existing.origUberStore = meta.uberStoreName;
+                if (existing.cursor < 0 && meta.origSnapshot) existing.origSnapshot = meta.origSnapshot;
+                if (meta.hint && !existing.hint) existing.hint = meta.hint;
+                if (!existing.suspected && _evaluateLocalConfusion(existing.expectedStore, existing.origUberStore, existing.hint)) {
+                    existing.suspected = true;
+                    existing.checked = !existing.orderId;
+                }
+                return existing;
+            }
+            const suspected = _evaluateLocalConfusion(meta.expectedStore, meta.uberStoreName, meta.hint);
+            const state = {
+                _cacheKey: cacheKey,
+                slotKey,
+                origIndex: meta.origIndex || 0,
+                orderId: meta.orderId || '',
+                origUuid: meta.origUuid || '',
+                expectedStore: meta.expectedStore || '',
+                origUberStore: meta.uberStoreName || '',
+                hint: meta.hint || null,
+                origSnapshot: meta.origSnapshot || null,
+                suspected,
+                checked: !meta.orderId,
+                checking: false,
+                candidates: [],
+                cursor: -1,
+                noticeMsg: '',
+                noticeType: 'warn',
+                activeCandData: null,
+            };
+            window._cardSwitchState[slotKey] = state;
+            return state;
+        }
+
+        function _triggerCandidatesLookup(slotKey) {
+            const state = window._cardSwitchState[slotKey];
+            if (!state || !state.suspected || state.checked || state.checking || !state.orderId) return;
+            const reqKey = state._cacheKey;
+            if (window._cardSwitchPromises[reqKey]) return;
+
+            state.checking = true;
+            _refreshSwitchUiForSlot(slotKey);
+
+            window._cardSwitchPromises[reqKey] = fetchTrackCandidates({
+                orderId: state.orderId,
+                subIndex: state.origIndex,
+                currentUuid: state.origUuid,
+                expectedStore: state.expectedStore,
+                currentUberStore: state.origUberStore,
+            }).then(res => {
+                const cur = window._cardSwitchState[slotKey];
+                if (!cur || cur._cacheKey !== reqKey) return;
+                cur.checking = false;
+                cur.checked = true;
+                if (res && res.status === 'ok') {
+                    cur.candidates = Array.isArray(res.candidates) ? res.candidates : [];
+                    if (!res.suspected && cur.candidates.length === 0 && _storesLikelyMatchFront(cur.expectedStore, cur.origUberStore) !== false) {
+                        cur.suspected = false;
+                    }
+                } else {
+                    cur.candidates = [];
+                }
+                _refreshSwitchUiForSlot(slotKey);
+            }).catch(() => {
+                const cur = window._cardSwitchState[slotKey];
+                if (!cur || cur._cacheKey !== reqKey) return;
+                cur.checking = false;
+                cur.checked = true;
+                cur.candidates = [];
+                _refreshSwitchUiForSlot(slotKey);
+            }).finally(() => {
+                delete window._cardSwitchPromises[reqKey];
+            });
+        }
+
+        function _findMultiCardBySlotKey(slotKey) {
+            const cards = document.querySelectorAll('.split-slide-card[data-slot-key]');
+            for (const c of cards) {
+                if (c.getAttribute('data-slot-key') === slotKey) return c;
+            }
+            return null;
+        }
+
+        function _findMultiTabBySlotKey(slotKey) {
+            const tabs = document.querySelectorAll('#splitTabsContainer .split-tab-btn[data-slot-key]');
+            for (const t of tabs) {
+                if (t.getAttribute('data-slot-key') === slotKey) return t;
+            }
+            return null;
+        }
+
+        function _refreshSwitchUiForSlot(slotKey) {
+            if (slotKey === 'single') {
+                _renderSingleSwitchMountDom();
+                return;
+            }
+            const state = window._cardSwitchState[slotKey];
+            const cardEl = _findMultiCardBySlotKey(slotKey);
+            if (!state || !cardEl) return;
+            const btnMount = cardEl.querySelector('.multi-switch-btn-mount');
+            const noticeMount = cardEl.querySelector('.multi-switch-notice-mount');
+            const spec = _getCardSwitchButtonSpec(state);
+            if (btnMount) {
+                if (spec) {
+                    const cls = `card-switch-btn${spec.isContact ? ' is-contact' : ''}${spec.loading ? ' is-loading' : ''}`;
+                    btnMount.innerHTML = `<button type="button" class="${cls}" ${spec.disabled ? 'disabled' : ''} onclick="switchMultiSubCard('${_escJsAttr(slotKey)}')">${escapeHtml(spec.text)}</button>`;
+                } else {
+                    btnMount.innerHTML = '';
+                }
+            }
+            if (noticeMount) {
+                noticeMount.innerHTML = _renderSwitchNoticeHtml(state, `dismissCardSwitchNotice('${_escJsAttr(slotKey)}')`);
+            }
+        }
+
+        function dismissCardSwitchNotice(slotKey) {
+            const state = window._cardSwitchState[slotKey];
+            if (!state) return;
+            state.noticeMsg = '';
+            _refreshSwitchUiForSlot(slotKey);
+        }
+
+        function _tagSwitchedLiveTransition(payload, polledUuid) {
+            const st = window._cardSwitchState && window._cardSwitchState.single;
+            if (!st || st.cursor < 0) return payload;
+            const cand = (st.candidates || [])[st.cursor];
+            if (!cand || (polledUuid && cand.uuid !== polledUuid)) return payload;
+            return {
+                ...(payload || {}),
+                _isSwitched: true,
+                _candOrderStoreName: cand.orderStoreName || '',
+                _candFallbackStoreName: cand.fallbackStoreName || '',
+                _candPinCode: cand.pinCode || '',
+            };
+        }
+
+        function _renderSingleSwitchMountDom() {
+            const state = window._cardSwitchState.single;
+            const btnMount = document.getElementById('singleSwitchBtnMount');
+            const noticeMount = document.getElementById('singleSwitchNoticeMount');
+            const topBar = document.getElementById('singleActiveTopRightBar');
+            const spec = _getCardSwitchButtonSpec(state);
+            if (topBar) topBar.style.display = spec ? 'flex' : 'none';
+            if (btnMount) {
+                if (spec) {
+                    const cls = `card-switch-btn${spec.isContact ? ' is-contact' : ''}${spec.loading ? ' is-loading' : ''}`;
+                    btnMount.innerHTML = `<button type="button" class="${cls}" ${spec.disabled ? 'disabled' : ''} onclick="switchSingleCard()">${escapeHtml(spec.text)}</button>`;
+                } else {
+                    btnMount.innerHTML = '';
+                }
+            }
+            if (noticeMount) {
+                noticeMount.innerHTML = _renderSwitchNoticeHtml(state, `dismissCardSwitchNotice('single')`);
+            }
+        }
+
+        function _resolveCurrentTrackOrderId() {
+            if (window.currentTrackOrderId) return String(window.currentTrackOrderId);
+            if (typeof orderId !== 'undefined' && orderId) return String(orderId);
+            return '';
+        }
+
+        function _attachSingleConfusionSwitchUI(stageName, renderPayload, parsedData, data, primaryUrl, explicitUuid = '') {
+            if (window.isMultiOrderMode) return;
+            const curOrderId = _resolveCurrentTrackOrderId();
+            const payload = renderPayload || {};
+            const isSwitchRender = Boolean(payload._isSwitched);
+            const curState = window._cardSwitchState.single;
+
+            const origUuid = (isSwitchRender && curState)
+                ? curState.origUuid
+                : (extractOrderUuid(explicitUuid) || extractOrderUuid(primaryUrl) || extractOrderUuid(payload.orderUuid) || extractOrderUuid(data?.tracking_urls?.[0]) || extractOrderUuid(data?.tracking_url) || '');
+
+            if (!origUuid && !curOrderId) return;
+
+            const expectedStore = _cleanSwitchStoreName(data?.expected_stores?.[0]) || _cleanSwitchStoreName(parsedData?.store) || '';
+            const hint = (data && Array.isArray(data.confusion_hints) && data.confusion_hints[0]) || null;
+            const uberStoreName = (isSwitchRender && curState) ? curState.origUberStore : _extractSwitchUberStore(payload);
+
+            const snapshot = isSwitchRender ? null : {
+                stageName,
+                payload,
+                parsedData,
+                data,
+                primaryUrl,
+                uuid: origUuid,
+            };
+
+            const state = _ensureSwitchSlotState('single', {
+                origIndex: 0,
+                orderId: curOrderId,
+                origUuid,
+                expectedStore,
+                uberStoreName,
+                hint,
+                origSnapshot: snapshot,
+            });
+
+            if (isSwitchRender && curState && !curState.origSnapshot && snapshot) {
+                curState.origSnapshot = snapshot;
+            }
+            if (state.suspected && !state.checked && state.orderId) {
+                _triggerCandidatesLookup('single');
+            }
+            _renderSingleSwitchMountDom();
+        }
+
+        async function _fetchAndRenderSingleCandidate(state, cand) {
+            const snap = state.origSnapshot || {};
+            const parsedData = snap.parsedData || window.lastParsedData || { address: '', items: [] };
+            const trackData = snap.data || window.lastTrackData || {};
+            const candUuid = cand.uuid;
+            const candUrl = `https://www.ubereats.com/tw/orders/${candUuid}`;
+
+            let activeRes = null;
+            try {
+                activeRes = await fetchActiveOrder(candUuid, candUrl, window.trackApiBase);
+            } catch (e) {}
+
+            const isActDelivered = Boolean(activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED'));
+            const isActCanceled = Boolean(activeRes && isOrderCanceled(activeRes));
+            const isActScheduled = Boolean(activeRes && (activeRes.status === 'scheduled' || activeRes.isScheduled || activeRes.orderPhase === 'SCHEDULED'));
+            const isActLive = Boolean(activeRes && activeRes.status === 'success' && !isActDelivered && !isActCanceled && !isActScheduled);
+
+            let termRes = null;
+            if (!isActLive || !activeRes?.uberStoreName) {
+                try {
+                    termRes = await fetchTerminatedOrder(candUuid, candUrl, window.trackApiBase);
+                } catch (e) {}
+            }
+
+            const mergedMeta = {
+                _isSwitched: true,
+                _candOrderStoreName: cand.orderStoreName || '',
+                _candFallbackStoreName: cand.fallbackStoreName || '',
+                _candPinCode: cand.pinCode || '',
+            };
+            const mergedPin = (activeRes && (activeRes.pinCode || activeRes.courier?.pinCode)) || cand.pinCode || '';
+            state.activeCandData = {
+                uuid: candUuid,
+                pinCode: mergedPin,
+                realStoreName: _cleanSwitchStoreName((activeRes && activeRes.uberStoreName) || (termRes && termRes.storeName) || cand.realStoreName),
+            };
+
+            if (isActCanceled || (!isActLive && !isActDelivered && ((termRes && isOrderCanceled(termRes)) || cand.isCanceled))) {
+                const payload = { ...(activeRes || {}), ...(termRes || {}), ...mergedMeta, orderUuid: candUuid };
+                if (!payload.uberStoreName && !payload.storeName && cand.realStoreName) payload.uberStoreName = cand.realStoreName;
+                window.currentActiveOrderUuid = candUuid;
+                renderCanceledStage(payload, parsedData, trackData, candUrl);
+                return;
+            }
+            if (isActDelivered || (termRes && termRes.status === 'success' && !isOrderCanceled(termRes)) || (!activeRes && cand.isDelivered)) {
+                const payload = { ...(activeRes || {}), ...(termRes || {}), ...mergedMeta, orderUuid: candUuid, isDelivered: true };
+                if (!payload.uberStoreName && !payload.storeName && cand.realStoreName) payload.uberStoreName = cand.realStoreName;
+                if (!payload.deliveryImage && cand.deliveredImage) payload.deliveryImage = cand.deliveredImage;
+                window.currentActiveOrderUuid = candUuid;
+                renderDeliveredStage(payload, parsedData, trackData, candUrl);
+                return;
+            }
+            if (isActScheduled || (!isActLive && cand.isScheduled)) {
+                const payload = { ...(activeRes || {}), ...mergedMeta, orderUuid: candUuid, isScheduled: true, pinCode: mergedPin };
+                if (!payload.uberStoreName && cand.realStoreName) payload.uberStoreName = cand.realStoreName;
+                window.currentActiveOrderUuid = candUuid;
+                renderScheduledStage(parsedData, trackData, candUrl, payload);
+                return;
+            }
+
+            const payload = {
+                status: 'success',
+                ...(activeRes || {}),
+                ...mergedMeta,
+                orderUuid: candUuid,
+                pinCode: mergedPin,
+                uberStoreName: _cleanSwitchStoreName((activeRes && activeRes.uberStoreName) || cand.realStoreName),
+            };
+            if (!payload.store || !_cleanSwitchStoreName(payload.store.name)) {
+                payload.store = { ...(payload.store || {}), name: cand.fallbackStoreName || cand.orderStoreName || cand.realStoreName || '外送合作店家' };
+            }
+            window.currentActiveOrderUuid = candUuid;
+            renderActiveDeliveryStage(payload, parsedData, trackData, candUuid);
+            const _watchdogFn = (typeof initAutoRefreshWatchdog === 'function') ? initAutoRefreshWatchdog : window.initAutoRefreshWatchdog;
+            if (!window._autoRefreshWatchdogStarted && typeof _watchdogFn === 'function') {
+                _watchdogFn();
+            }
+        }
+
+        function _restoreSingleOriginalCard(state) {
+            const snap = state.origSnapshot;
+            if (!snap) {
+                const _checkFn = (typeof checkStatus === 'function') ? checkStatus : window.checkStatus;
+                if (typeof _checkFn === 'function') _checkFn(false);
+                return;
+            }
+            window.currentActiveOrderUuid = snap.uuid || '';
+            if (snap.stageName === 'delivered') {
+                renderDeliveredStage(snap.payload, snap.parsedData, snap.data, snap.primaryUrl);
+            } else if (snap.stageName === 'canceled') {
+                renderCanceledStage(snap.payload, snap.parsedData, snap.data, snap.primaryUrl);
+            } else if (snap.stageName === 'scheduled') {
+                renderScheduledStage(snap.parsedData, snap.data, snap.primaryUrl, snap.payload);
+            } else {
+                renderActiveDeliveryStage(snap.payload, snap.parsedData, snap.data, snap.uuid);
+            }
+        }
+
+        async function switchSingleCard() {
+            const state = window._cardSwitchState.single;
+            if (!state) return;
+            if (!state.checked && state.orderId && !state.checking) {
+                _triggerCandidatesLookup('single');
+                return;
+            }
+            const cands = state.candidates || [];
+            if (cands.length === 0) {
+                state.noticeMsg = state.noticeMsg
+                    ? ''
+                    : '系統比對店家名稱不符（或偵測重複綁定），且目前系統內無其他可切換的候選追蹤紀錄，請直接截圖或回 LINE 聯絡代訂協助核對。';
+                state.noticeType = 'warn';
+                _renderSingleSwitchMountDom();
+                return;
+            }
+
+            if (state.cursor >= cands.length - 1) {
+                state.cursor = -1;
+                state.activeCandData = null;
+                state.noticeMsg = '已切回原訂單，若仍非您的餐點請回 LINE 聯絡代訂協助確認';
+                state.noticeType = 'info';
+                _stopSingleLivePollTimer();
+                _restoreSingleOriginalCard(state);
+                return;
+            }
+
+            const nextCursor = state.cursor + 1;
+            const cand = cands[nextCursor];
+            state.cursor = nextCursor;
+            const btnMount = document.getElementById('singleSwitchBtnMount');
+            if (btnMount && btnMount.firstElementChild) {
+                btnMount.firstElementChild.classList.add('is-loading');
+                btnMount.firstElementChild.disabled = true;
+                btnMount.firstElementChild.innerText = '切換訂單載入中...';
+            }
+            const candStorePreview = _pickPreferredStoreName({
+                uberStore: cand.realStoreName,
+                orderStore: cand.orderStoreName,
+                fallbackStore: cand.fallbackStoreName
+            });
+            state.noticeMsg = `已切換至第 ${nextCursor + 1}/${cands.length} 筆候選單（${candStorePreview}・${cand.sourceLabel || '系統推薦'}）`;
+            state.noticeType = 'info';
+            _stopSingleLivePollTimer();
+            await _fetchAndRenderSingleCandidate(state, cand);
+        }
+
+        async function _pollSwitchedSingleCard() {
+            const state = window._cardSwitchState.single;
+            if (!state || state.cursor < 0) return false;
+            const cand = (state.candidates || [])[state.cursor];
+            if (!cand) return false;
+            await _fetchAndRenderSingleCandidate(state, cand);
+            return true;
+        }
+
+        function _applyCandMergeToSubResult(res, cand) {
+            if (!cand) return res;
+            const out = { ...(res || {}) };
+            out._isSwitched = true;
+            out._cand = cand;
+            out.orderUuid = cand.uuid;
+            out.url = `https://www.ubereats.com/tw/orders/${cand.uuid}`;
+            out.uberStoreName = _cleanSwitchStoreName(out.uberStoreName || ((out.isDelivered || out.isCanceled || out.status === 'concluded' || out.status === 'canceled') ? out.storeName : '') || cand.realStoreName);
+            out.storeName = _pickPreferredStoreName({
+                uberStore: out.uberStoreName || cand.realStoreName,
+                orderStore: cand.orderStoreName,
+                fallbackStore: (out.store && out.store.name) || cand.fallbackStoreName
+            });
+            out.pinCode = out.pinCode || (out.courier && out.courier.pinCode) || cand.pinCode || '';
+            if (!out.imgUrl && !out.deliveryImage && cand.deliveredImage) {
+                out.imgUrl = cand.deliveredImage;
+                out.deliveryImage = cand.deliveredImage;
+            }
+            return out;
+        }
+
+        function _buildMultiSubCardHtml(ctx) {
+            const { term, split, concise, url, address, idx, slotKey, switchState } = ctx;
+            const subUuid = term.orderUuid || extractOrderUuid(url) || '';
+            const isSwitched = Boolean(term._isSwitched || (switchState && switchState.cursor >= 0));
+            const fallbackSplitStore = isSwitched ? (term._cand?.fallbackStoreName || '') : (split.store || '');
+            const store = _pickPreferredStoreName({
+                uberStore: _extractSwitchUberStore(term) || term._cand?.realStoreName || ((term.isDelivered || term.isCanceled) ? term.storeName : ''),
+                orderStore: term._cand?.orderStoreName || '',
+                fallbackStore: (term.store && term.store.name) || fallbackSplitStore
+            });
+            const courier = term.courier || {};
+            const courierName = courier.name || term.driverName || '外送夥伴';
+            const courierVehicle = courier.vehicle || '機車配送中';
+            const pinCode = term.pinCode || courier.pinCode || (isSwitched ? (term._cand?.pinCode || '') : '') || '';
+            const etaText = formatEtaText(term);
+
+            const spec = _getCardSwitchButtonSpec(switchState);
+            const btnHtml = spec
+                ? `<button type="button" class="card-switch-btn${spec.isContact ? ' is-contact' : ''}${spec.loading ? ' is-loading' : ''}" ${spec.disabled ? 'disabled' : ''} onclick="switchMultiSubCard('${_escJsAttr(slotKey)}')">${escapeHtml(spec.text)}</button>`
+                : '';
+            const noticeHtml = _renderSwitchNoticeHtml(switchState, `dismissCardSwitchNotice('${_escJsAttr(slotKey)}')`);
+
+            let innerHtml = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 10px; gap: 6px;">
+                    <div style="flex: 1; min-width: 0; overflow: hidden;">
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span style="font-weight: 800; font-size: 13.5px; color: #1e293b;">【子訂單 ${idx + 1}】</span>
+                            <span style="background: ${concise.badgeBg}; color: #fff; font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 6px; flex-shrink: 0;">${concise.badge}</span>
+                        </div>
+                        <div style="font-weight: bold; color: #0f172a; font-size: 15px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(store)}">🏪 ${formatStoreMiddle(store)}</div>
+                    </div>
+                    <div class="multi-switch-btn-mount" style="flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                        ${btnHtml}
+                    </div>
+                </div>
+                <div class="multi-switch-notice-mount">${noticeHtml}</div>
+            `;
+
+            if (concise.step === 0) {
+                const cancelInfo = getCancelInfo(term);
+                innerHtml += `
+                    <div style="background: #ffebee; border: 1px dashed #ef9a9a; border-radius: 8px; padding: 14px 12px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; box-sizing: border-box;">
+                        <div style="font-size: 32px; line-height: 1;">🚫</div>
+                        <div style="font-weight: bold; color: #c62828; font-size: 13.5px;">${cancelInfo.cancelTitle}</div>
+                        <div style="font-size: 12px; color: #555; line-height: 1.4; max-height: 55px; overflow-y: auto;">${cancelInfo.cancelReason}</div>
+                    </div>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🛵 外送夥伴: <strong>無派單</strong></span>
+                        <span style="color: #dc2626; font-weight: bold; flex-shrink: 0;">✕ 訂單取消</span>
+                    </div>
+                    ${(url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders') ? `
+                    <a href="${url}" target="_blank" style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; color: #64748b; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc;">
+                        <span>🔗 開啟 Uber Eats 查看狀態</span>
+                        <span style="font-size: 13px;">↗</span>
+                    </a>` : `
+                    <div style="margin-top: auto; display: flex; justify-content: center; align-items: center; width: 100%; box-sizing: border-box; text-align: center; color: #94a3b8; font-size: 12.5px; font-weight: bold; padding: 8px 12px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #f8fafc;">
+                        <span>🚫 此訂單無 Uber 即時追蹤網址</span>
+                    </div>`}
+                `;
+            } else if (concise.step === 4) {
+                const imgUrl = term.imgUrl || '';
+                if (imgUrl && isDropoffPhoto(imgUrl)) {
+                    innerHtml += `
+                        <div style="position: relative; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; cursor: pointer; height: 160px; display: flex; align-items: center; justify-content: center;" onclick="zoomPhoto('${imgUrl}')">
+                            <img src="${imgUrl}" alt="門口留置照片" style="width: 100%; height: 100%; object-fit: cover;">
+                            <div style="position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10.5px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">📷 門口留置拍照證明</div>
+                            <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10.5px; padding: 2px 8px; border-radius: 12px; font-weight: bold;">🔍 點擊放大</div>
+                        </div>
+                    `;
+                } else {
+                    innerHtml += `
+                        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 12px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; box-sizing: border-box;">
+                            <div style="font-size: 36px; line-height: 1;">🤝</div>
+                            <div style="font-size: 13.5px; color: #166534; font-weight: bold;">外送夥伴已親自點交送達</div>
+                            <div style="font-size: 11.5px; color: #15803d; line-height: 1.4;">餐點由外送夥伴當面交付<br>（現場無留置拍照記錄）</div>
+                        </div>
+                    `;
+                }
+                const subLat = term.latitude || (term.destination && term.destination.latitude);
+                const subLng = term.longitude || (term.destination && term.destination.longitude);
+                const subAddr = isSwitched ? '' : ((term.destination && term.destination.address) || address);
+                let subMapUrl = '';
+                if (subLat && subLng) subMapUrl = `https://www.google.com/maps/search/?api=1&query=${subLat},${subLng}`;
+                else if (subAddr && subAddr !== '指定外送地址') subMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(subAddr)}`;
+                const hasValidUrl = (url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders');
+                innerHtml += `
+                    <div style="font-size: 12px; color: #475569; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px;">🛵 外送夥伴: <strong>${courierName}</strong></span>
+                        <span style="color: #16a34a; font-weight: bold; flex-shrink: 0;">✓ 配送完成</span>
+                    </div>
+                    <div style="margin-top: auto; display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
+                        ${subMapUrl ? `
+                        <a href="${subMapUrl}" target="_blank" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 4px; box-sizing: border-box; text-align: center; color: #15803d; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 10px; border: 1.5px solid #86efac; border-radius: 8px; background: #f0fdf4;">
+                            <span>📍 開啟地圖</span>
+                            <span style="font-size: 11px;">↗</span>
+                        </a>` : ''}
+                        ${hasValidUrl ? `
+                        <a href="${url}" target="_blank" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 4px; box-sizing: border-box; text-align: center; color: #16a34a; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 10px; border: 1px solid #bbf7d0; border-radius: 8px; background: #fff;">
+                            <span>🔗 Uber 查看</span>
+                            <span style="font-size: 11px;">↗</span>
+                        </a>` : ''}
+                    </div>
+                `;
+            } else {
+                innerHtml += `
+                    <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <span style="font-size: 22px;">${concise.emoji}</span>
+                            <span style="font-size: 16px; font-weight: 800; color: #0f172a;">${concise.title}</span>
+                        </div>
+                        <div style="font-size: 13px; color: #475569; display: flex; align-items: center; gap: 5px; margin-bottom: 4px;">
+                            <span>⏱️ 預計抵達：</span>
+                            <strong style="color: #166534; font-size: 14px;">${concise.badge === '點餐中' ? '盡快送達 (點餐中)' : etaText}</strong>
+                        </div>
+                        ${pinCode ? `
+                        <div style="margin-top: 6px; font-size: 12.5px; color: #b45309; background: #fffbeb; padding: 5px 9px; border-radius: 6px; border: 1px dashed #fde68a; display: flex; justify-content: space-between; align-items: center;">
+                            <span>🔑 取餐 PIN 碼:</span>
+                            <strong style="font-family: monospace; font-size: 16px; color: #d97706; letter-spacing: 1px;">${pinCode}</strong>
+                        </div>` : ''}
+                        ${courierName && courierName !== '外送夥伴' ? `
+                        <div style="margin-top: 6px; font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            🛵 外送夥伴：<strong>${courierName}</strong> ${courierVehicle ? '(' + courierVehicle + ')' : ''}
+                        </div>` : ''}
+                    </div>
+                    <button type="button" onclick="openMultiOrderChatModal('${_escJsAttr(subUuid)}', '${_escJsAttr(store)}', '${_escJsAttr(courierName)}', '${_escJsAttr(courierVehicle)}')" style="margin-top: auto; width: 100%; box-sizing: border-box; background: #06c167; color: white; border: none; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 6px rgba(6,193,103,0.22); transition: opacity 0.2s;">
+                        💬 開啟此單外送員對話
+                    </button>
+                `;
+            }
+
+            return { innerHtml, store, concise };
+        }
+
+        function _updateSingleMultiCardAndTabDom(slotKey, termRes, url) {
+            const state = window._cardSwitchState[slotKey];
+            const cardEl = _findMultiCardBySlotKey(slotKey);
+            if (!cardEl) return;
+            const displayIdx = parseInt(cardEl.getAttribute('data-idx') || '0', 10);
+            const split = (window.lastParsedData && window.lastParsedData.splits && window.lastParsedData.splits[displayIdx]) || {};
+            const concise = getSubOrderConciseStatus(termRes, split, window.lastParsedData);
+            const address = (window.lastParsedData && window.lastParsedData.address) || '指定外送地址';
+            const built = _buildMultiSubCardHtml({
+                term: termRes,
+                split,
+                concise,
+                url,
+                address,
+                idx: displayIdx,
+                slotKey,
+                switchState: state,
+            });
+            cardEl.style.borderColor = concise.step === 0 ? '#ef5350' : (concise.step === 4 ? '#81c784' : '#60a5fa');
+            cardEl.innerHTML = built.innerHtml;
+
+            const tabBtn = _findMultiTabBySlotKey(slotKey);
+            if (tabBtn) {
+                const shortStore = built.store.length > 7 ? built.store.substring(0, 7) + '...' : built.store;
+                const spans = tabBtn.querySelectorAll('span');
+                if (spans.length >= 2) {
+                    spans[0].textContent = `${displayIdx + 1}. ${shortStore}`;
+                    spans[1].textContent = concise.emoji;
+                }
+                tabBtn.classList.remove('canceled-tab', 'scheduled-tab', 'ordering-tab');
+                if (concise.step === 0) tabBtn.classList.add('canceled-tab');
+                else if (concise.badge === '預約單') tabBtn.classList.add('scheduled-tab');
+                else if (concise.badge === '點餐中') tabBtn.classList.add('ordering-tab');
+            }
+        }
+
+        async function switchMultiSubCard(slotKey) {
+            const state = window._cardSwitchState[slotKey];
+            if (!state) return;
+            if (!state.checked && state.orderId && !state.checking) {
+                _triggerCandidatesLookup(slotKey);
+                return;
+            }
+            const cands = state.candidates || [];
+            if (cands.length === 0) {
+                state.noticeMsg = state.noticeMsg
+                    ? ''
+                    : '系統比對店家名稱不符（或偵測重複綁定），且目前系統內無其他可切換的候選追蹤紀錄，請直接截圖或回 LINE 聯絡代訂協助核對。';
+                state.noticeType = 'warn';
+                _refreshSwitchUiForSlot(slotKey);
+                return;
+            }
+
+            const cardEl = _findMultiCardBySlotKey(slotKey);
+            const displayIdx = cardEl ? parseInt(cardEl.getAttribute('data-idx') || '0', 10) : state.origIndex;
+
+            if (state.cursor >= cands.length - 1) {
+                state.cursor = -1;
+                state.activeCandData = null;
+                state.noticeMsg = '已切回原訂單，若仍非您的餐點請回 LINE 聯絡代訂協助確認';
+                state.noticeType = 'info';
+                const origUrl = state.origUuid ? `https://www.ubereats.com/tw/orders/${state.origUuid}` : '';
+                if (window.currentMultiUuidList && displayIdx < window.currentMultiUuidList.length) {
+                    window.currentMultiUuidList[displayIdx] = state.origUuid;
+                }
+                if ((window.currentMultiOrderIndex || 0) === displayIdx) {
+                    window.currentMultiActiveOrderUuid = state.origUuid || null;
+                }
+                const origTerm = state.origSnapshot || await getSubOrderStatus(state.origUuid, origUrl, window.trackApiBase);
+                _updateSingleMultiCardAndTabDom(slotKey, origTerm, origUrl);
+                window.lastMultiOrderSignature = null;
+                return;
+            }
+
+            const nextCursor = state.cursor + 1;
+            const cand = cands[nextCursor];
+            state.cursor = nextCursor;
+
+            const btnEl = cardEl && cardEl.querySelector('.multi-switch-btn-mount button');
+            if (btnEl) {
+                btnEl.classList.add('is-loading');
+                btnEl.disabled = true;
+                btnEl.innerText = '切換載入中...';
+            }
+
+            const candUrl = `https://www.ubereats.com/tw/orders/${cand.uuid}`;
+            let liveSub = null;
+            try {
+                liveSub = await getSubOrderStatus(cand.uuid, candUrl, window.trackApiBase);
+            } catch (e) {}
+            const mergedSub = _applyCandMergeToSubResult(liveSub, cand);
+            state.activeCandData = mergedSub;
+
+            const candStorePreview = _pickPreferredStoreName({
+                uberStore: mergedSub.uberStoreName || cand.realStoreName,
+                orderStore: cand.orderStoreName,
+                fallbackStore: cand.fallbackStoreName
+            });
+            state.noticeMsg = `已切換至第 ${nextCursor + 1}/${cands.length} 筆候選單（${candStorePreview}・${cand.sourceLabel || '系統推薦'}）`;
+            state.noticeType = 'info';
+
+            if (window.currentMultiUuidList && displayIdx < window.currentMultiUuidList.length) {
+                window.currentMultiUuidList[displayIdx] = cand.uuid;
+            }
+            if ((window.currentMultiOrderIndex || 0) === displayIdx) {
+                window.currentMultiActiveOrderUuid = cand.uuid;
+            }
+            _updateSingleMultiCardAndTabDom(slotKey, mergedSub, candUrl);
+            window.lastMultiOrderSignature = null;
+        }
+
         // 渲染單筆訂單已取消階段 UI
 
         function renderCanceledStage(termRes, parsedData, data, primaryUrl) {
@@ -1488,7 +2328,13 @@
 
             const cancelInfo = getCancelInfo(termRes);
 
-            const storeName = termRes.storeName || parsedData.store || '外送合作店家';
+            const isSwitched = Boolean(termRes && termRes._isSwitched);
+            if (!isSwitched) _stopSingleLivePollTimer();
+            const storeName = _pickPreferredStoreName({
+                uberStore: _extractSwitchUberStore(termRes) || (termRes && termRes.storeName),
+                orderStore: termRes && termRes._candOrderStoreName,
+                fallbackStore: (termRes && termRes.store && termRes.store.name) || (isSwitched ? (termRes && termRes._candFallbackStoreName) : parsedData.store)
+            });
 
             const address = parsedData.address || '指定外送地址';
 
@@ -1506,10 +2352,11 @@
 
                             <span style="background: #d32f2f; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">❌ 訂單已取消</span>
 
-                            <span style="color: #c62828; font-size: 12px; font-weight: bold;">店家未接單 (Canceled)</span>
+                            <div style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end;"><span style="color: #c62828; font-size: 12px; font-weight: bold;">店家未接單 (Canceled)</span><span id="singleSwitchBtnMount"></span></div>
 
                         </div>
 
+                        <div id="singleSwitchNoticeMount"></div>
                         <div style="font-size: 18px; font-weight: 800; color: #c62828; margin-bottom: 6px;">⚠️ ${cancelInfo.cancelTitle}</div>
 
                         <div style="font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 4px;">
@@ -1612,7 +2459,7 @@
 
             const statusArea = document.getElementById('trackStatusArea');
 
-            if (statusArea) statusArea.innerHTML = canceledHtml;
+            if (statusArea) { statusArea.innerHTML = canceledHtml; _attachSingleConfusionSwitchUI('canceled', termRes, parsedData, data, primaryUrl); }
 
             window.currentRenderedStage = 'canceled';
 
@@ -1809,8 +2656,15 @@
                 }
             }
 
-            const storeName = (activeRes && activeRes.store && activeRes.store.name) || parsedData.store || '外送合作店家';
-            const address = (activeRes && activeRes.destination && activeRes.destination.address) || parsedData.address || '指定外送地址';
+            const isSchedSwitched = Boolean(activeRes && activeRes._isSwitched);
+            if (!isSchedSwitched) _stopSingleLivePollTimer();
+            const storeName = _pickPreferredStoreName({
+                uberStore: _extractSwitchUberStore(activeRes),
+                orderStore: activeRes && activeRes._candOrderStoreName,
+                fallbackStore: (activeRes && activeRes.store && activeRes.store.name) || (isSchedSwitched ? (activeRes && activeRes._candFallbackStoreName) : parsedData.store)
+            });
+            const schedPinCode = (activeRes && (activeRes.pinCode || activeRes.courier?.pinCode || activeRes._candPinCode)) || (!isSchedSwitched && data && Array.isArray(data.pin_codes) ? (data.pin_codes[0] || '') : '') || '';
+            const address = (!isSchedSwitched && activeRes && activeRes.destination && activeRes.destination.address) || parsedData.address || '指定外送地址';
             const schedTime = (activeRes && activeRes.scheduledTime) || parsedData.time || '預定時間';
             const displayTime = isAsap ? (parsedData.time || '盡快送達') : schedTime;
             const accTimeStr = data?.accepted_time_hm || extractHM(data?.accepted_at);
@@ -1824,8 +2678,9 @@
                     <div style="background: #e0f2fe; border: 1.5px solid #7dd3fc; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                             <span style="background: #0284c7; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">👨‍🍳 代訂已接單</span>
-                            <span style="color: #0369a1; font-size: 12px; font-weight: bold;">點餐處理中</span>
+                            <div style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end;"><span style="color: #0369a1; font-size: 12px; font-weight: bold;">點餐處理中</span><span id="singleSwitchBtnMount"></span></div>
                         </div>
+                        <div id="singleSwitchNoticeMount"></div>
                         <div style="font-size: 18px; font-weight: 800; color: #0369a1; margin-bottom: 6px;">👨‍🍳 代訂已接單（點餐中）</div>
                         <div style="font-size: 15px; color: #0284c7; font-weight: 700; margin-bottom: 6px;">
                             🕒 <strong>送達時間:</strong> <span id="schedTimeDisplay">${displayTime}</span>
@@ -1834,7 +2689,8 @@
                             📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
                         </div>
                         <div style="font-size: 14px; color: #444; line-height: 1.4;">
-                            🏪 <strong>外送店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
+                        <div style="font-size: 14px; color: #444; line-height: 1.4;">🏪 <strong>外送店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span></div>
+                        ${schedPinCode ? `<div style="margin-top: 8px; background: #fffbeb; border: 1.5px dashed #f59e0b; border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between;"><span style="font-size: 12.5px; font-weight: bold; color: #b45309;">🔑 取餐 PIN 碼:</span><strong style="font-size: 18px; color: #d97706; letter-spacing: 2px; font-family: monospace;">${schedPinCode}</strong></div>` : ''}
                         </div>
                         ${accTimeStr ? `<div style="font-size: 13px; color: #555; font-weight: 600; margin-top: 4px;">接單時間為 ${accTimeStr}</div>` : ''}
                         ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
@@ -1874,8 +2730,9 @@
                     <div style="background: #ede7f6; border: 1.5px solid #b39ddb; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                             <span style="background: #5c6bc0; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">📅 預約排程中</span>
-                            <span style="color: #4527a0; font-size: 12px; font-weight: bold;">尚未到配送時間</span>
+                            <div style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end;"><span style="color: #4527a0; font-size: 12px; font-weight: bold;">尚未到配送時間</span><span id="singleSwitchBtnMount"></span></div>
                         </div>
+                        <div id="singleSwitchNoticeMount"></div>
                         <div style="font-size: 18px; font-weight: 800; color: #311b92; margin-bottom: 6px;">📅 店家已接單排定預約配送</div>
                         <div style="font-size: 15px; color: #1a237e; font-weight: 700; margin-bottom: 6px;">
                             🕒 <strong>預計送達時間:</strong> <span id="schedTimeDisplay">${schedTime}</span>
@@ -1884,7 +2741,8 @@
                             📍 <strong>送達地址:</strong> <span style="color: #111; font-weight: 600;">${address}</span>
                         </div>
                         <div style="font-size: 14px; color: #444; line-height: 1.4;">
-                            🏪 <strong>預訂店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span>
+                        <div style="font-size: 14px; color: #444; line-height: 1.4;">🏪 <strong>預訂店家:</strong> <span style="color: #111; font-weight: 600;">${storeName}</span></div>
+                        ${schedPinCode ? `<div style="margin-top: 8px; background: #fffbeb; border: 1.5px dashed #f59e0b; border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between;"><span style="font-size: 12.5px; font-weight: bold; color: #b45309;">🔑 取餐 PIN 碼:</span><strong style="font-size: 18px; color: #d97706; letter-spacing: 2px; font-family: monospace;">${schedPinCode}</strong></div>` : ''}
                         </div>
                         ${(data && (data.ext_order_ids?.length || data.ext_order_id)) ? `<div style="font-size: 12px; color: #666; margin-top: 6px;">訂單編號: <strong>${(data.ext_order_ids && data.ext_order_ids.length > 0) ? data.ext_order_ids.join(', ') : data.ext_order_id}</strong></div>` : ''}
                     </div>
@@ -1918,7 +2776,7 @@
             }
 
             const statusArea = document.getElementById('trackStatusArea');
-            if (statusArea) statusArea.innerHTML = scheduledHtml;
+            if (statusArea) { statusArea.innerHTML = scheduledHtml; _attachSingleConfusionSwitchUI('scheduled', activeRes, parsedData, data, primaryUrl); }
 
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
@@ -2000,7 +2858,13 @@
 
 
 
-            const storeName = termRes.storeName || parsedData.store || '外送合作店家';
+            const isSwitched = Boolean(termRes && termRes._isSwitched);
+            if (!isSwitched) _stopSingleLivePollTimer();
+            const storeName = _pickPreferredStoreName({
+                uberStore: _extractSwitchUberStore(termRes) || (termRes && termRes.storeName),
+                orderStore: termRes && termRes._candOrderStoreName,
+                fallbackStore: (termRes && termRes.store && termRes.store.name) || (isSwitched ? (termRes && termRes._candFallbackStoreName) : parsedData.store)
+            });
 
             const address = parsedData.address || '已送達至指定地點';
 
@@ -2044,10 +2908,11 @@
 
                             <span style="background: #2e7d32; color: #fff; font-size: 12px; font-weight: bold; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px;">✓ 外送已送達</span>
 
-                            <span style="color: #2e7d32; font-size: 12px; font-weight: bold;">已完成 (Concluded)</span>
+                            <div style="display: flex; align-items: center; gap: 6px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end;"><span style="color: #2e7d32; font-size: 12px; font-weight: bold;">已完成 (Concluded)</span><span id="singleSwitchBtnMount"></span></div>
 
                         </div>
 
+                        <div id="singleSwitchNoticeMount"></div>
                         <div style="font-size: 18px; font-weight: 800; color: #1b5e20; margin-bottom: 6px;">🎉 好好享用您訂購的商品</div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;">
@@ -2194,7 +3059,7 @@
 
             const statusArea = document.getElementById('trackStatusArea');
 
-            if (statusArea) statusArea.innerHTML = deliveredHtml;
+            if (statusArea) { statusArea.innerHTML = deliveredHtml; _attachSingleConfusionSwitchUI('delivered', termRes, parsedData, data, primaryUrl); }
 
             window.currentRenderedStage = 'delivered';
 
@@ -2687,7 +3552,14 @@
 
                 const res = await fetchCourierMessages(uuid, window.trackApiBase);
 
-                if (!res) return;
+                if (!res || res.status === 'error' || res.success === false) {
+                    const offlineKey = `system_offline_${uuid}`;
+                    if (!window.renderedChatMessagesSet.has(offlineKey)) {
+                        window.renderedChatMessagesSet.add(offlineKey);
+                        appendMultiChatBubble('courier', '⚠️ 通訊斷線中，請聯絡代訂處理', true);
+                    }
+                    return;
+                }
 
                 const msgs = (res.data && res.data.chatMessages) || res.chatMessages || [];
 
@@ -2814,12 +3686,12 @@
                 if (res && (res.status === 'success' || res.success)) {
                     if (btn) btn.innerText = '已送達';
                 } else {
-                    const errMsg = (res && (res.error || res.message)) || '訊息傳送失敗';
+                    const errMsg = (res && (res.error || res.message)) || '通訊斷線中，請聯絡代訂處理';
                     appendMultiChatBubble('courier', `⚠️ 系統提示：${errMsg}`, true);
                 }
             } catch(e) {
                 console.warn('發送訊息異常:', e);
-                appendMultiChatBubble('courier', '⚠️ 系統提示：訊息傳送連線異常，請稍後重試', true);
+                appendMultiChatBubble('courier', '⚠️ 系統提示：通訊斷線中，請聯絡代訂處理', true);
             } finally {
 
                 setTimeout(() => {
@@ -2985,14 +3857,21 @@
 
 
             trackingUrls.forEach((url, idx) => {
-
                 const term = termResults[idx] || {};
 
                 const split = (parsedData.splits && parsedData.splits[idx]) || {};
 
                 const concise = subStatuses[idx];
 
-                const store = term.storeName || (term.store && term.store.name) || split.store || `店家 ${idx + 1}`;
+                const tabSlotKey = term._slotKey || split._slotKey || ('sub_' + idx);
+                const tabSwState = (window._cardSwitchState && window._cardSwitchState[tabSlotKey]) || null;
+                const tabIsSwitched = Boolean(term._isSwitched || (tabSwState && tabSwState.cursor >= 0));
+                const store = _pickPreferredStoreName({
+                    uberStore: _extractSwitchUberStore(term) || term._cand?.realStoreName || ((term.isDelivered || term.isCanceled) ? term.storeName : ''),
+                    orderStore: term._cand?.orderStoreName || '',
+                    fallbackStore: (term.store && term.store.name) || (tabIsSwitched ? (term._cand?.fallbackStoreName || '') : split.store),
+                    defaultName: `店家 ${idx + 1}`
+                });
 
                 const shortStore = store.length > 7 ? store.substring(0, 7) + '...' : store;
 
@@ -3005,7 +3884,7 @@
 
 
                 html += `
-                    <button type="button" class="split-tab-btn ${tabStatusClass} ${activeClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}">
+                    <button type="button" class="split-tab-btn ${tabStatusClass} ${activeClass}" onclick="scrollToSplitIndex(${idx})" data-idx="${idx}" data-slot-key="${escapeHtml(term._slotKey || split._slotKey || ('sub_' + idx))}">
 
                         <span>${idx + 1}. ${shortStore}</span>
 
@@ -3036,255 +3915,23 @@
 
 
             trackingUrls.forEach((url, idx) => {
-
                 const term = termResults[idx] || {};
-
                 const split = (parsedData.splits && parsedData.splits[idx]) || {};
-
                 const concise = subStatuses[idx];
-
-                const subUuid = term.orderUuid || extractOrderUuid(url) || '';
-
-                const store = term.storeName || (term.store && term.store.name) || split.store || '外送合作店家';
-
-                const courier = term.courier || {};
-
-                const courierName = courier.name || term.driverName || '外送夥伴';
-
-                const courierVehicle = courier.vehicle || '機車配送中';
-
-                const pinCode = term.pinCode || courier.pinCode || '';
-
-                const etaText = formatEtaText(term);
-
-
-
-                let cardBorderColor = concise.step === 0 ? '#ef5350' : (concise.step === 4 ? '#81c784' : '#60a5fa');
-
-
-
-                html += `
-
-                    <div class="split-slide-card" style="background: #fff; border: 1.5px solid ${cardBorderColor}; border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: left; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
-
-                        <!-- 卡片頂部 (固定單行顯示，中間以...省略，保證各卡片標題高度一致) -->
-
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 10px;">
-
-                            <div style="flex: 1; min-width: 0; overflow: hidden; margin-right: 8px;">
-
-                                <span style="font-weight: 800; font-size: 13.5px; color: #1e293b;">【子訂單 ${idx + 1}】</span>
-
-                                <div style="font-weight: bold; color: #0f172a; font-size: 15px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(store)}">🏪 ${formatStoreMiddle(store)}</div>
-
-                            </div>
-
-                            <span style="background: ${concise.badgeBg}; color: #fff; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 6px; flex-shrink: 0;">
-
-                                ${concise.badge}
-
-                            </span>
-
-                        </div>
-
-                `;
-
-
-
-                if (concise.step === 0) {
-
-                    // 已取消 (統一 160px 高度區塊與底部對齊)
-
-                    const cancelInfo = getCancelInfo(term);
-
-                    html += `
-
-                        <div style="background: #ffebee; border: 1px dashed #ef9a9a; border-radius: 8px; padding: 14px 12px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; box-sizing: border-box;">
-
-                            <div style="font-size: 32px; line-height: 1;">🚫</div>
-
-                            <div style="font-weight: bold; color: #c62828; font-size: 13.5px;">${cancelInfo.cancelTitle}</div>
-
-                            <div style="font-size: 12px; color: #555; line-height: 1.4; max-height: 55px; overflow-y: auto;">${cancelInfo.cancelReason}</div>
-
-                        </div>
-
-                        <div style="font-size: 12px; color: #64748b; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-
-                            <span>🛵 外送夥伴: <strong>無派單</strong></span>
-
-                            <span style="color: #dc2626; font-weight: bold; flex-shrink: 0;">✕ 訂單取消</span>
-
-                        </div>
-
-                        ${(url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders') ? `
-
-                        <a href="${url}" target="_blank" style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; text-align: left; color: #64748b; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc;">
-
-                            <span>🔗 開啟 Uber Eats 查看狀態</span>
-
-                            <span style="font-size: 13px;">↗</span>
-
-                        </a>
-
-                        ` : `
-
-                        <div style="margin-top: auto; display: flex; justify-content: center; align-items: center; width: 100%; box-sizing: border-box; text-align: center; color: #94a3b8; font-size: 12.5px; font-weight: bold; padding: 8px 12px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #f8fafc;">
-
-                            <span>🚫 此訂單無 Uber 即時追蹤網址</span>
-
-                        </div>
-
-                        `}
-
-                    `;
-
-                } else if (concise.step === 4) {
-
-                    // 已送達 (留置照片與親自點交統一 160px 高度區塊，使所有卡片左右對齊、按鈕高度一致)
-
-                    const imgUrl = term.imgUrl || '';
-
-                    if (imgUrl && isDropoffPhoto(imgUrl)) {
-
-                        html += `
-
-                            <div style="position: relative; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 10px; cursor: pointer; height: 160px; display: flex; align-items: center; justify-content: center;" onclick="zoomPhoto('${imgUrl}')">
-
-                                <img src="${imgUrl}" alt="門口留置照片" style="width: 100%; height: 100%; object-fit: cover;">
-
-                                <div style="position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10.5px; font-weight: bold; padding: 2px 7px; border-radius: 4px;">
-
-                                    📷 門口留置拍照證明
-
-                                </div>
-
-                                <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10.5px; padding: 2px 8px; border-radius: 12px; font-weight: bold;">
-
-                                    🔍 點擊放大
-
-                                </div>
-
-                            </div>
-
-                        `;
-
-                    } else {
-
-                        html += `
-
-                            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 12px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; box-sizing: border-box;">
-
-                                <div style="font-size: 36px; line-height: 1;">🤝</div>
-
-                                <div style="font-size: 13.5px; color: #166534; font-weight: bold;">外送夥伴已親自點交送達</div>
-
-                                <div style="font-size: 11.5px; color: #15803d; line-height: 1.4;">餐點由外送夥伴當面交付<br>（現場無留置拍照記錄）</div>
-
-                            </div>
-
-                        `;
-
-                    }
-
-                    html += `
-
-                        <div style="font-size: 12px; color: #475569; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px;">🛵 外送夥伴: <strong>${courierName}</strong></span>
-                            <span style="color: #16a34a; font-weight: bold; flex-shrink: 0;">✓ 配送完成</span>
-                        </div>
-
-                        ${(() => {
-                            const subLat = term.latitude || (term.destination && term.destination.latitude);
-                            const subLng = term.longitude || (term.destination && term.destination.longitude);
-                            const subAddr = (term.destination && term.destination.address) || address;
-                            let subMapUrl = '';
-                            if (subLat && subLng) {
-                                subMapUrl = `https://www.google.com/maps/search/?api=1&query=${subLat},${subLng}`;
-                            } else if (subAddr && subAddr !== '指定外送地址') {
-                                subMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(subAddr)}`;
-                            }
-                            const hasValidUrl = (url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders');
-                            return `
-                            <div style="margin-top: auto; display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
-                                ${subMapUrl ? `
-                                <a href="${subMapUrl}" target="_blank" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 4px; box-sizing: border-box; text-align: center; color: #15803d; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 10px; border: 1.5px solid #86efac; border-radius: 8px; background: #f0fdf4;">
-                                    <span>📍 開啟地圖</span>
-                                    <span style="font-size: 11px;">↗</span>
-                                </a>` : ''}
-                                ${hasValidUrl ? `
-                                <a href="${url}" target="_blank" style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 4px; box-sizing: border-box; text-align: center; color: #16a34a; font-size: 12.5px; font-weight: bold; text-decoration: none; padding: 8px 10px; border: 1px solid #bbf7d0; border-radius: 8px; background: #fff;">
-                                    <span>🔗 Uber 查看</span>
-                                    <span style="font-size: 11px;">↗</span>
-                                </a>` : ''}
-                            </div>
-                            `;
-                        })()}
-
-                    `;
-
-                } else {
-
-                    // 未抵達：精簡顯示「前往店家取餐中、已取餐正在趕過來、預計抵達時間、即將抵達」＋開啟訊息系統按鈕
-
-                    html += `
-
-                        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; height: 160px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
-
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-
-                                <span style="font-size: 22px;">${concise.emoji}</span>
-
-                                <span style="font-size: 16px; font-weight: 800; color: #0f172a;">${concise.title}</span>
-
-                            </div>
-
-                            <div style="font-size: 13px; color: #475569; display: flex; align-items: center; gap: 5px; margin-bottom: 4px;">
-
-                                <span>⏱️ 預計抵達：</span>
-
-                                <strong style="color: #166534; font-size: 14px;">${concise.badge === '點餐中' ? '盡快送達 (點餐中)' : etaText}</strong>
-
-                            </div>
-
-                            ${pinCode ? `
-
-                            <div style="margin-top: 6px; font-size: 12.5px; color: #b45309; background: #fffbeb; padding: 5px 9px; border-radius: 6px; border: 1px dashed #fde68a; display: flex; justify-content: space-between; align-items: center;">
-
-                                <span>🔑 取餐 PIN 碼:</span>
-
-                                <strong style="font-family: monospace; font-size: 16px; color: #d97706; letter-spacing: 1px;">${pinCode}</strong>
-
-                            </div>` : ''}
-
-                            ${courierName && courierName !== '外送夥伴' ? `
-
-                            <div style="margin-top: 6px; font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-
-                                🛵 外送夥伴：<strong>${courierName}</strong> ${courierVehicle ? '(' + courierVehicle + ')' : ''}
-
-                            </div>` : ''}
-
-                        </div>
-
-
-
-                        <!-- 下方一鍵開啟訊息系統按鈕 (margin-top: auto 確保與其它卡片底部對齊) -->
-
-                        <button type="button" onclick="openMultiOrderChatModal('${subUuid}', '${escapeHtml(store)}', '${escapeHtml(courierName)}', '${escapeHtml(courierVehicle)}')" style="margin-top: auto; width: 100%; box-sizing: border-box; background: #06c167; color: white; border: none; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 6px rgba(6,193,103,0.22); transition: opacity 0.2s;">
-
-                            💬 開啟此單外送員對話
-
-                        </button>
-
-                    `;
-
-                }
-
-
-
-                html += `</div>`; // end slide card
-
+                const cardSlotKey = term._slotKey || split._slotKey || ('sub_' + idx);
+                const curSwitchState = (window._cardSwitchState && window._cardSwitchState[cardSlotKey]) || null;
+                const builtCard = _buildMultiSubCardHtml({
+                    term,
+                    split,
+                    concise,
+                    url,
+                    address,
+                    idx,
+                    slotKey: cardSlotKey,
+                    switchState: curSwitchState
+                });
+                const cardBorderColor = concise.step === 0 ? '#ef5350' : (concise.step === 4 ? '#81c784' : '#60a5fa');
+                html += `<div class="split-slide-card" data-slot-key="${escapeHtml(cardSlotKey)}" data-idx="${idx}" style="background: #fff; border: 1.5px solid ${cardBorderColor}; border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: left; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">${builtCard.innerHtml}</div>`;
             });
 
 
@@ -3545,20 +4192,76 @@
                 `;
             }
 
-            // 同步獲取各單最新狀態 (進行中 active 優先、送達與取消自動辨識)
-            const subResults = await Promise.all(uuidList.map(async (item, idx) => {
+            const curOrderIdForSwitch = _resolveCurrentTrackOrderId();
+            const slotMetaList = uuidList.map((item, idx) => {
+                const existingSplit = (parsedData && parsedData.splits && parsedData.splits[idx]) || null;
+                if (existingSplit && existingSplit._slotKey) {
+                    return {
+                        _slotKey: existingSplit._slotKey,
+                        _origIndex: existingSplit._origIndex ?? idx,
+                        _origUuid: existingSplit._origUuid || '',
+                        _origExpectedStore: existingSplit._origExpectedStore || '',
+                        _origPinCode: existingSplit._origPinCode || '',
+                        _origHint: existingSplit._origHint || null,
+                        _origExtOrderId: existingSplit._origExtOrderId || '',
+                        _origSubCanceled: Boolean(existingSplit._origSubCanceled),
+                    };
+                }
                 const rawItem = (item || '').trim();
-                const u = extractOrderUuid(rawItem) || (rawItem.startsWith('http') ? '' : rawItem);
-                const url = (!rawItem) ? '' : (rawItem.startsWith('http') ? rawItem : (u ? `https://www.ubereats.com/tw/orders/${u}` : ''));
-                const res = await getSubOrderStatus(u, url, window.trackApiBase);
-                // 只有在明確未送達且非完成狀態下，才允許外部標記取消
-                if (rawData?.sub_canceled && rawData.sub_canceled[idx]) {
+                const origU = extractOrderUuid(rawItem) || (rawItem.startsWith('http') ? '' : rawItem);
+                return {
+                    _slotKey: 'sub_' + idx,
+                    _origIndex: idx,
+                    _origUuid: origU,
+                    _origExpectedStore: _cleanSwitchStoreName((rawData && Array.isArray(rawData.expected_stores) && rawData.expected_stores[idx])
+                        || (existingSplit && existingSplit.store)
+                        || (parsedData && parsedData.store) || ''),
+                    _origPinCode: (rawData && Array.isArray(rawData.pin_codes) && rawData.pin_codes[idx]) || '',
+                    _origHint: (rawData && Array.isArray(rawData.confusion_hints) && rawData.confusion_hints[idx]) || null,
+                    _origExtOrderId: (rawData && Array.isArray(rawData.ext_order_ids) && rawData.ext_order_ids[idx]) || '',
+                    _origSubCanceled: Boolean(rawData && Array.isArray(rawData.sub_canceled) && rawData.sub_canceled[idx]),
+                };
+            });
+
+            // 同步獲取各單最新狀態 (進行中 active 優先、送達與取消自動辨識，並保護已切換候選卡片)
+            const subResults = await Promise.all(uuidList.map(async (item, idx) => {
+                const meta = slotMetaList[idx];
+                const swState = window._cardSwitchState && window._cardSwitchState[meta._slotKey];
+                const isSwitched = Boolean(swState && swState.cursor >= 0 && swState.candidates && swState.candidates[swState.cursor]);
+                const cand = isSwitched ? swState.candidates[swState.cursor] : null;
+
+                const rawItem = (item || '').trim();
+                const u = isSwitched ? cand.uuid : (extractOrderUuid(rawItem) || meta._origUuid || (rawItem.startsWith('http') ? '' : rawItem));
+                const url = isSwitched
+                    ? `https://www.ubereats.com/tw/orders/${cand.uuid}`
+                    : ((!rawItem) ? '' : (rawItem.startsWith('http') ? rawItem : (u ? `https://www.ubereats.com/tw/orders/${u}` : '')));
+
+                let res = await getSubOrderStatus(u, url, window.trackApiBase);
+                if (!isSwitched && meta._origSubCanceled) {
                     if (!res.isDelivered && res.status !== 'concluded' && res.orderPhase !== 'COMPLETED') {
                         res.isCanceled = true;
                         res.status = 'canceled';
                     }
                 }
-                return { ...res, url, idx, orderUuid: u || '' };
+                if (isSwitched) {
+                    res = _applyCandMergeToSubResult(res, cand);
+                    swState.activeCandData = res;
+                } else {
+                    if (!res.pinCode && meta._origPinCode) res.pinCode = meta._origPinCode;
+                    const slotSt = _ensureSwitchSlotState(meta._slotKey, {
+                        origIndex: meta._origIndex,
+                        orderId: curOrderIdForSwitch,
+                        origUuid: meta._origUuid || u,
+                        expectedStore: meta._origExpectedStore,
+                        uberStoreName: _extractSwitchUberStore(res),
+                        hint: meta._origHint,
+                        origSnapshot: { ...res, url, orderUuid: u || '', _slotKey: meta._slotKey },
+                    });
+                    if (slotSt.suspected && !slotSt.checked && slotSt.orderId) {
+                        _triggerCandidatesLookup(meta._slotKey);
+                    }
+                }
+                return { ...res, url, idx, orderUuid: u || '', _slotKey: meta._slotKey };
             }));
 
             // 組合多單各項關聯資料 (safeParsedData 與 safeRawData)
@@ -3589,14 +4292,42 @@
             const itemCount = Math.max(uuidList.length, trackingUrls.length, subResults.length, (safeParsedData.splits || []).length);
             const combinedList = [];
             for (let i = 0; i < itemCount; i++) {
+                const meta = slotMetaList[i] || { _slotKey: 'sub_' + i, _origIndex: i, _origUuid: '', _origExpectedStore: '', _origPinCode: '', _origHint: null, _origExtOrderId: '', _origSubCanceled: false };
+                const existingSplit = (safeParsedData.splits && safeParsedData.splits[i]) ? safeParsedData.splits[i] : null;
+                const sr = subResults[i] || {};
+                const storeFallback = _pickPreferredStoreName({
+                    uberStore: _extractSwitchUberStore(sr),
+                    orderStore: sr._cand?.orderStoreName || '',
+                    fallbackStore: (sr.store && sr.store.name) || meta._origExpectedStore || `店家 ${i + 1}`
+                });
+                const splitObj = existingSplit ? { ...existingSplit } : {
+                    title: `【多單 ${i + 1}】`,
+                    store: storeFallback,
+                    items: [],
+                    fees: [],
+                    subtotal: '',
+                    discount: '',
+                    total: sr.total || ''
+                };
+                Object.assign(splitObj, {
+                    _slotKey: meta._slotKey,
+                    _origIndex: meta._origIndex,
+                    _origUuid: meta._origUuid,
+                    _origExpectedStore: meta._origExpectedStore,
+                    _origPinCode: meta._origPinCode,
+                    _origHint: meta._origHint,
+                    _origExtOrderId: meta._origExtOrderId,
+                    _origSubCanceled: meta._origSubCanceled,
+                });
                 combinedList.push({
                     origIndex: i,
-                    uuid: uuidList[i] || '',
-                    trackingUrl: trackingUrls[i] || '',
-                    subResult: subResults[i] || {},
-                    split: (safeParsedData.splits && safeParsedData.splits[i]) ? safeParsedData.splits[i] : null,
-                    extOrderId: (safeRawData.ext_order_ids && safeRawData.ext_order_ids[i]) ? safeRawData.ext_order_ids[i] : '',
-                    subCanceled: (safeRawData.sub_canceled && safeRawData.sub_canceled[i]) ? safeRawData.sub_canceled[i] : false
+                    slotKey: meta._slotKey,
+                    uuid: sr.orderUuid || uuidList[i] || '',
+                    trackingUrl: sr.url || trackingUrls[i] || '',
+                    subResult: sr,
+                    split: splitObj,
+                    extOrderId: meta._origExtOrderId || ((safeRawData.ext_order_ids && safeRawData.ext_order_ids[i]) ? safeRawData.ext_order_ids[i] : ''),
+                    subCanceled: meta._origSubCanceled
                 });
             }
 
@@ -3626,14 +4357,17 @@
                 return false;
             }
 
-            // 🌟 核心要求：若出現多單情況，強制把已取消訂單排列在最後面 (非取消訂單維持原始順序)
-            combinedList.sort((a, b) => {
-                const aCanceled = checkSubIsCanceled(a);
-                const bCanceled = checkSubIsCanceled(b);
-                if (aCanceled && !bCanceled) return 1;
-                if (!aCanceled && bCanceled) return -1;
-                return a.origIndex - b.origIndex;
-            });
+            // 🌟 核心要求：若出現多單情況，強制把已取消訂單排列在最後面；但若有用戶正在手動切換檢視的子單則暫緩重排避免跳頁
+            const hasSwitchedSubCard = combinedList.some(it => window._cardSwitchState?.[it.slotKey]?.cursor >= 0);
+            if (!hasSwitchedSubCard) {
+                combinedList.sort((a, b) => {
+                    const aCanceled = checkSubIsCanceled(a);
+                    const bCanceled = checkSubIsCanceled(b);
+                    if (aCanceled && !bCanceled) return 1;
+                    if (!aCanceled && bCanceled) return -1;
+                    return a.origIndex - b.origIndex;
+                });
+            }
 
             // 重新序號化 split 標題，保證分頁、進度卡與明細卡序號一致且保留代訂編號
             combinedList.forEach((item, idx) => {
@@ -3661,6 +4395,8 @@
 
             // 產生狀態特徵簽章 (Signature) 用於比對 (Diffing)
             const currentSignature = JSON.stringify(sortedSubResults.map(r => ({
+                slotKey: r._slotKey || '',
+                cursor: window._cardSwitchState?.[r._slotKey]?.cursor ?? -1,
                 uuid: r.orderUuid,
                 status: r.status,
                 orderStatus: r.orderStatus,
@@ -4409,6 +5145,8 @@
 
             
 
+            window.currentTrackOrderId = orderId || '';
+
             // LIFF 初始化 (如果您將此網頁設定為 LIFF App)
 
             try {
@@ -4515,7 +5253,7 @@
                     fetchActiveOrder(window.currentActiveOrderUuid, '', window.trackApiBase).then(activeRes => {
                         if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
                             fetchTerminatedOrder(window.currentActiveOrderUuid, '', window.trackApiBase).then(termRes => {
-                                const finalData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                                const finalData = _tagSwitchedLiveTransition((termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes, window.currentActiveOrderUuid);
                                 renderDeliveredStage(finalData, window.lastParsedData || {}, window.lastTrackData || {}, '');
                             });
                         }
@@ -4583,6 +5321,8 @@
             }
 
             // 啟動定時自動重新整理與狀態同步看門狗 (每 15 秒倒數與休眠喚醒檢查)
+            window.initAutoRefreshWatchdog = initAutoRefreshWatchdog;
+            window._autoRefreshWatchdogStarted = true;
             initAutoRefreshWatchdog();
 
 
@@ -5037,7 +5777,13 @@
 
             const orderStatus = activeData.orderStatus || '外送配送中';
 
-            const pinCode = activeData.pinCode || '';
+            const isActSwitched = Boolean(activeData && activeData._isSwitched);
+            const pinCode = activeData.pinCode || (activeData.courier && activeData.courier.pinCode) || (activeData && activeData._candPinCode) || (!isActSwitched && data && Array.isArray(data.pin_codes) ? (data.pin_codes[0] || '') : '') || '';
+            const liveStoreName = _pickPreferredStoreName({
+                uberStore: _extractSwitchUberStore(activeData),
+                orderStore: activeData && activeData._candOrderStoreName,
+                fallbackStore: store.name || (isActSwitched ? (activeData && activeData._candFallbackStoreName) : parsedData.store)
+            });
 
 
 
@@ -5096,6 +5842,8 @@
                 <!-- 頂部外送/備餐動態橫幅 -->
 
                 <div id="liveActiveBannerBox" style="background: ${isPreparing ? '#fffbeb' : '#f0fdf4'}; border: 1.5px solid ${isPreparing ? '#fde68a' : '#86efac'}; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; text-align: left;">
+                    <div id="singleActiveTopRightBar" style="display: none; justify-content: flex-end; align-items: center; gap: 6px; margin-bottom: 6px;"><span id="singleSwitchBtnMount"></span></div>
+                    <div id="singleSwitchNoticeMount"></div>
 
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
 
@@ -5189,13 +5937,13 @@
 
                     <div style="font-size: 13px; color: #334155; margin-bottom: 4px;">
 
-                        📍 <strong>送達地址:</strong> <span id="liveActiveDest">${dest.address || parsedData.address || '指定外送地址'}</span>
+                        📍 <strong>送達地址:</strong> <span id="liveActiveDest">${(!isActSwitched && dest.address) || parsedData.address || '指定外送地址'}</span>
 
                     </div>
 
                     <div style="font-size: 13px; color: #475569;">
 
-                        🏪 <strong>取餐店家:</strong> <span id="liveActiveStore">${store.name || parsedData.store || '合作店家'}</span>
+                        🏪 <strong>取餐店家:</strong> <span id="liveActiveStore">${liveStoreName}</span>
 
                     </div>
 
@@ -5395,6 +6143,7 @@
 
             // 啟動定時輪詢 (純 HTTP GraphQL 查詢座標與狀態，絕不啟動瀏覽器)
 
+            _attachSingleConfusionSwitchUI('active', activeData, parsedData, data, '', orderUuid);
             startActiveOrderLivePolling(orderUuid, parsedData, data);
 
         }
@@ -6085,6 +6834,7 @@
 
                 try {
 
+                    if (window.currentActiveOrderUuid && orderUuid !== window.currentActiveOrderUuid) { clearInterval(liveActivePollTimer); liveActivePollTimer = null; return; }
                     const activeRes = await fetchActiveOrder(orderUuid, '', window.trackApiBase);
 
 
@@ -6097,7 +6847,7 @@
 
                         if (liveEtaCountdownTimer) clearInterval(liveEtaCountdownTimer);
 
-                        renderCanceledStage(activeRes, parsedData, data, '');
+                        renderCanceledStage(_tagSwitchedLiveTransition(activeRes, orderUuid), parsedData, data, '');
 
                         return;
 
@@ -6115,7 +6865,7 @@
 
                         const termRes = await fetchTerminatedOrder(orderUuid, '', window.trackApiBase);
 
-                        const finalDeliveredData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                        const finalDeliveredData = _tagSwitchedLiveTransition((termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes, orderUuid);
 
                         renderDeliveredStage(finalDeliveredData, parsedData, data, '');
 
@@ -6769,13 +7519,13 @@
 
                 if (!res || !res.success) {
 
-                    appendActiveChatBubble('system', '⚠️ 訊息已排入外送員傳遞佇列');
+                    appendActiveChatBubble('system', '⚠️ 通訊斷線中，請聯絡代訂處理');
 
                 }
 
             } catch(e) {
 
-                appendActiveChatBubble('system', '⚠️ 訊息傳送連線異常');
+                appendActiveChatBubble('system', '⚠️ 通訊斷線中，請聯絡代訂處理');
 
             } finally {
 
@@ -7031,9 +7781,15 @@
 
                                 // 單一訂單情況
 
+                                window.lastParsedData = parsedData;
+                                window.lastTrackData = data;
+                                if (window._cardSwitchState && window._cardSwitchState.single && window._cardSwitchState.single.cursor >= 0) {
+                                    if (await _pollSwitchedSingleCard()) return;
+                                }
                                 const primaryTrackUrl = trackingUrls[0];
 
                                 const orderUuid = extractOrderUuid(primaryTrackUrl);
+                                let activeRes = null;
 
 
 
@@ -7071,7 +7827,7 @@
 
                                     // 1. 優先查詢進行中即時座標與外送狀態
 
-                                    const activeRes = await fetchActiveOrder(orderUuid, primaryTrackUrl, trackApiBase);
+                                    activeRes = await fetchActiveOrder(orderUuid, primaryTrackUrl, trackApiBase);
 
                                     window._lastUberSyncTimestamp = Date.now();
 
@@ -7086,7 +7842,7 @@
                                         if (window.currentRenderedStage !== 'delivered') {
                                             console.log('🎉 檢測到外送夥伴已抵達送達！進一步獲取留置拍照與送達明細...');
                                             const termRes = await fetchTerminatedOrder(orderUuid, primaryTrackUrl, trackApiBase);
-                                            const finalDeliveredData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                                            const finalDeliveredData = _tagSwitchedLiveTransition((termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes, orderUuid);
                                             renderDeliveredStage(finalDeliveredData, parsedData, data, primaryTrackUrl);
                                         }
                                         return;
@@ -7229,7 +7985,7 @@
 
                                         console.log('📅 單筆訂單為預約排程單 (備援)，進入預約展示階段');
 
-                                        renderScheduledStage(parsedData, data, primaryTrackUrl);
+                                        renderScheduledStage(parsedData, data, primaryTrackUrl, activeRes);
 
                                     }
 
@@ -7377,7 +8133,7 @@
 
                                 if (activeRes && (activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
                                     const termRes = await fetchTerminatedOrder(singleU, '', trackApiBase);
-                                    const finalData = (termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes;
+                                    const finalData = _tagSwitchedLiveTransition((termRes && termRes.status === 'success') ? { ...activeRes, ...termRes } : activeRes, window.currentActiveOrderUuid);
                                     if (window.currentRenderedStage !== 'delivered') {
                                         renderDeliveredStage(finalData, {}, {}, `https://www.ubereats.com/tw/orders/${singleU}`);
                                     }
