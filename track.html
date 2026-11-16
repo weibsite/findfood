@@ -987,6 +987,24 @@
 
         }
 
+        // 規範並獲取正確的 Uber Eats 訂單追蹤網址 (防止誤用 /checkout 結帳頁網址)
+        function resolveUberTrackingUrl(rawUrl, fallbackObj) {
+            if (rawUrl && !rawUrl.includes('/checkout') && (extractOrderUuid(rawUrl) || rawUrl.includes('/orders/'))) {
+                return rawUrl;
+            }
+            const uuid = extractOrderUuid(rawUrl) ||
+                         extractOrderUuid(fallbackObj && (fallbackObj.orderUuid || fallbackObj.uuid || fallbackObj._orderUuid)) ||
+                         extractOrderUuid(fallbackObj && (fallbackObj.order_uuid || fallbackObj.orderUuid || fallbackObj.join_url)) ||
+                         extractOrderUuid(window.currentActiveOrderUuid);
+            if (uuid) {
+                return `https://www.ubereats.com/tw/orders/${uuid}`;
+            }
+            if (rawUrl && !rawUrl.includes('/checkout')) {
+                return rawUrl;
+            }
+            return '';
+        }
+
 
 
         // 向後端查詢已完成送達訂單資料
@@ -2639,6 +2657,7 @@
 
         // 渲染單筆訂單預約排程或點餐前置作業階段 UI
         function renderScheduledStage(parsedData, data, primaryUrl, activeRes) {
+            const targetTrackUrl = resolveUberTrackingUrl(primaryUrl, activeRes || data);
             const cardEl = document.querySelector('.card');
             if (cardEl) cardEl.classList.add('delivered-mode');
 
@@ -2703,8 +2722,8 @@
                         <div style="font-size: 13.5px; color: #444; line-height: 1.6; max-width: 420px; margin: 0 auto 12px;">
                             您的訂單需求為<strong>「${displayTime}」</strong>，目前代訂已接單並正在為您進行點餐前置作業。<br>完成下單並由店家接單備餐後，將即時在此更新外送動態與地圖追蹤。
                         </div>
-                        ${primaryUrl ? `
-                        <a href="${primaryUrl}" target="_blank" class="btn" style="display: inline-block; padding: 10px 20px; font-size: 14px; background: #0284c7; border-color: #0369a1; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                        ${targetTrackUrl ? `
+                        <a href="${targetTrackUrl}" target="_blank" class="btn" style="display: inline-block; padding: 10px 20px; font-size: 14px; background: #0284c7; border-color: #0369a1; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
                             🔗 開啟 Uber Eats 查看狀態 ↗
                         </a>
                         ` : ''}
@@ -2754,8 +2773,8 @@
                         <div style="font-size: 13.5px; color: #444; line-height: 1.6; max-width: 420px; margin: 0 auto 12px;">
                             店家已收到您的預約訂單，將於預定時間（${schedTime}）開始備餐並安排外送夥伴前往配送。送達並拍照後將即時在此更新現場留置照片與定位。
                         </div>
-                        ${primaryUrl ? `
-                        <a href="${primaryUrl}" target="_blank" class="btn" style="display: inline-block; padding: 10px 20px; font-size: 14px; background: #5c6bc0; border-color: #3949ab; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                        ${targetTrackUrl ? `
+                        <a href="${targetTrackUrl}" target="_blank" class="btn" style="display: inline-block; padding: 10px 20px; font-size: 14px; background: #5c6bc0; border-color: #3949ab; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
                             🔗 開啟 Uber Eats 查看預約訂單 ↗
                         </a>
                         ` : ''}
@@ -7697,13 +7716,27 @@
 
                         
 
-                        const rawTrackUrls = (data.tracking_urls && data.tracking_urls.length > 0)
+                        const fallbackOrderUuid = extractOrderUuid(data.order_uuid) || 
+                                                  extractOrderUuid(data.orderUuid) || 
+                                                  extractOrderUuid(data.join_url) || 
+                                                  extractOrderUuid(data.text);
 
+                        let rawTrackUrls = (data.tracking_urls && data.tracking_urls.length > 0)
                             ? data.tracking_urls
-
                             : (data.tracking_url ? [data.tracking_url] : []);
 
-                        const validTrackUrls = rawTrackUrls.filter(u => u && u.trim() && u.trim() !== 'https://www.ubereats.com/tw/orders/' && u.trim() !== 'https://www.ubereats.com/tw/orders');
+                        // 自動修正 /checkout 或無效訂單網址為正式 orders 追蹤網址
+                        rawTrackUrls = rawTrackUrls.map(u => {
+                            if (u && u.includes('/checkout') && fallbackOrderUuid) {
+                                return `https://www.ubereats.com/tw/orders/${fallbackOrderUuid}`;
+                            }
+                            return u;
+                        });
+                        if (rawTrackUrls.length === 0 && fallbackOrderUuid) {
+                            rawTrackUrls = [`https://www.ubereats.com/tw/orders/${fallbackOrderUuid}`];
+                        }
+
+                        const validTrackUrls = rawTrackUrls.filter(u => u && u.trim() && !u.includes('/checkout') && u.trim() !== 'https://www.ubereats.com/tw/orders/' && u.trim() !== 'https://www.ubereats.com/tw/orders');
 
                         const hasTracking = validTrackUrls.length > 0;
 
@@ -7786,9 +7819,11 @@
                                 if (window._cardSwitchState && window._cardSwitchState.single && window._cardSwitchState.single.cursor >= 0) {
                                     if (await _pollSwitchedSingleCard()) return;
                                 }
-                                const primaryTrackUrl = trackingUrls[0];
-
-                                const orderUuid = extractOrderUuid(primaryTrackUrl);
+                                let primaryTrackUrl = trackingUrls[0];
+                                let orderUuid = extractOrderUuid(primaryTrackUrl) || fallbackOrderUuid;
+                                if ((!primaryTrackUrl || primaryTrackUrl.includes('/checkout') || !extractOrderUuid(primaryTrackUrl)) && orderUuid) {
+                                    primaryTrackUrl = `https://www.ubereats.com/tw/orders/${orderUuid}`;
+                                }
                                 let activeRes = null;
 
 
