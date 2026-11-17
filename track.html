@@ -1642,7 +1642,7 @@
             const cands = Array.isArray(state.candidates) ? state.candidates : [];
             const n = cands.length;
             if (state.checked && n === 0) {
-                return { text: '訂單疑似有誤?請聯絡代訂', isContact: true, disabled: false, loading: false };
+                return { text: '訂單有誤嗎?請聯絡代訂', isContact: true, disabled: false, loading: false };
             }
             if (state.cursor < 0) {
                 return { text: '訂單錯了?點這試試', isContact: false, disabled: false, loading: false };
@@ -1664,7 +1664,10 @@
             `;
         }
 
+        let _trackCandidatesDisabled = false;
+
         async function fetchTrackCandidates(payload) {
+            if (_trackCandidatesDisabled) return null;
             const epList = resolveApiEndpoints('/api/track_candidates', window.trackApiBase);
             for (const ep of epList) {
                 try {
@@ -1673,6 +1676,11 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
+                    if (res.status === 404) {
+                        _trackCandidatesDisabled = true;
+                        console.warn('[TrackCandidates] 伺服器端點不存在 (404)，暫停後續卡片候選查詢');
+                        return null;
+                    }
                     if (res.ok) return await res.json();
                 } catch (e) {
                     console.warn('[TrackCandidates] 端點查詢失敗:', ep, e);
@@ -1683,13 +1691,18 @@
 
         function _evaluateLocalConfusion(expectedStore, uberStoreName, hint) {
             const storeCmp = _storesLikelyMatchFront(expectedStore, uberStoreName);
-            const hasHint = hint && (
+            // 1. 若 Uber 真實店名與預期店名完全吻合，絕非錯單，一律排除！
+            if (storeCmp === true) return false;
+
+            // 2. 若 Uber 店名尚未自 API 載入 (null)，先暫緩判定，不急著顯示錯單按鈕
+            if (storeCmp === null) return false;
+
+            // 3. 店名明確不符 (false) 或 未吻合且有真實交叉衝突
+            const hasStrictHint = Boolean(hint && (
                 hint.cross_dup ||
-                hint.hist_extra ||
-                hint.non_split_multi_url ||
-                (hint.ext_window_conflict && storeCmp !== true)
-            );
-            return Boolean((storeCmp === false) || hasHint);
+                hint.ext_window_conflict
+            ));
+            return Boolean((storeCmp === false) || hasStrictHint);
         }
 
         function _ensureSwitchSlotState(slotKey, meta) {
@@ -1700,9 +1713,12 @@
                 if (meta.uberStoreName && !existing.origUberStore) existing.origUberStore = meta.uberStoreName;
                 if (existing.cursor < 0 && meta.origSnapshot) existing.origSnapshot = meta.origSnapshot;
                 if (meta.hint && !existing.hint) existing.hint = meta.hint;
-                if (!existing.suspected && _evaluateLocalConfusion(existing.expectedStore, existing.origUberStore, existing.hint)) {
-                    existing.suspected = true;
-                    existing.checked = !existing.orderId;
+                const recheckSuspected = _evaluateLocalConfusion(existing.expectedStore, existing.origUberStore, existing.hint);
+                if (existing.suspected !== recheckSuspected) {
+                    existing.suspected = recheckSuspected;
+                    if (!recheckSuspected && existing.cursor < 0) {
+                        existing.checked = false;
+                    }
                 }
                 return existing;
             }
@@ -1718,7 +1734,7 @@
                 hint: meta.hint || null,
                 origSnapshot: meta.origSnapshot || null,
                 suspected,
-                checked: !meta.orderId,
+                checked: false,
                 checking: false,
                 candidates: [],
                 cursor: -1,
@@ -1730,16 +1746,17 @@
             return state;
         }
 
-        function _triggerCandidatesLookup(slotKey) {
+        async function _triggerCandidatesLookup(slotKey) {
             const state = window._cardSwitchState[slotKey];
-            if (!state || !state.suspected || state.checked || state.checking || !state.orderId) return;
+            if (!state || !state.suspected || state.checked || !state.orderId) return state?.candidates || [];
+            if (state.checking) {
+                return (await window._cardSwitchPromises[state._cacheKey]) || [];
+            }
             const reqKey = state._cacheKey;
-            if (window._cardSwitchPromises[reqKey]) return;
-
             state.checking = true;
             _refreshSwitchUiForSlot(slotKey);
 
-            window._cardSwitchPromises[reqKey] = fetchTrackCandidates({
+            const p = fetchTrackCandidates({
                 orderId: state.orderId,
                 subIndex: state.origIndex,
                 currentUuid: state.origUuid,
@@ -1747,7 +1764,7 @@
                 currentUberStore: state.origUberStore,
             }).then(res => {
                 const cur = window._cardSwitchState[slotKey];
-                if (!cur || cur._cacheKey !== reqKey) return;
+                if (!cur || cur._cacheKey !== reqKey) return [];
                 cur.checking = false;
                 cur.checked = true;
                 if (res && res.status === 'ok') {
@@ -1759,16 +1776,21 @@
                     cur.candidates = [];
                 }
                 _refreshSwitchUiForSlot(slotKey);
-            }).catch(() => {
+                return cur.candidates;
+            }).catch(err => {
                 const cur = window._cardSwitchState[slotKey];
-                if (!cur || cur._cacheKey !== reqKey) return;
+                if (!cur || cur._cacheKey !== reqKey) return [];
                 cur.checking = false;
                 cur.checked = true;
                 cur.candidates = [];
                 _refreshSwitchUiForSlot(slotKey);
+                return [];
             }).finally(() => {
                 delete window._cardSwitchPromises[reqKey];
             });
+
+            window._cardSwitchPromises[reqKey] = p;
+            return await p;
         }
 
         function _findMultiCardBySlotKey(slotKey) {
@@ -1897,9 +1919,6 @@
             if (isSwitchRender && curState && !curState.origSnapshot && snapshot) {
                 curState.origSnapshot = snapshot;
             }
-            if (state.suspected && !state.checked && state.orderId) {
-                _triggerCandidatesLookup('single');
-            }
             _renderSingleSwitchMountDom();
         }
 
@@ -2004,9 +2023,9 @@
         async function switchSingleCard() {
             const state = window._cardSwitchState.single;
             if (!state) return;
-            if (!state.checked && state.orderId && !state.checking) {
-                _triggerCandidatesLookup('single');
-                return;
+            if (!state.checked && state.orderId) {
+                if (state.checking) return;
+                await _triggerCandidatesLookup('single');
             }
             const cands = state.candidates || [];
             if (cands.length === 0) {
@@ -2250,9 +2269,9 @@
         async function switchMultiSubCard(slotKey) {
             const state = window._cardSwitchState[slotKey];
             if (!state) return;
-            if (!state.checked && state.orderId && !state.checking) {
-                _triggerCandidatesLookup(slotKey);
-                return;
+            if (!state.checked && state.orderId) {
+                if (state.checking) return;
+                await _triggerCandidatesLookup(slotKey);
             }
             const cands = state.candidates || [];
             if (cands.length === 0) {
@@ -4276,9 +4295,6 @@
                         hint: meta._origHint,
                         origSnapshot: { ...res, url, orderUuid: u || '', _slotKey: meta._slotKey },
                     });
-                    if (slotSt.suspected && !slotSt.checked && slotSt.orderId) {
-                        _triggerCandidatesLookup(meta._slotKey);
-                    }
                 }
                 return { ...res, url, idx, orderUuid: u || '', _slotKey: meta._slotKey };
             }));
