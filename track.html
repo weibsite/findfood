@@ -8,6 +8,8 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
+    <link rel="preconnect" href="https://api.9ysong.shop" crossorigin />
+    <link rel="dns-prefetch" href="https://api.9ysong.shop" />
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
     <!-- OpenLayers 9.2.4 開源即時地圖 (與 deliverymap 相同之高清晰 OpenStreetMap 核心) -->
@@ -3387,7 +3389,32 @@
 
 
 
-        async function getSubOrderStatus(uuid, url, trackApiBase) {
+        // 批量查詢多單即時進度（1 次請求取回所有子單，若舊版後端不支援則自動回退單筆模式）
+        async function fetchActiveOrdersBatch(uuids, trackApiBase) {
+            const cleanUuids = [...new Set((uuids || []).map(u => extractOrderUuid(u) || String(u || '').trim()).filter(Boolean))];
+            if (cleanUuids.length === 0) return null;
+            const uniqueEndpoints = resolveApiEndpoints('/api/getActiveOrdersBatch', trackApiBase);
+            for (const ep of uniqueEndpoints) {
+                try {
+                    const res = await fetch(ep, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ uuids: cleanUuids })
+                    });
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (json && json.status === 'success' && json.results) {
+                            return json.results;
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`[fetchActiveOrdersBatch] 批量端點退回單筆模式 (${ep}):`, err);
+                }
+            }
+            return null;
+        }
+
+        async function getSubOrderStatus(uuid, url, trackApiBase, prefetchedActiveRes = null) {
             if (!uuid || !url || url === 'https://www.ubereats.com/tw/orders/' || url === 'https://www.ubereats.com/tw/orders') {
                 const isParentActive = window.lastTrackData && ['new', 'used'].includes(window.lastTrackData.order_status);
                 if (isParentActive) {
@@ -3424,8 +3451,13 @@
             }
 
             try {
-                // 1. 優先查詢進行中狀態 (即時 GPS、ETA、備餐/取餐/外送中狀態、PIN碼、外送員)
-                const activeRes = await fetchActiveOrder(uuid, url, trackApiBase);
+                // 1. 優先查詢進行中狀態 (支援 Batch 預取快取，即時 GPS、ETA、備餐/取餐/外送中狀態、PIN碼、外送員)
+                const activeRes = prefetchedActiveRes || await fetchActiveOrder(uuid, url, trackApiBase);
+
+                // 預約排程單：getActiveOrder 已直接回傳完整預約資訊與餐點明細，絕不重複呼叫 getTerminatedOrder！
+                if (activeRes && (activeRes.status === 'scheduled' || activeRes.isScheduled === true)) {
+                    return { ...activeRes, url, orderUuid: uuid, isScheduled: true, isDelivered: false, isCanceled: false, isLiveActive: false };
+                }
 
                 if (activeRes && (activeRes.status === 'success' || activeRes.status === 'concluded' || activeRes.isDelivered || activeRes.orderPhase === 'COMPLETED')) {
                     if (activeRes.isDelivered || activeRes.status === 'concluded' || activeRes.orderPhase === 'COMPLETED') {
@@ -4356,6 +4388,25 @@
                 };
             });
 
+            // 🚀 多單極速批量預取：將 N 筆子單 Active 查詢合併為 1 支 Batch POST 請求（終態已快取者自動略過）
+            window._FRONTEND_SUB_CACHE = window._FRONTEND_SUB_CACHE || {};
+            const batchTargetUuids = [];
+            uuidList.forEach((item, idx) => {
+                const meta = slotMetaList[idx];
+                const swState = window._cardSwitchState && window._cardSwitchState[meta._slotKey];
+                const isSwitched = Boolean(swState && swState.cursor >= 0 && swState.candidates && swState.candidates[swState.cursor]);
+                const cand = isSwitched ? swState.candidates[swState.cursor] : null;
+                const rawItem = (item || '').trim();
+                const u = isSwitched ? cand.uuid : (extractOrderUuid(rawItem) || meta._origUuid || (rawItem.startsWith('http') ? '' : rawItem));
+                const cached = u ? window._FRONTEND_SUB_CACHE[u] : null;
+                if (u && !(cached && (cached.isDelivered || cached.isCanceled))) {
+                    batchTargetUuids.push(u);
+                }
+            });
+            const batchActiveMap = (batchTargetUuids.length > 1)
+                ? await fetchActiveOrdersBatch(batchTargetUuids, window.trackApiBase)
+                : null;
+
             // 同步獲取各單最新狀態 (進行中 active 優先、送達與取消自動辨識，並保護已切換候選卡片)
             const subResults = await Promise.all(uuidList.map(async (item, idx) => {
                 const meta = slotMetaList[idx];
@@ -4369,7 +4420,8 @@
                     ? `https://www.ubereats.com/tw/orders/${cand.uuid}`
                     : ((!rawItem) ? '' : (rawItem.startsWith('http') ? rawItem : (u ? `https://www.ubereats.com/tw/orders/${u}` : '')));
 
-                let res = await getSubOrderStatus(u, url, window.trackApiBase);
+                const prefetched = (batchActiveMap && u && batchActiveMap[u]) ? batchActiveMap[u] : null;
+                let res = await getSubOrderStatus(u, url, window.trackApiBase, prefetched);
                 if (!isSwitched && meta._origSubCanceled) {
                     if (!res.isDelivered && res.status !== 'concluded' && res.orderPhase !== 'COMPLETED') {
                         res.isCanceled = true;
@@ -4393,6 +4445,12 @@
                 }
                 return { ...res, url, idx, orderUuid: u || '', _slotKey: meta._slotKey };
             }));
+
+            // 智慧輪詢間隔：若全部子單皆為預約排程單，自動放寬為 60 秒輪詢，大幅減少無效請求
+            try {
+                const allScheduledSub = subResults.length > 0 && subResults.every(r => r && (r.isScheduled === true || r.status === 'scheduled'));
+                window._preferredRefreshIntervalSec = allScheduledSub ? 60 : 15;
+            } catch (_e) {}
 
             // 組合多單各項關聯資料 (safeParsedData 與 safeRawData)
             const safeParsedData = parsedData ? JSON.parse(JSON.stringify(parsedData)) : {
@@ -5373,7 +5431,7 @@
                 }
 
                 isManuallyRefreshing = true;
-                autoRefreshRemainingSec = 15;
+                autoRefreshRemainingSec = window._preferredRefreshIntervalSec || 15;
                 updateAutoRefreshDisplay();
 
                 const icon = document.getElementById('autoRefreshIcon');
@@ -5426,9 +5484,16 @@
                         return;
                     }
 
+                    // 分頁切到背景時暫停倒數，切回前景由 visibilitychange 即時觸發同步
+                    if (document.visibilityState === 'hidden') return;
+
+                    const targetCycle = window._preferredRefreshIntervalSec || 15;
+                    if (autoRefreshRemainingSec > targetCycle) {
+                        autoRefreshRemainingSec = targetCycle;
+                    }
                     autoRefreshRemainingSec--;
                     if (autoRefreshRemainingSec <= 0) {
-                        autoRefreshRemainingSec = 15;
+                        autoRefreshRemainingSec = targetCycle;
                         updateAutoRefreshDisplay();
 
                         const chatInput = (document.getElementById('liveActiveChatInput') || 
