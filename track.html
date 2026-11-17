@@ -3441,11 +3441,11 @@
                 };
             }
 
-            // 0. 前端快取檢查 (終態訂單直接瞬間從記憶體取用，零網路等待)
+            // 0. 前端快取檢查 (僅真正「已送達」訂單永久快取；已取消絕不快取，避免尚未點餐誤判後無法自動恢復)
             window._FRONTEND_SUB_CACHE = window._FRONTEND_SUB_CACHE || {};
             if (uuid && window._FRONTEND_SUB_CACHE[uuid]) {
                 const cached = window._FRONTEND_SUB_CACHE[uuid];
-                if (cached.isDelivered || cached.isCanceled) {
+                if (cached.isDelivered && !cached.isCanceled) {
                     return { ...cached, url, orderUuid: uuid };
                 }
             }
@@ -3469,9 +3469,8 @@
                     }
 
                     if (isOrderCanceled(activeRes)) {
-                        const finalRes = { ...activeRes, url, orderUuid: uuid, isCanceled: true, isDelivered: false, isLiveActive: false };
-                        window._FRONTEND_SUB_CACHE[uuid] = finalRes;
-                        return finalRes;
+                        // 已取消不寫入永久前端快取，避免尚未點餐誤判取消後無法恢復
+                        return { ...activeRes, url, orderUuid: uuid, isCanceled: true, isDelivered: false, isLiveActive: false };
                     }
 
                     return { ...activeRes, url, orderUuid: uuid, isLiveActive: true };
@@ -3485,9 +3484,8 @@
                     return finalRes;
                 }
                 if (isOrderCanceled(termRes)) {
-                    const finalRes = { ...termRes, url, orderUuid: uuid, isCanceled: true, isDelivered: false, isLiveActive: false };
-                    window._FRONTEND_SUB_CACHE[uuid] = finalRes;
-                    return finalRes;
+                    // 已取消不寫入永久前端快取，避免尚未點餐誤判取消後無法恢復
+                    return { ...termRes, url, orderUuid: uuid, isCanceled: true, isDelivered: false, isLiveActive: false };
                 }
 
                 return { ...(activeRes || {}), ...(termRes || {}), url, orderUuid: uuid, status: 'unknown', isLiveActive: false };
@@ -4399,7 +4397,7 @@
                 const rawItem = (item || '').trim();
                 const u = isSwitched ? cand.uuid : (extractOrderUuid(rawItem) || meta._origUuid || (rawItem.startsWith('http') ? '' : rawItem));
                 const cached = u ? window._FRONTEND_SUB_CACHE[u] : null;
-                if (u && !(cached && (cached.isDelivered || cached.isCanceled))) {
+                if (u && !(cached && cached.isDelivered && !cached.isCanceled)) {
                     batchTargetUuids.push(u);
                 }
             });
@@ -4477,10 +4475,44 @@
                 ext_order_ids: []
             };
 
-            // 🧩 執行智慧餐點對齊 (避免上傳順序錯位)
-            const alignedSubResults = alignSubResultsWithSplits(safeParsedData.splits, subResults);
+            // 🧩 永久餐點對齊機制：
+            // 若後端已標記 alignment_verified === true，代表 orders.json 已永久校正完畢，直接略過比對計算！
+            // 若尚未驗證且 Uber 回傳有效餐點 items，執行一次性對齊並靜默呼叫 /api/persist_order_alignment 永久寫回後端
+            const alreadyAlignedInDb = Boolean(
+                (rawData && rawData.alignment_verified === true) ||
+                (window.lastTrackData && window.lastTrackData.alignment_verified === true)
+            );
+            const hasRealUberItems = subResults.some(r => r && Array.isArray(r.items) && r.items.length > 0);
+            const alignedSubResults = alreadyAlignedInDb
+                ? subResults
+                : alignSubResultsWithSplits(safeParsedData.splits, subResults);
+
             safeRawData.tracking_urls = alignedSubResults.map(r => r ? (r.url || '') : '');
             if (window.lastTrackData) window.lastTrackData.tracking_urls = safeRawData.tracking_urls;
+
+            if (!alreadyAlignedInDb && hasRealUberItems && safeParsedData.splits && safeParsedData.splits.length > 1) {
+                const persistOid = _resolveCurrentTrackOrderId();
+                const persistUrls = alignedSubResults.map(r => r ? (r.url || '') : '').filter(Boolean);
+                const persistKey = `${persistOid}::${persistUrls.join(',')}`;
+                window._persistedAlignmentKeys = window._persistedAlignmentKeys || new Set();
+                if (persistOid && !persistOid.includes(',') && persistUrls.length >= 2 && !window._persistedAlignmentKeys.has(persistKey)) {
+                    window._persistedAlignmentKeys.add(persistKey);
+                    const persistEndpoints = resolveApiEndpoints('/api/persist_order_alignment', window.trackApiBase);
+                    if (persistEndpoints.length > 0) {
+                        fetch(persistEndpoints[0], {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ orderId: persistOid, alignedUrls: persistUrls })
+                        }).then(r => r.ok ? r.json() : null).then(resJson => {
+                            if (resJson && resJson.status === 'success') {
+                                if (window.lastTrackData) window.lastTrackData.alignment_verified = true;
+                                window.currentMultiUuidList = persistUrls;
+                                console.log('✅ 已將多單餐點對齊順序永久寫回系統 (orders.json)，下次開啟免再重新對齊！');
+                            }
+                        }).catch(() => {});
+                    }
+                }
+            }
 
             const itemCount = Math.max(uuidList.length, trackingUrls.length, alignedSubResults.length, (safeParsedData.splits || []).length);
             const combinedList = [];
