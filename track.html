@@ -793,6 +793,8 @@
 
     <div class="card">
 
+        <div id="subOrderParentBanner" style="display: none; margin-bottom: 12px;"></div>
+
         <h2>📦 訂單追蹤</h2>
 
         <div id="trackStatusArea" class="status-area">
@@ -4205,8 +4207,101 @@
 
         // ============================================================
 
-        // 🚀 多單核心排程與狀態同步加載器 (支援 Diffing 無感更新 & 卷軸保護)
+        // ============================================================
+        // 🧩 智慧餐點對齊引擎 (Smart Alignment Engine)
+        // 自動比對 Uber 回傳之 items 與文字多單段落，避免上傳順序錯亂導致卡片與外送進度錯位
+        // ============================================================
+        function alignSubResultsWithSplits(splits, subResults) {
+            if (!splits || splits.length <= 1 || !subResults || subResults.length <= 1) {
+                return subResults;
+            }
 
+            const hasAnyItems = subResults.some(r => r && Array.isArray(r.items) && r.items.length > 0);
+            if (!hasAnyItems) {
+                return subResults;
+            }
+
+            const cleanDish = (s) => (s || '').toLowerCase()
+                .replace(/^(?:\d+[\.\、\s]*)?/, '')
+                .replace(/\s*x\s*\d+.*$/i, '')
+                .replace(/[\(\)\（\）\s\-_:：]/g, '')
+                .replace(/(?:不要餐具|需要餐具|備註.*)/g, '')
+                .trim();
+
+            const calcScore = (split, subRes) => {
+                if (!subRes || !subRes.items || subRes.items.length === 0) return 0;
+                const sItems = (split.items || []).map(it => typeof it === 'string' ? it : (it.name || it.title || '')).filter(Boolean);
+                const sClean = sItems.map(cleanDish).filter(Boolean);
+                const uItems = (subRes.items || []).map(it => it.title || it.name || '').filter(Boolean);
+                const uClean = uItems.map(cleanDish).filter(Boolean);
+                if (sClean.length === 0 || uClean.length === 0) return 0;
+
+                let matched = 0;
+                for (const sc of sClean) {
+                    for (const uc of uClean) {
+                        if (sc === uc || (sc.length >= 3 && uc.length >= 3 && (sc.includes(uc) || uc.includes(sc)))) {
+                            matched++;
+                            break;
+                        }
+                    }
+                }
+
+                let score = (matched / Math.max(sClean.length, uClean.length)) * 100;
+                if (sClean.length === uClean.length && matched === sClean.length) {
+                    score += 20;
+                }
+
+                const sHasAddNoodle = sItems.some(it => it.includes('加麵'));
+                const uHasAddNoodle = (subRes.items || []).some(it => (it.subtitle || '').includes('加麵'));
+                if (sHasAddNoodle && uHasAddNoodle) {
+                    score += 25;
+                } else if (!sHasAddNoodle && !uHasAddNoodle) {
+                    score += 15;
+                } else if (sHasAddNoodle !== uHasAddNoodle) {
+                    score -= 30;
+                }
+
+                return score;
+            };
+
+            const candidates = [];
+            splits.forEach((split, sIdx) => {
+                subResults.forEach((subRes, uIdx) => {
+                    const score = calcScore(split, subRes);
+                    candidates.push({ sIdx, uIdx, score });
+                });
+            });
+            candidates.sort((a, b) => b.score - a.score);
+
+            const aligned = new Array(splits.length).fill(null);
+            const usedSub = new Set();
+            const usedSplit = new Set();
+
+            for (const cand of candidates) {
+                if (!usedSplit.has(cand.sIdx) && !usedSub.has(cand.uIdx) && cand.score >= 30) {
+                    aligned[cand.sIdx] = subResults[cand.uIdx];
+                    usedSplit.add(cand.sIdx);
+                    usedSub.add(cand.uIdx);
+                }
+            }
+
+            let uPtr = 0;
+            for (let s = 0; s < aligned.length; s++) {
+                if (!aligned[s]) {
+                    while (usedSub.has(uPtr) && uPtr < subResults.length) uPtr++;
+                    if (uPtr < subResults.length) {
+                        aligned[s] = subResults[uPtr];
+                        usedSub.add(uPtr);
+                    } else {
+                        aligned[s] = subResults[s] || {};
+                    }
+                }
+            }
+            return aligned;
+        }
+
+        // ============================================================
+        // 🚀 多單核心排程與狀態同步加載器 (支援 Diffing 無感更新 & 卷軸保護)
         // ============================================================
 
                 async function loadAndRenderMultiOrders(uuidList, parsedData = null, rawData = null, isBackgroundRefresh = false) {
@@ -4324,12 +4419,17 @@
                 ext_order_ids: []
             };
 
-            const itemCount = Math.max(uuidList.length, trackingUrls.length, subResults.length, (safeParsedData.splits || []).length);
+            // 🧩 執行智慧餐點對齊 (避免上傳順序錯位)
+            const alignedSubResults = alignSubResultsWithSplits(safeParsedData.splits, subResults);
+            safeRawData.tracking_urls = alignedSubResults.map(r => r ? (r.url || '') : '');
+            if (window.lastTrackData) window.lastTrackData.tracking_urls = safeRawData.tracking_urls;
+
+            const itemCount = Math.max(uuidList.length, trackingUrls.length, alignedSubResults.length, (safeParsedData.splits || []).length);
             const combinedList = [];
             for (let i = 0; i < itemCount; i++) {
                 const meta = slotMetaList[i] || { _slotKey: 'sub_' + i, _origIndex: i, _origUuid: '', _origExpectedStore: '', _origPinCode: '', _origHint: null, _origExtOrderId: '', _origSubCanceled: false };
                 const existingSplit = (safeParsedData.splits && safeParsedData.splits[i]) ? safeParsedData.splits[i] : null;
-                const sr = subResults[i] || {};
+                const sr = alignedSubResults[i] || {};
                 const storeFallback = _pickPreferredStoreName({
                     uberStore: _extractSwitchUberStore(sr),
                     orderStore: sr._cand?.orderStoreName || '',
@@ -4838,6 +4938,12 @@
 
                     html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">`;
 
+                    const curTrackId = window.currentTrackOrderId || '';
+                    const parentCleanId = (curTrackId.includes(',') ? '' : curTrackId.split('-')[0]) || '';
+                    const subLinkHtml = (parentCleanId && !curTrackId.endsWith(`-${idx + 1}`)) 
+                        ? `<div style="margin-bottom: 6px;"><a href="track.html?id=${parentCleanId}-${idx + 1}" target="_blank" style="display:inline-flex; align-items:center; gap:4px; color:#15803d; background:#dcfce7; border:1px solid #bbf7d0; font-size:11.5px; font-weight:bold; padding:2px 8px; border-radius:12px; text-decoration:none;">🔗 開啟此多單專屬進度頁面</a></div>` 
+                        : '';
+
                     html += `<span style="font-weight: 800; font-size: 15px; color: ${isCancel ? '#c62828' : (isSched ? '#3949ab' : '#1565c0')};">${splitTitle}</span>`;
 
                     if (isCancel) {
@@ -4865,7 +4971,7 @@
 
                     html += `</div>`;
 
-
+                    if (subLinkHtml) html += subLinkHtml;
 
                     if (split.store) html += `<div style="font-weight: bold; color: #111; margin-bottom: 4px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(split.store)}">🏪 ${formatStoreMiddle(split.store)}</div>`;
 
@@ -7756,7 +7862,29 @@
 
                         const hasTracking = validTrackUrls.length > 0;
 
-                        const isMulti = rawTrackUrls.length > 1 || parsedData.isSplit;
+                        const isMulti = (rawTrackUrls.length > 1) || (parsedData.isSplit && parsedData.splits && parsedData.splits.length > 1);
+
+                        // 若為單一子單專屬檢視 (例如 ?id=parent-1)，在頁首呈現回到全團總覽之引導條
+                        const subBannerEl = document.getElementById('subOrderParentBanner');
+                        if (subBannerEl) {
+                            const subMatch = (orderId || '').match(/^([a-f0-9\-]{36})-(\d+)$/i);
+                            const parentId = data.parent_order_id || (subMatch ? subMatch[1] : null);
+                            const binNum = subMatch ? subMatch[2] : (data.bin_index || '1');
+                            if (parentId && parentId !== orderId && !isMulti) {
+                                subBannerEl.innerHTML = `
+                                    <div style="background: linear-gradient(135deg, #e8f5e9, #f1f8e9); border: 1.5px solid #a5d6a7; border-radius: 12px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 6px rgba(0,0,0,0.05); margin-bottom: 12px;">
+                                        <div>
+                                            <span style="font-weight: 800; font-size: 14px; color: #2e7d32;">📦 揪團多單專屬進度【多單 ${binNum}】</span>
+                                            <div style="font-size: 11.5px; color: #555; margin-top: 2px;">此畫面專屬呈現您【多單 ${binNum}】之外送即時動態與取餐照片</div>
+                                        </div>
+                                        <a href="track.html?id=${parentId}" style="background: #2e7d32; color: #fff; text-decoration: none; font-size: 12px; font-weight: bold; padding: 6px 14px; border-radius: 20px; white-space: nowrap; box-shadow: 0 2px 4px rgba(46,125,50,0.25);">🌐 查看全團總覽</a>
+                                    </div>
+                                `;
+                                subBannerEl.style.display = 'block';
+                            } else {
+                                subBannerEl.style.display = 'none';
+                            }
+                        }
 
 
 
