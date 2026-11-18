@@ -7755,9 +7755,11 @@
 
                 const res = await sendCourierMessage(uuid, msg, window.trackApiBase);
 
-                if (!res || !res.success) {
+                if (!res || (!res.success && res.status !== 'success')) {
 
-                    appendActiveChatBubble('system', '⚠️ 通訊斷線中，請聯絡代訂處理');
+                    const errMsg = (res && (res.message || res.error)) || '通訊斷線中，請聯絡代訂處理';
+
+                    appendActiveChatBubble('system', `⚠️ ${errMsg}`);
 
                 }
 
