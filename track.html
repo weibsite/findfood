@@ -2225,9 +2225,13 @@
                             🛵 外送夥伴：<strong>${courierName}</strong> ${courierVehicle ? '(' + courierVehicle + ')' : ''}
                         </div>` : ''}
                     </div>
+                    ${(typeof isCourierActuallyAssigned === 'function' ? isCourierActuallyAssigned(termRes) : Boolean(courierName && courierName !== '外送夥伴')) ? `
                     <button type="button" onclick="openMultiOrderChatModal('${_escJsAttr(subUuid)}', '${_escJsAttr(store)}', '${_escJsAttr(courierName)}', '${_escJsAttr(courierVehicle)}')" style="margin-top: auto; width: 100%; box-sizing: border-box; background: #06c167; color: white; border: none; border-radius: 8px; padding: 10px 14px; font-size: 13.5px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 2px 6px rgba(6,193,103,0.22); transition: opacity 0.2s;">
                         💬 開啟此單外送員對話
-                    </button>
+                    </button>` : `
+                    <button type="button" disabled style="margin-top: auto; width: 100%; box-sizing: border-box; background: #e2e8f0; color: #64748b; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: 12.5px; font-weight: bold; cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        ⏳ 暫時還沒委派外送員（備餐中）
+                    </button>`}
                 `;
             }
 
@@ -6135,7 +6139,8 @@
 
             const isHeadingToStore = statusStr.includes('領取') || statusStr.includes('前往店家');
 
-            const hasCourier = Boolean(activeData.hasChat) || (courier.name && courier.name !== '外送夥伴') || !!courier.latitude || !isPreparing || isHeadingToStore;
+            const hasCourier = isCourierActuallyAssigned(activeData);
+            window._activeOrderCourierAssigned = hasCourier;
 
 
 
@@ -6379,15 +6384,15 @@
 
                         <span>💬 外送即時傳訊</span>
 
-                        <span style="font-size: 11px; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 10px;">外送員配對中</span>
+                        <span style="font-size: 11px; background: #fef3c7; color: #b45309; padding: 2px 8px; border-radius: 10px;">尚未委派外送員</span>
 
                     </div>
 
                     <div style="font-size: 12px; color: #64748b; line-height: 1.6;">
 
-                        目前店家正在製作餐點中。<br>
+                        ⏳ 暫時還沒委派外送員（店家備餐中）。<br>
 
-                        外送夥伴接單後，將自動開啟專屬即時傳訊功能。
+                        待外送夥伴接單後，將自動開啟聯絡外送員按鈕。
 
                     </div>
 
@@ -7407,7 +7412,8 @@
 
                         const chatSection = document.getElementById('liveActiveChatSection');
 
-                        const curHasCourier = Boolean(activeRes.hasChat) || (curCourier.name && curCourier.name !== '外送夥伴') || !!curCourier.latitude || !curIsPreparing || curIsHeadingToStore;
+                        const curHasCourier = isCourierActuallyAssigned(activeRes);
+                        window._activeOrderCourierAssigned = curHasCourier;
 
                         if (chatPlaceholder && chatSection) {
 
@@ -7678,6 +7684,19 @@
 
 
 
+        // 嚴格判斷是否「已實際委派外送員」（避免店家備餐中無外送員時使用者過早連線）
+        function isCourierActuallyAssigned(activeObj) {
+            if (!activeObj || activeObj.status !== 'success') return false;
+            if (activeObj.courierAssigned === false || activeObj.hasChat === false) return false;
+            const c = activeObj.courier || {};
+            const cleanName = cleanCourierDisplayName(c.name);
+            if (cleanName) return true;
+            if (c.phone && String(c.phone).trim()) return true;
+            if (c.latitude != null && c.longitude != null && Number(c.latitude) !== 0 && Number(c.longitude) !== 0) return true;
+            if (activeObj.courierAssigned === true) return true;
+            return false;
+        }
+
         // 取得乾淨的外送員顯示名稱（排除「外送夥伴」、「店家正在用心備餐中」等預設佔位字樣）
         function cleanCourierDisplayName(rawName) {
             let s = String(rawName || '').trim();
@@ -7774,6 +7793,14 @@
         window.connectActiveCourierChat = async function() {
             const uuid = window.currentActiveOrderUuid || '';
             if (!uuid) return;
+            if (window._activeOrderCourierAssigned === false) {
+                const hintEl = document.getElementById('liveActiveChatGateHint');
+                if (hintEl) {
+                    hintEl.style.color = '#b45309';
+                    hintEl.innerText = '⏳ 暫時還沒委派外送員（店家備餐中），待外送員接單後即可聯絡';
+                }
+                return;
+            }
             if (window._isConnectingActiveChat) return;
             window._isConnectingActiveChat = true;
 
