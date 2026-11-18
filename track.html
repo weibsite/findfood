@@ -3633,7 +3633,7 @@
 
                 list.forEach(m => {
 
-                    appendMultiChatBubble(m.sender, m.text, false);
+                    appendMultiChatBubble(m.sender, m.text, false, Boolean(m.isRead));
 
                 });
 
@@ -3669,12 +3669,19 @@
 
                     let sender = (typeof item === 'object' && item.sender) ? item.sender : 'courier';
 
+                    const itemIsRead = Boolean(typeof item === 'object' && (item.isRead || String(item.readStatus || '').toUpperCase() === 'READ'));
+
                     const trimmed = text.trim();
 
                     if (!trimmed) return;
                     if (typeof isCourierChatNoiseText === 'function' && isCourierChatNoiseText(trimmed, respCourierName)) return;
 
-                    if (window.renderedChatMessagesSet.has(`user:${trimmed}`)) return;
+                    if (window.renderedChatMessagesSet.has(`user:${trimmed}`)) {
+                        if (itemIsRead && typeof markUserChatBubbleRead === 'function') {
+                            markUserChatBubbleRead('multiChatMessages', trimmed, uuid);
+                        }
+                        return;
+                    }
 
                     const key = `${sender}:${trimmed}`;
 
@@ -3682,8 +3689,10 @@
 
                         window.renderedChatMessagesSet.add(key);
 
-                        appendMultiChatBubble(sender, trimmed, true);
+                        appendMultiChatBubble(sender, trimmed, true, itemIsRead);
 
+                    } else if (sender === 'user' && itemIsRead && typeof markUserChatBubbleRead === 'function') {
+                        markUserChatBubbleRead('multiChatMessages', trimmed, uuid);
                     }
 
                 });
@@ -3694,19 +3703,44 @@
 
 
 
-        function appendMultiChatBubble(sender, text, animate = true) {
+        function appendMultiChatBubble(sender, text, animate = true, isRead = false) {
 
             const container = document.getElementById('multiChatMessages');
 
             if (!container) return;
 
-            const bubble = document.createElement('div');
+            if (sender === 'user') {
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.alignItems = 'flex-end';
+                row.style.justifyContent = 'flex-end';
+                row.style.gap = '5px';
+                row.style.alignSelf = 'flex-end';
+                row.style.maxWidth = '92%';
 
-            bubble.className = `multi-chat-bubble ${sender === 'user' ? 'user' : 'courier'}`;
+                const tag = document.createElement('span');
+                tag.className = 'chat-read-tag';
+                tag.dataset.userMsg = String(text || '').trim();
+                tag.style.fontSize = '10px';
+                tag.style.whiteSpace = 'nowrap';
+                tag.style.marginBottom = '2px';
+                tag.style.color = isRead ? '#059669' : '#94a3b8';
+                tag.style.fontWeight = isRead ? '700' : '400';
+                tag.innerText = isRead ? '✓ 已讀' : '已傳送';
 
-            bubble.innerText = text;
+                const bubble = document.createElement('div');
+                bubble.className = 'multi-chat-bubble user';
+                bubble.innerText = text;
 
-            container.appendChild(bubble);
+                row.appendChild(tag);
+                row.appendChild(bubble);
+                container.appendChild(row);
+            } else {
+                const bubble = document.createElement('div');
+                bubble.className = 'multi-chat-bubble courier';
+                bubble.innerText = text;
+                container.appendChild(bubble);
+            }
 
             container.scrollTop = container.scrollHeight;
 
@@ -7533,9 +7567,9 @@
 
 
 
-        // 本地保存對話歷史 (重新整理訊息不丟失)
+        // 本地保存對話歷史 (重新整理訊息不丟失，同時記錄已讀狀態)
 
-        function saveChatMsgToStorage(uuid, sender, text) {
+        function saveChatMsgToStorage(uuid, sender, text, isRead = false) {
 
             try {
 
@@ -7543,18 +7577,47 @@
 
                 const list = JSON.parse(localStorage.getItem(key) || '[]');
 
-                if (!list.some(m => m.sender === sender && m.text === text)) {
+                const existing = list.find(m => m.sender === sender && m.text === text);
+                if (!existing) {
 
-                    list.push({ sender, text, time: Date.now() });
+                    list.push({ sender, text, isRead: Boolean(isRead), time: Date.now() });
 
                     if (list.length > 50) list.shift();
 
                     localStorage.setItem(key, JSON.stringify(list));
 
+                } else if (isRead && !existing.isRead) {
+                    existing.isRead = true;
+                    localStorage.setItem(key, JSON.stringify(list));
                 }
 
             } catch(e) {}
 
+        }
+
+        // 即時將已發送的顧客氣泡更新為「✓ 已讀」（同時將該則之前所有顧客氣泡標為已讀，符合 LINE / Uber 已讀邏輯）
+        function markUserChatBubbleRead(containerId, targetText, uuid) {
+            try {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                const trimmedTarget = String(targetText || '').trim();
+                const tags = Array.from(container.querySelectorAll('.chat-read-tag'));
+                let matchedIdx = -1;
+                tags.forEach((el, idx) => {
+                    if ((el.dataset.userMsg || '').trim() === trimmedTarget) matchedIdx = idx;
+                });
+                if (matchedIdx >= 0) {
+                    for (let i = 0; i <= matchedIdx; i++) {
+                        const el = tags[i];
+                        el.innerText = '✓ 已讀';
+                        el.style.color = '#059669';
+                        el.style.fontWeight = '700';
+                        if (uuid && el.dataset.userMsg) {
+                            saveChatMsgToStorage(uuid, 'user', el.dataset.userMsg, true);
+                        }
+                    }
+                }
+            } catch(e) {}
         }
 
 
@@ -7577,7 +7640,7 @@
 
                         window.renderedChatMessagesSet.add(msgKey);
 
-                        appendActiveChatBubble(m.sender, m.text, false);
+                        appendActiveChatBubble(m.sender, m.text, false, Boolean(m.isRead));
 
                     }
 
@@ -7797,6 +7860,8 @@
 
                     let sender = (typeof item === 'object' && item.sender) ? item.sender : 'courier';
 
+                    const itemIsRead = Boolean(typeof item === 'object' && (item.isRead || String(item.readStatus || '').toUpperCase() === 'READ'));
+
                     const trimmed = text.trim();
 
                     if (!trimmed) return;
@@ -7807,10 +7872,12 @@
 
 
 
-                    // 若本機剛發送過此訊息，辨識為 user
+                    // 若本機剛發送過此訊息，同步更新「已讀」狀態後跳過重複新增
 
                     if (window.renderedChatMessagesSet.has(`user:${trimmed}`)) {
-
+                        if (itemIsRead) {
+                            markUserChatBubbleRead('liveActiveChatMessages', trimmed, uuid);
+                        }
                         return;
 
                     }
@@ -7823,7 +7890,7 @@
 
                         window.renderedChatMessagesSet.add(key);
 
-                        appendActiveChatBubble(sender, trimmed);
+                        appendActiveChatBubble(sender, trimmed, true, itemIsRead);
 
                         if (sender === 'courier') {
 
@@ -7831,6 +7898,8 @@
 
                         }
 
+                    } else if (sender === 'user' && itemIsRead) {
+                        markUserChatBubbleRead('liveActiveChatMessages', trimmed, uuid);
                     }
 
                 });
@@ -8040,7 +8109,7 @@
 
 
 
-        function appendActiveChatBubble(sender, text, shouldSave = true) {
+        function appendActiveChatBubble(sender, text, shouldSave = true, isRead = false) {
 
             const area = document.getElementById('liveActiveChatMessages');
 
@@ -8048,7 +8117,7 @@
 
             const bubble = document.createElement('div');
 
-            bubble.style.maxWidth = '80%';
+            bubble.style.maxWidth = sender === 'user' ? '100%' : '80%';
 
             bubble.style.padding = '6px 10px';
 
@@ -8064,7 +8133,23 @@
 
             if (sender === 'user') {
 
-                bubble.style.alignSelf = 'flex-end';
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.alignItems = 'flex-end';
+                row.style.justifyContent = 'flex-end';
+                row.style.gap = '5px';
+                row.style.alignSelf = 'flex-end';
+                row.style.maxWidth = '92%';
+
+                const tag = document.createElement('span');
+                tag.className = 'chat-read-tag';
+                tag.dataset.userMsg = String(text || '').trim();
+                tag.style.fontSize = '10px';
+                tag.style.whiteSpace = 'nowrap';
+                tag.style.marginBottom = '2px';
+                tag.style.color = isRead ? '#059669' : '#94a3b8';
+                tag.style.fontWeight = isRead ? '700' : '400';
+                tag.innerText = isRead ? '✓ 已讀' : '已傳送';
 
                 bubble.style.background = '#dcfce7';
 
@@ -8073,6 +8158,10 @@
                 bubble.style.borderBottomRightRadius = '2px';
 
                 bubble.innerHTML = `<strong>您：</strong>${text}`;
+
+                row.appendChild(tag);
+                row.appendChild(bubble);
+                area.appendChild(row);
 
             } else if (sender === 'courier') {
 
@@ -8086,6 +8175,8 @@
 
                 bubble.innerHTML = `<strong>外送夥伴：</strong>${text}`;
 
+                area.appendChild(bubble);
+
             } else {
 
                 bubble.style.alignSelf = 'center';
@@ -8098,11 +8189,9 @@
 
                 bubble.innerHTML = text;
 
+                area.appendChild(bubble);
+
             }
-
-
-
-            area.appendChild(bubble);
 
             area.scrollTop = area.scrollHeight;
 
@@ -8112,7 +8201,7 @@
 
             if (shouldSave && (sender === 'user' || sender === 'courier')) {
 
-                saveChatMsgToStorage(window.currentActiveOrderUuid, sender, text);
+                saveChatMsgToStorage(window.currentActiveOrderUuid, sender, text, isRead);
 
             }
 
