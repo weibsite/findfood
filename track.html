@@ -3524,17 +3524,41 @@
 
             if (msgContainer) {
 
-                msgContainer.innerHTML = '<div style="text-align: center; color: #94a3b8; font-size: 12px; margin: 4px 0;">外送員已開始服務，有任何問題可以這邊聯絡</div>';
+                msgContainer.innerHTML = '<div id="multiChatConnectingTip" style="text-align: center; color: #b45309; background: #fef3c7; border-radius: 8px; padding: 6px 10px; font-size: 12px; margin: 4px 0;">⏳ 連線中，正在載入專屬對話通道...</div>';
 
             }
 
-
+            const modalBadge = document.getElementById('multiChatModalBadge');
+            if (modalBadge) {
+                modalBadge.innerText = '連線中...';
+                modalBadge.style.background = '#fef3c7';
+                modalBadge.style.color = '#b45309';
+            }
 
             restoreMultiChatMessages(uuid);
 
-            syncMultiChatMessages(uuid);
+            syncMultiChatMessages(uuid).finally(() => {
+                const tip = document.getElementById('multiChatConnectingTip');
+                if (tip) tip.innerText = '外送員已開始服務，有任何問題可以這邊聯絡', tip.style.color = '#94a3b8', tip.style.background = 'transparent', tip.style.padding = '0';
+                const mb = document.getElementById('multiChatModalBadge');
+                if (mb && window.activeMultiChatUuid === uuid) {
+                    mb.innerText = '已連線';
+                    mb.style.background = '#dcfce7';
+                    mb.style.color = '#16a34a';
+                }
+            });
 
-
+            if (window._multiChatPollTimer) clearInterval(window._multiChatPollTimer);
+            window._multiChatPollTimer = setInterval(() => {
+                if (document.visibilityState === 'hidden') return;
+                const m = document.getElementById('multiChatModal');
+                if (!m || m.style.display === 'none' || window.activeMultiChatUuid !== uuid) {
+                    clearInterval(window._multiChatPollTimer);
+                    window._multiChatPollTimer = null;
+                    return;
+                }
+                syncMultiChatMessages(uuid);
+            }, 8000);
 
             modal.style.display = 'flex';
 
@@ -3547,6 +3571,11 @@
 
 
         function closeMultiChatModal() {
+
+            if (window._multiChatPollTimer) {
+                clearInterval(window._multiChatPollTimer);
+                window._multiChatPollTimer = null;
+            }
 
             const modal = document.getElementById('multiChatModal');
 
@@ -3632,6 +3661,7 @@
                 }
 
                 const msgs = (res.data && res.data.chatMessages) || res.chatMessages || [];
+                const respCourierName = (res.data && res.data.courierName) || '';
 
                 msgs.forEach(item => {
 
@@ -3642,6 +3672,7 @@
                     const trimmed = text.trim();
 
                     if (!trimmed) return;
+                    if (typeof isCourierChatNoiseText === 'function' && isCourierChatNoiseText(trimmed, respCourierName)) return;
 
                     if (window.renderedChatMessagesSet.has(`user:${trimmed}`)) return;
 
@@ -3755,6 +3786,8 @@
                 const res = await sendCourierMessage(targetUuid, text, window.trackApiBase);
                 if (res && (res.status === 'success' || res.success)) {
                     if (btn) btn.innerText = '已送達';
+                    setTimeout(() => { if (window.activeMultiChatUuid === targetUuid) syncMultiChatMessages(targetUuid); }, 3500);
+                    setTimeout(() => { if (window.activeMultiChatUuid === targetUuid) syncMultiChatMessages(targetUuid); }, 8500);
                 } else {
                     const errMsg = (res && (res.error || res.message)) || '通訊斷線中，請聯絡代訂處理';
                     appendMultiChatBubble('courier', `⚠️ 系統提示：${errMsg}`, true);
@@ -6311,7 +6344,7 @@
 
 
 
-                <!-- 與外送員即時傳訊框 (外送員接單/前往取餐/配送中全面開啟) -->
+                <!-- 與外送員即時傳訊框 (預設保持視窗但未連線，點擊按鈕後才載入 Cookie 與啟動自動輪詢) -->
 
                 <div id="liveActiveChatSection" style="display: ${hasCourier ? 'block' : 'none'}; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; overflow: hidden; margin-bottom: 14px; text-align: left;">
 
@@ -6321,37 +6354,51 @@
 
                         <div style="display: flex; align-items: center; gap: 6px;">
 
-                            <button type="button" onclick="syncActiveCourierChatMessages(window.currentActiveOrderUuid, window.trackApiBase)" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: #334155; font-weight: 500;">🔄 檢查新訊息</button>
+                            <button type="button" id="liveActiveChatRefreshBtn" onclick="syncActiveCourierChatMessages(window.currentActiveOrderUuid, window.trackApiBase, true)" style="display: none; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: #334155; font-weight: 500;">🔄 檢查新訊息</button>
 
-                            <span id="liveActiveChatBadge" style="font-size: 11px; color: #16a34a; background: #dcfce7; padding: 2px 6px; border-radius: 4px; transition: all 0.3s;">配送中</span>
+                            <span id="liveActiveChatBadge" style="font-size: 11px; color: #64748b; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; transition: all 0.3s;">未連線</span>
 
                         </div>
 
                     </div>
 
-                    <div id="liveActiveChatMessages" style="height: 140px; overflow-y: auto; padding: 10px; background: #f8fafc; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
+                    <!-- 預設未連線遮罩區：保持視窗大小，中間顯示點擊啟動按鈕 -->
+                    <div id="liveActiveChatGate" style="min-height: 175px; padding: 20px 16px; background: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;">
 
-                        <div style="text-align: center; color: #94a3b8; font-size: 11px; margin: 2px 0;">外送員已開始服務，有任何問題可以這邊聯絡</div>
+                        <button type="button" id="liveActiveChatConnectBtn" onclick="connectActiveCourierChat()" style="background: #06c167; color: #ffffff; border: none; border-radius: 10px; padding: 11px 20px; font-size: 13.5px; font-weight: bold; cursor: pointer; box-shadow: 0 3px 10px rgba(6, 193, 103, 0.28); transition: all 0.2s;">💬 需要聯絡外送員？按這裡</button>
 
-                    </div>
-
-                    <div style="padding: 6px 8px; background: #ffffff; border-top: 1px solid #f1f5f9; display: flex; gap: 5px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-
-                        <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('路上小心，慢慢來！')">🛵 路上小心慢慢來</button>
-
-                        <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('抵達後請幫我按一下電鈴，謝謝！')">🔔 到了請按鈴</button>
-
-                        <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('抵達後請撥打電話給我，謝謝！')">📞 到了請打電話</button>
-
-                        <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('沒問題，請慢慢騎注意行車安全！')">🛵 請注意安全</button>
+                        <div id="liveActiveChatGateHint" style="font-size: 11.5px; color: #64748b; line-height: 1.5; max-width: 280px;">點擊後才會載入專屬對話通道並自動接收外送員回覆</div>
 
                     </div>
 
-                    <div style="padding: 8px 10px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; gap: 6px;">
+                    <!-- 連線成功後展開之即時對話本體 -->
+                    <div id="liveActiveChatBody" style="display: none;">
 
-                        <input type="text" id="liveActiveChatInput" placeholder="輸入訊息回覆外送人員..." style="flex: 1; padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 12.5px; outline: none;" oncompositionstart="window.isComposingChat=true;" oncompositionend="window.isComposingChat=false;window.justComposedAt=Date.now();" onkeydown="handleActiveChatKeydown(event)" />
+                        <div id="liveActiveChatMessages" style="height: 140px; overflow-y: auto; padding: 10px; background: #f8fafc; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
 
-                        <button type="button" id="liveActiveSendBtn" onclick="triggerSendActiveMsg()" style="background: #06c167; color: white; border: none; padding: 6px 14px; border-radius: 8px; font-size: 12.5px; font-weight: bold; cursor: pointer;">發送</button>
+                            <div style="text-align: center; color: #94a3b8; font-size: 11px; margin: 2px 0;">外送員已開始服務，有任何問題可以這邊聯絡</div>
+
+                        </div>
+
+                        <div style="padding: 6px 8px; background: #ffffff; border-top: 1px solid #f1f5f9; display: flex; gap: 5px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+
+                            <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('路上小心，慢慢來！')">🛵 路上小心慢慢來</button>
+
+                            <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('抵達後請幫我按一下電鈴，謝謝！')">🔔 到了請按鈴</button>
+
+                            <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('抵達後請撥打電話給我，謝謝！')">📞 到了請打電話</button>
+
+                            <button type="button" class="split-tab-btn" style="font-size: 11px; padding: 3px 8px;" onclick="sendActiveQuickMsg('沒問題，請慢慢騎注意行車安全！')">🛵 請注意安全</button>
+
+                        </div>
+
+                        <div style="padding: 8px 10px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; gap: 6px;">
+
+                            <input type="text" id="liveActiveChatInput" placeholder="輸入訊息回覆外送人員..." style="flex: 1; padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 12.5px; outline: none;" oncompositionstart="window.isComposingChat=true;" oncompositionend="window.isComposingChat=false;window.justComposedAt=Date.now();" onkeydown="handleActiveChatKeydown(event)" />
+
+                            <button type="button" id="liveActiveSendBtn" onclick="triggerSendActiveMsg()" style="background: #06c167; color: white; border: none; padding: 6px 14px; border-radius: 8px; font-size: 12.5px; font-weight: bold; cursor: pointer;">發送</button>
+
+                        </div>
 
                     </div>
 
@@ -6382,6 +6429,9 @@
             // 啟動定時輪詢 (純 HTTP GraphQL 查詢座標與狀態，絕不啟動瀏覽器)
 
             _attachSingleConfusionSwitchUI('active', activeData, parsedData, data, '', orderUuid);
+            // 預設關閉聊天室連線與輪詢，待使用者主動點擊「需要聯絡外送員？按這裡」才載入 Cookie 連線
+            stopActiveChatAutoSync();
+            window._activeChatConnectedUuid = null;
             startActiveOrderLivePolling(orderUuid, parsedData, data);
 
         }
@@ -7072,7 +7122,7 @@
 
                 try {
 
-                    if (window.currentActiveOrderUuid && orderUuid !== window.currentActiveOrderUuid) { clearInterval(liveActivePollTimer); liveActivePollTimer = null; return; }
+                    if (window.currentActiveOrderUuid && orderUuid !== window.currentActiveOrderUuid) { clearInterval(liveActivePollTimer); liveActivePollTimer = null; stopActiveChatAutoSync(); return; }
                     const activeRes = await fetchActiveOrder(orderUuid, '', window.trackApiBase);
 
 
@@ -7084,6 +7134,7 @@
                         clearInterval(liveActivePollTimer);
 
                         if (liveEtaCountdownTimer) clearInterval(liveEtaCountdownTimer);
+                        stopActiveChatAutoSync();
 
                         renderCanceledStage(_tagSwitchedLiveTransition(activeRes, orderUuid), parsedData, data, '');
 
@@ -7100,6 +7151,7 @@
                         clearInterval(liveActivePollTimer);
 
                         if (liveEtaCountdownTimer) clearInterval(liveEtaCountdownTimer);
+                        stopActiveChatAutoSync();
 
                         const termRes = await fetchTerminatedOrder(orderUuid, '', window.trackApiBase);
 
@@ -7537,23 +7589,203 @@
 
 
 
+        // 過濾 Uber 聊天室頂部名片、時間分隔線、已讀狀態等非訊息文字
+        function isCourierChatNoiseText(text, respCourierName = '') {
+            const trimmed = String(text || '').trim();
+            if (!trimmed) return true;
+            const statusNoise = new Set(['已讀', '已傳送', '已送達', '傳送中', 'Read', 'Sent', 'Delivered', 'Sending', 'Sending...']);
+            if (statusNoise.has(trimmed)) return true;
+            if (/^(\d{1,2}月\d{1,2}日|週[一二三四五六日]|星期[一二三四五六日天]|今天|昨天|Today|Yesterday|上午|下午|\d{1,2}:\d{2})/i.test(trimmed) && trimmed.length <= 32) {
+                return true;
+            }
+            if (trimmed.includes('Motorbike') || trimmed.includes('NDR-') || (trimmed.includes('•') && trimmed.length <= 45) || (trimmed.includes('Uber') && trimmed.length <= 45)) {
+                return true;
+            }
+            const courierNameEl = document.getElementById('liveActiveCourierName');
+            const rawDomName = courierNameEl ? courierNameEl.innerText.trim() : '';
+            const cleanDomName = rawDomName.replace(/^外送夥伴\s*/, '').replace(/\s*前往店家取餐$/, '').trim();
+            const cleanRespName = String(respCourierName || '').trim();
+            if ((rawDomName && trimmed === rawDomName) || (cleanDomName && trimmed === cleanDomName) || (cleanRespName && trimmed === cleanRespName)) {
+                return true;
+            }
+            return false;
+        }
+
+        function stopActiveChatAutoSync() {
+            if (window._activeChatSyncInitTimer) {
+                clearTimeout(window._activeChatSyncInitTimer);
+                window._activeChatSyncInitTimer = null;
+            }
+            if (window._activeChatPollTimer) {
+                clearInterval(window._activeChatPollTimer);
+                window._activeChatPollTimer = null;
+            }
+            window._activeChatPollUuid = null;
+        }
+
+        function startActiveChatAutoSync(orderUuid, trackApiBase, skipImmediate = true) {
+            if (!orderUuid) return;
+            if (window._activeChatPollTimer && window._activeChatPollUuid === orderUuid) return;
+            stopActiveChatAutoSync();
+            window._activeChatPollUuid = orderUuid;
+
+            if (!skipImmediate) {
+                window._activeChatSyncInitTimer = setTimeout(() => {
+                    if (window.currentActiveOrderUuid === orderUuid && window._activeChatConnectedUuid === orderUuid && document.visibilityState !== 'hidden') {
+                        syncActiveCourierChatMessages(orderUuid, trackApiBase, false);
+                    }
+                }, 1500);
+            }
+
+            // 每 10 秒自動輪詢外送員新訊息（僅於使用者主動開啟連線後運作，切到背景分頁自動暫停）
+            window._activeChatPollTimer = setInterval(() => {
+                if (window.currentActiveOrderUuid !== orderUuid || window._activeChatConnectedUuid !== orderUuid) {
+                    stopActiveChatAutoSync();
+                    return;
+                }
+                if (document.visibilityState === 'hidden') return;
+                if (window.isSendingCourierMsg) return;
+                syncActiveCourierChatMessages(orderUuid, trackApiBase, false);
+            }, 10000);
+        }
+
+        // 使用者點擊「需要聯絡外送員？按這裡」後，才開始載入訂單專屬 Cookie 並開啟自動同步
+        window.connectActiveCourierChat = async function() {
+            const uuid = window.currentActiveOrderUuid || '';
+            if (!uuid) return;
+            if (window._isConnectingActiveChat) return;
+            window._isConnectingActiveChat = true;
+
+            const btn = document.getElementById('liveActiveChatConnectBtn');
+            const hint = document.getElementById('liveActiveChatGateHint');
+            const badge = document.getElementById('liveActiveChatBadge');
+            const gate = document.getElementById('liveActiveChatGate');
+            const body = document.getElementById('liveActiveChatBody');
+            const refreshBtn = document.getElementById('liveActiveChatRefreshBtn');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.75';
+                btn.style.cursor = 'wait';
+                btn.innerText = '⏳ 連線中，請稍候...';
+            }
+            if (hint) {
+                hint.style.color = '#b45309';
+                hint.innerText = '正在載入訂單專屬 Cookie 並建立外送員對話通道（約需 5～15 秒）...';
+            }
+            if (badge) {
+                badge.innerText = '連線中...';
+                badge.style.background = '#fef3c7';
+                badge.style.color = '#b45309';
+            }
+
+            try {
+                const syncResult = await syncActiveCourierChatMessages(uuid, window.trackApiBase, false, true);
+                if (window.currentActiveOrderUuid !== uuid) return;
+
+                if (!syncResult || !syncResult.ok) {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                        btn.style.cursor = 'pointer';
+                        btn.innerText = '🔄 連線失敗，點此重試';
+                    }
+                    if (hint) {
+                        hint.style.color = '#dc2626';
+                        hint.innerText = (syncResult && syncResult.message) || '目前無法建立連線，請稍後再試或聯絡代訂處理';
+                    }
+                    if (badge) {
+                        badge.innerText = '未連線';
+                        badge.style.background = '#f1f5f9';
+                        badge.style.color = '#64748b';
+                    }
+                    return;
+                }
+
+                if (syncResult.status === 'delivered' || syncResult.status === 'canceled') {
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.style.opacity = '0.6';
+                        btn.style.cursor = 'not-allowed';
+                        btn.style.background = '#94a3b8';
+                        btn.innerText = syncResult.status === 'delivered' ? '✅ 訂單已送達，對話已關閉' : '❌ 訂單已取消，對話已關閉';
+                    }
+                    if (hint) {
+                        hint.style.color = '#64748b';
+                        hint.innerText = 'Uber Eats 已關閉此外送訂單的即時對話通道';
+                    }
+                    if (badge) {
+                        badge.innerText = '已結束';
+                        badge.style.background = '#f1f5f9';
+                        badge.style.color = '#64748b';
+                    }
+                    return;
+                }
+
+                // 連線成功：展開聊天室、顯示手動更新鈕、啟動 10 秒自動輪詢接收外送員訊息
+                window._activeChatConnectedUuid = uuid;
+                if (gate) gate.style.display = 'none';
+                if (body) body.style.display = 'block';
+                if (refreshBtn) refreshBtn.style.display = 'inline-block';
+                if (badge) {
+                    badge.innerText = '已連線';
+                    badge.style.background = '#dcfce7';
+                    badge.style.color = '#16a34a';
+                }
+
+                startActiveChatAutoSync(uuid, window.trackApiBase, true);
+
+                const input = document.getElementById('liveActiveChatInput');
+                if (input) setTimeout(() => input.focus(), 150);
+            } catch (e) {
+                console.warn('開啟外送員聊天室失敗:', e);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                    btn.innerText = '🔄 連線失敗，點此重試';
+                }
+                if (hint) {
+                    hint.style.color = '#dc2626';
+                    hint.innerText = '網路或伺服器暫時忙碌，請點擊重試';
+                }
+                if (badge) {
+                    badge.innerText = '未連線';
+                    badge.style.background = '#f1f5f9';
+                    badge.style.color = '#64748b';
+                }
+            } finally {
+                window._isConnectingActiveChat = false;
+            }
+        };
+
         // 即時雙向同步外送員與顧客訊息
 
-        async function syncActiveCourierChatMessages(uuid, trackApiBase) {
+        async function syncActiveCourierChatMessages(uuid, trackApiBase, isManual = false, isInitialConnect = false) {
 
-            if (!uuid) return;
+            if (!uuid) return { ok: false, message: '無效的訂單編號' };
+            if (!isInitialConnect && window._isSyncingActiveChat) return { ok: false, skipped: true };
+            window._isSyncingActiveChat = true;
+            const refreshBtn = isManual ? document.getElementById('liveActiveChatRefreshBtn') : null;
+            if (refreshBtn) {
+                refreshBtn.disabled = true;
+                refreshBtn.innerText = '⏳ 同步中...';
+            }
 
             try {
 
                 const res = await fetchCourierMessages(uuid, trackApiBase);
 
-                if (!res) return;
+                if (!res || res.status === 'error' || res.success === false) {
+                    return { ok: false, message: (res && (res.message || res.error)) || '通訊斷線中，請聯絡代訂處理' };
+                }
 
                 
 
                 // 支援 res.data.chatMessages 或 res.chatMessages
 
                 const msgs = (res.data && res.data.chatMessages) || res.chatMessages || [];
+                const respCourierName = (res.data && res.data.courierName) || '';
 
                 let hasNewCourierMsg = false;
 
@@ -7569,18 +7801,8 @@
 
                     if (!trimmed) return;
 
-
-
-                    // 過濾掉聊天室頂部外送員名片資訊 (如姓名、車牌、Uber Motorbike 等)，避免誤當作訊息氣泡
-
-                    const courierNameEl = document.getElementById('liveActiveCourierName');
-
-                    const cName = courierNameEl ? courierNameEl.innerText.trim() : '';
-
-                    if (trimmed === cName || trimmed.includes('Motorbike') || trimmed.includes('•') || trimmed.includes('NDR-') || trimmed.includes('Uber')) {
-
+                    if (isCourierChatNoiseText(trimmed, respCourierName)) {
                         return;
-
                     }
 
 
@@ -7621,10 +7843,33 @@
 
                 }
 
+                if (refreshBtn) {
+                    refreshBtn.innerText = hasNewCourierMsg ? '📩 收到新訊息' : '✓ 已同步';
+                    setTimeout(() => {
+                        if (refreshBtn) {
+                            refreshBtn.disabled = false;
+                            refreshBtn.innerText = '🔄 檢查新訊息';
+                        }
+                    }, 1500);
+                }
+
+                return { ok: true, status: res.status || 'chat_active', hasNewCourierMsg };
+
             } catch(e) {
 
                 console.warn('同步外送員訊息異常:', e);
+                if (refreshBtn) {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerText = '🔄 檢查新訊息';
+                }
+                return { ok: false, message: '連線異常，請稍後再試' };
 
+            } finally {
+                window._isSyncingActiveChat = false;
+                if (refreshBtn && refreshBtn.innerText === '⏳ 同步中...') {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerText = '🔄 檢查新訊息';
+                }
             }
 
         }
@@ -7649,11 +7894,11 @@
 
                 setTimeout(() => {
 
-                    badge.innerText = '配送中';
+                    badge.innerText = window._activeChatConnectedUuid ? '已連線' : '未連線';
 
-                    badge.style.background = '#dcfce7';
+                    badge.style.background = window._activeChatConnectedUuid ? '#dcfce7' : '#f1f5f9';
 
-                    badge.style.color = '#16a34a';
+                    badge.style.color = window._activeChatConnectedUuid ? '#16a34a' : '#64748b';
 
                 }, 8000);
 
@@ -7761,6 +8006,10 @@
 
                     appendActiveChatBubble('system', `⚠️ ${errMsg}`);
 
+                } else {
+                    // 發送成功後快速補拉兩次外送員回覆（3.5s / 8.5s），免等下輪定時輪詢
+                    setTimeout(() => { if (window.currentActiveOrderUuid === uuid) syncActiveCourierChatMessages(uuid, window.trackApiBase, false); }, 3500);
+                    setTimeout(() => { if (window.currentActiveOrderUuid === uuid) syncActiveCourierChatMessages(uuid, window.trackApiBase, false); }, 8500);
                 }
 
             } catch(e) {
