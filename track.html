@@ -3502,6 +3502,8 @@
 
             window.activeMultiChatStore = storeName;
 
+            window.activeMultiChatCourierName = (typeof cleanCourierDisplayName === 'function') ? cleanCourierDisplayName(courierName) : String(courierName || '').trim();
+
             window.renderedChatMessagesSet = new Set();
 
             const modal = document.getElementById('multiChatModal');
@@ -3662,6 +3664,11 @@
 
                 const msgs = (res.data && res.data.chatMessages) || res.chatMessages || [];
                 const respCourierName = (res.data && res.data.courierName) || '';
+                const cleanMultiName = (typeof cleanCourierDisplayName === 'function') ? cleanCourierDisplayName(respCourierName) : '';
+                if (cleanMultiName) {
+                    window.activeMultiChatCourierName = cleanMultiName;
+                    if (typeof refreshCourierBubbleNames === 'function') refreshCourierBubbleNames('multiChatMessages', cleanMultiName);
+                }
 
                 msgs.forEach(item => {
 
@@ -3738,7 +3745,17 @@
             } else {
                 const bubble = document.createElement('div');
                 bubble.className = 'multi-chat-bubble courier';
-                bubble.innerText = text;
+                const txtStr = String(text || '');
+                if (txtStr.startsWith('⚠️')) {
+                    bubble.innerText = txtStr;
+                } else {
+                    const dispName = (typeof cleanCourierDisplayName === 'function' ? cleanCourierDisplayName(window.activeMultiChatCourierName) : '') || '外送夥伴';
+                    const nameEl = document.createElement('strong');
+                    nameEl.className = 'courier-name-label';
+                    nameEl.innerText = `${dispName}：`;
+                    bubble.appendChild(nameEl);
+                    bubble.appendChild(document.createTextNode(txtStr));
+                }
                 container.appendChild(bubble);
             }
 
@@ -6448,6 +6465,9 @@
 
 
 
+            // 先記錄外送員真實姓名，讓還原的對話與新訊息立即顯示真實姓名 (例如「彧文：我正在途中」)
+            window.currentActiveCourierName = (typeof cleanCourierDisplayName === 'function') ? cleanCourierDisplayName(courier && courier.name) : '';
+
             // 立即從本地還原對話歷史 (重新整理訊息 0 秒保留，不消耗後端資源)
 
             restoreChatMessagesFromLocal(orderUuid);
@@ -7417,6 +7437,12 @@
 
                         const courierSubEl = document.getElementById('liveActiveCourierSubtitle');
 
+                        const polledCleanName = (typeof cleanCourierDisplayName === 'function') ? cleanCourierDisplayName(curCourier && curCourier.name) : '';
+                        if (polledCleanName && polledCleanName !== window.currentActiveCourierName) {
+                            window.currentActiveCourierName = polledCleanName;
+                            if (typeof refreshCourierBubbleNames === 'function') refreshCourierBubbleNames('liveActiveChatMessages', polledCleanName);
+                        }
+
 
 
                         if (curIsPreparing) {
@@ -7652,6 +7678,38 @@
 
 
 
+        // 取得乾淨的外送員顯示名稱（排除「外送夥伴」、「店家正在用心備餐中」等預設佔位字樣）
+        function cleanCourierDisplayName(rawName) {
+            let s = String(rawName || '').trim();
+            if (!s) return '';
+            if (['外送夥伴', '外送員', '店家正在用心備餐中', '外送夥伴正在前往店家取餐', '尚未派單'].includes(s)) return '';
+            if (s.includes('無外送員') || s.includes('備餐中') || s.includes('配對中') || s.includes('正在前往店家取餐')) return '';
+            s = s.replace(/^外送夥伴\s*[:：]?\s*/, '').replace(/\s*前往店家取餐$/, '').replace(/\s*正在配送.*$/, '').trim();
+            if (!s || ['外送夥伴', '外送員', '正在'].includes(s)) return '';
+            return s;
+        }
+
+        function getActiveCourierDisplayName(overrideName = '') {
+            const fromOverride = cleanCourierDisplayName(overrideName);
+            if (fromOverride) return fromOverride;
+            const fromState = cleanCourierDisplayName(window.currentActiveCourierName);
+            if (fromState) return fromState;
+            const el = document.getElementById('liveActiveCourierName');
+            const fromDom = el ? cleanCourierDisplayName(el.innerText) : '';
+            if (fromDom) return fromDom;
+            return '外送夥伴';
+        }
+
+        function refreshCourierBubbleNames(containerId, courierName) {
+            const clean = cleanCourierDisplayName(courierName);
+            if (!clean) return;
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.querySelectorAll('.courier-name-label').forEach(el => {
+                el.innerText = `${clean}：`;
+            });
+        }
+
         // 過濾 Uber 聊天室頂部名片、時間分隔線、已讀狀態等非訊息文字
         function isCourierChatNoiseText(text, respCourierName = '') {
             const trimmed = String(text || '').trim();
@@ -7734,7 +7792,7 @@
             }
             if (hint) {
                 hint.style.color = '#b45309';
-                hint.innerText = '正在載入訂單專屬 Cookie 並建立外送員對話通道（約需 5～15 秒）...';
+                hint.innerText = '正在聯絡外送員（約需 5～15 秒）...';
             }
             if (badge) {
                 badge.innerText = '連線中...';
@@ -7849,6 +7907,11 @@
 
                 const msgs = (res.data && res.data.chatMessages) || res.chatMessages || [];
                 const respCourierName = (res.data && res.data.courierName) || '';
+                const cleanRespCourierName = cleanCourierDisplayName(respCourierName);
+                if (cleanRespCourierName) {
+                    window.currentActiveCourierName = cleanRespCourierName;
+                    refreshCourierBubbleNames('liveActiveChatMessages', cleanRespCourierName);
+                }
 
                 let hasNewCourierMsg = false;
 
@@ -8173,7 +8236,12 @@
 
                 bubble.style.borderBottomLeftRadius = '2px';
 
-                bubble.innerHTML = `<strong>外送夥伴：</strong>${text}`;
+                const courierLabel = getActiveCourierDisplayName();
+                const nameEl = document.createElement('strong');
+                nameEl.className = 'courier-name-label';
+                nameEl.innerText = `${courierLabel}：`;
+                bubble.appendChild(nameEl);
+                bubble.appendChild(document.createTextNode(String(text || '')));
 
                 area.appendChild(bubble);
 
