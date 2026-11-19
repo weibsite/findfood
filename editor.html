@@ -1555,7 +1555,320 @@
             box-shadow: -6px 6px 22px rgba(225, 48, 108, 0.45);
         }
 
+
+        /* ====== 13. 線路多色彩與浮動刪除按鈕 (v15) ====== */
+        .line-delete-floating-popover {
+            position: absolute;
+            z-index: 120;
+            min-width: 250px;
+            max-width: 320px;
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1.5px solid rgba(226, 232, 240, 0.95);
+            border-radius: 14px;
+            padding: 14px 16px;
+            box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(15, 23, 42, 0.08);
+            display: none;
+            animation: popoverFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+        }
+
+        @keyframes popoverFadeIn {
+            from { opacity: 0; transform: scale(0.92) translateY(6px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .line-popover-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .line-color-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .line-popover-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #1e293b;
+        }
+
+        .line-popover-close {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 6px;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+        .line-popover-close:hover {
+            color: #e11d48;
+            background: #ffe4e6;
+        }
+
+        .line-popover-route {
+            font-size: 11.5px;
+            color: #475569;
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 8px 10px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+            word-break: break-all;
+            border: 1px solid #edf2f7;
+        }
+
+        .btn-delete-single-line {
+            width: 100%;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            box-shadow: 0 3px 10px rgba(239, 68, 68, 0.28);
+            transition: all 0.18s ease;
+        }
+        .btn-delete-single-line:hover {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            transform: translateY(-1px);
+            box-shadow: 0 5px 14px rgba(239, 68, 68, 0.38);
+        }
+
+        .drafting-lines-bar {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed rgba(203, 213, 225, 0.8);
+        }
+
+        .line-badge-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #ffffff;
+            padding: 5px 10px;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            cursor: pointer;
+            border: 1px solid #e2e8f0;
+            font-size: 11.5px;
+            transition: all 0.15s ease;
+        }
+        .line-badge-item:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+            transform: translateY(-1px);
+        }
+        .line-badge-item.selected {
+            background: #eff6ff;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .btn-del-line-chip {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 11px;
+            transition: all 0.15s;
+            margin-left: 2px;
+        }
+        .btn-del-line-chip:hover {
+            color: #ef4444;
+            background: #fee2e2;
+        }
+
+        /* 滑鼠懸停全線路流光動畫 (Full-Route Hover Flowing Animation) */
+        .pathway-wire.wire-combo-hover {
+            stroke-width: 5px !important;
+            opacity: 1 !important;
+            stroke-dasharray: 8 4 !important;
+            animation: flowDash 0.75s linear infinite !important;
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 12px currentColor) !important;
+        }
+
+        .wire-hover-mode .pathway-wire:not(.wire-combo-hover) {
+            opacity: 0.22 !important;
+            transition: opacity 0.18s ease;
+        }
+
+        /* ====== 14. GOTO 跳轉點樣式 (v16) ====== */
+        .crud-goto-select {
+            padding: 5px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            max-width: 175px;
+        }
+        .crud-goto-select:hover {
+            border-color: #94a3b8;
+            background: #ffffff;
+        }
+        .crud-goto-select.has-goto {
+            background: #eff6ff;
+            color: #2563eb;
+            border-color: #3b82f6;
+            font-weight: 700;
+        }
+
+        /* 畫布選項卡片右側跳轉箭頭膠囊按鈕 (極簡省空間，移除 GOTO 字樣) */
+        .wiring-goto-pill-btn {
+            margin-left: auto;
+            padding: 3px 6px;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #64748b;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+            min-width: 22px;
+            height: 22px;
+        }
+        .wiring-goto-pill-btn:hover {
+            background: #eef2ff;
+            color: #4f46e5;
+            border-color: #c7d2fe;
+            transform: scale(1.08);
+        }
+        .wiring-goto-pill-btn.active-goto {
+            background: linear-gradient(135deg, #e0e7ff, #ede9fe);
+            color: #4338ca;
+            border-color: #818cf8;
+            padding: 2px 7px;
+            box-shadow: 0 1px 4px rgba(99, 102, 241, 0.2);
+            min-width: auto;
+        }
+        .wiring-goto-pill-btn.active-goto-conclusion {
+            background: linear-gradient(135deg, #fef3c7, #fef08a);
+            color: #b45309;
+            border-color: #f59e0b;
+            padding: 2px 7px;
+            box-shadow: 0 1px 4px rgba(245, 158, 11, 0.25);
+            min-width: auto;
+        }
+
+        /* GOTO 彈出選單 (Popover) */
+        .goto-popover-menu {
+            position: absolute;
+            z-index: 150;
+            min-width: 290px;
+            max-width: 340px;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1.5px solid rgba(199, 210, 254, 0.85);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 14px 34px -4px rgba(30, 27, 75, 0.18), 0 4px 12px rgba(30, 27, 75, 0.08);
+            display: none;
+            animation: popoverFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+        }
+
+        .goto-popover-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .goto-popover-subtitle {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+
+        .goto-options-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .goto-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            background: #f8fafc;
+        }
+        .goto-item:hover {
+            background: #eef2ff;
+            border-color: #c7d2fe;
+        }
+        .goto-item.selected {
+            background: #eff6ff;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .goto-item .goto-icon {
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+        .goto-item .goto-info {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        .goto-item .goto-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+        .goto-item .goto-desc {
+            font-size: 10.5px;
+            color: #64748b;
+        }
+        .goto-item .goto-check {
+            color: #2563eb;
+            font-weight: 800;
+            font-size: 13px;
+        }
     </style>
+
+
 </head>
 <body>
 
@@ -1708,7 +2021,7 @@
         // 資料模型與版本機制 (預設資料不連結)
         // ==========================================
         const DEFAULT_DATA = {"welcome_message": "歡迎來到獨角獸的療癒花園\n\n我們從2018年開始，陪伴超過1,500位有緣人探索愛情、金錢、事業與自我療癒。\n\n無論你已經有明確的願望，或是還不知道該從哪裡開始，都可以透過以下選項，找到適合自己的服務\n\n小提醒：\n如果您與對方已經分開，而對方目前已有新的戀情，或是您希望發展感情的對象已有正式交往對象、婚姻關係，這類情況並不適合進行我們的愛情儀式。\n我們尊重每一段關係與當事人的選擇，也衷心祝福您能遇見真正適合自己、彼此珍惜的美好感情。\n\n請問今天想要了解什麼呢？", "themes": [{"id": "theme_love", "name": "改善愛情與感情關係", "icon": "💖", "message": "歡迎來到感情諮詢專區 🌸\n請選擇您目前遇到的感情狀態：", "categories": [{"id": "cat_0", "name": "已婚", "icon": "💍", "intro_message": "您選擇了【已婚】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_0_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你目前最希望改善婚姻中的哪個部分？", "options": ["夫妻感情冷淡、缺乏親密感", "經常爭吵、溝通不順暢", "缺乏信任、安全感不足", "希望增加甜蜜、浪漫與幸福感", "希望伴侶更重視自己、願意付出", "第三者介入或外界干擾", "希望婚姻更加穩定、長久", "對方提出離婚、關係面臨危機"]}, {"id": "cat_0_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "為了更了解你們目前的婚姻狀況，請問你們現在的相處模式是？", "options": ["目前同住，每天都有互動", "目前同住，但很少交流", "因工作或其他原因分隔兩地", "已經分居，但仍有聯絡", "已經分居，幾乎沒有聯絡", "正在討論分居或離婚", "親友介入、干擾婚姻"]}, {"id": "cat_0_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問你們目前的婚姻問題，已經持續多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三至五年", "五年以上", "從結婚前就一直存在"]}, {"id": "cat_0_s3", "step_number": 4, "step_label": "期待願望", "title": "如果婚姻關係能夠朝著你期待的方向改善，你最希望實現什麼願望？", "options": ["重新找回戀愛時的甜蜜與浪漫", "希望伴侶願意共同努力、用心經營婚姻", "改善溝通，減少爭吵與誤會、找到共識", "修復過去的傷害，重新建立信任與安全感", "減少第三者或外界因素對婚姻的干擾", "化解離婚危機，讓婚姻重新恢復穩定"]}], "outcomes": [{"id": "cat_0_out_0", "title": "【推薦方案 1】重新找回戀愛時的甜蜜與浪漫", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n親密愛人小儀式\n30天主題式能量補充（雙方）：感情升溫／關係和諧／關係修復／穩定彼此的情感連結\n30天伴侶關係療癒"}, {"id": "cat_0_out_1", "title": "【推薦方案 2】希望伴侶願意共同努力、用心經營婚姻", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：提升對未來的共識／減少誤會與衝突／關係和諧／關係修復\n30天伴侶關係療癒"}, {"id": "cat_0_out_2", "title": "【推薦方案 3】改善溝通，減少爭吵與誤會、找到共識", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：提升對未來的共識／減少誤會與衝突／溝通順暢／溫柔對待彼此\n30天水星魔法儀式"}, {"id": "cat_0_out_3", "title": "【推薦方案 4】修復過去的傷害，重新建立信任與安全感", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：關係修復／清理負面連結／穩定彼此的情感連結／放下過往心結與疙瘩\n30天伴侶關係療癒"}, {"id": "cat_0_out_4", "title": "【推薦方案 5】減少第三者或外界因素對婚姻的干擾", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：保護關係、避免流言蜚語的介入／清理外界對關係的負向干擾／強化關係中的忠誠／提升對彼此的專一／穩定彼此的情感連結\n30天伴侶關係療癒"}, {"id": "cat_0_out_5", "title": "【推薦方案 6】化解離婚危機，讓婚姻重新恢復穩定", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天伴侶關係療癒\n30天水星魔法儀式\n30天土星魔法療癒"}, {"id": "cat_0_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n親密愛人小儀式\n30天主題式能量補充（雙方）：感情升溫／關係和諧／關係修復／穩定彼此的情感連結\n30天伴侶關係療癒"}], "pathways": []}, {"id": "cat_1", "name": "交往中，但感情出現問題", "icon": "👫", "intro_message": "您選擇了【交往中，但感情出現問題】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_1_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你們目前最主要的感情問題是什麼？", "options": ["對方變得冷淡、互動減少", "經常爭吵、溝通不順暢", "缺乏信任、容易猜疑", "對方不夠主動、不願意付出", "第三者介入或外界干擾", "感情逐漸變淡、缺乏甜蜜感", "對未來沒有共識、關係停滯", "對方提出分手、關係面臨危機"]}, {"id": "cat_1_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "請問你們目前的互動狀況是？", "options": ["每天都有聯絡，但互動冷淡", "每天都有聯絡，但經常爭吵", "偶爾聯絡，互動明顯減少", "對方經常不讀不回、逃避溝通", "遠距離交往，互動受到影響", "目前處於冷戰或暫時不聯絡", "對方提出暫時分開、需要空間", "為了同樣的問題反覆爭吵，不知道該怎麼處理", "為了邊界感爭吵"]}, {"id": "cat_1_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問你們目前的感情問題，已經持續多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三年以上"]}, {"id": "cat_1_s3", "step_number": 4, "step_label": "期待願望", "title": "如果感情能夠朝著你期待的方向發展，你最希望實現什麼願望？", "options": ["感情回溫、關係熱絡", "改善溝通方式，減少爭吵與誤會", "修復過去的心結，重新建立信任與安全感", "減少第三者或外界因素對感情的干擾", "希望感情更加穩定，順利進入下一個階段", "化解分手危機，讓彼此願意繼續經營感情"]}], "outcomes": [{"id": "cat_1_out_0", "title": "【推薦方案 1】感情回溫、關係熱絡", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：感情升溫／關係和諧／減少誤會與衝突\n30天伴侶關係療癒"}, {"id": "cat_1_out_1", "title": "【推薦方案 2】改善溝通方式，減少爭吵與誤會", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：溝通順暢／減少誤會與衝突／提升對彼此的包容與理解\n30天水星魔法儀式"}, {"id": "cat_1_out_2", "title": "【推薦方案 3】修復過去的心結，重新建立信任與安全感", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：放下過往心結與疙瘩／清理負面連結／關係修復／信任重建\n30天伴侶關係療癒"}, {"id": "cat_1_out_3", "title": "【推薦方案 4】減少第三者或外界因素對感情的干擾", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象（第三者）／聖光人際關係斷捨離-不指定對象（清理外界干擾）\n30天主題式能量補充（雙方）：清理外界對關係的負向干擾／保護關係、避免流言蜚語的介入／穩定彼此的情感連結\n30天土星魔法療癒"}, {"id": "cat_1_out_4", "title": "【推薦方案 5】希望感情更加穩定，順利進入下一個階段", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：提升對未來的共識／關係健康發展／順利結婚\n30天伴侶關係療癒"}, {"id": "cat_1_out_5", "title": "【推薦方案 6】化解分手危機，讓彼此願意繼續經營感情", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天伴侶關係療癒\n30天水星魔法儀式\n30天土星魔法療癒"}, {"id": "cat_1_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：感情升溫／關係和諧／減少誤會與衝突\n30天伴侶關係療癒"}], "pathways": []}, {"id": "cat_2", "name": "已經分手，希望復合", "icon": "💔", "intro_message": "您選擇了【已經分手，希望復合】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_2_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你們目前最主要的復合阻礙是什麼？", "options": ["對方已經不願意聯絡", "對方封鎖我、拒絕溝通", "過去經常爭吵、累積許多心結", "第三者介入或外界干擾", "對方已經不愛我、感情變淡", "因為誤會或信任問題而分手", "不清楚對方為什麼提出分手/不願意復合"]}, {"id": "cat_2_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "請問你們分手後，目前的聯絡狀況是？", "options": ["每天都有聯絡互動，相處跟分手前差不多", "偶爾聯絡，對方願意回覆", "偶爾聯絡，但對方態度冷淡", "已經沒有聯絡，但沒有封鎖", "對方已經封鎖我", "對方明確表示不希望再聯絡", "分手後仍然同住或有生活上的往來", "分手後仍然維持性關係", "有共同友人/工作的交集"]}, {"id": "cat_2_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問你們已經分手多久了？", "options": ["一週以內", "一週至一個月", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三年以上", "分分合合，已經不只一次分手"]}, {"id": "cat_2_s3", "step_number": 4, "step_label": "期待願望", "title": "如果這段感情有機會重新開始，你目前最希望實現什麼願望？", "options": ["希望對方解除封鎖、恢復聯絡", "希望增加聯絡、重新建立互動", "希望化解過去的誤會與心結", "希望減少第三者或外界因素的干擾", "希望順利復合，重新建立穩定的感情"]}], "outcomes": [{"id": "cat_2_out_0", "title": "【推薦方案 1】希望對方解除封鎖、恢復聯絡", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n30天主題式能量補充（雙方）：增加聯絡機會／溝通順暢／關係修復／增加復合的契機／增加對彼此的想念\n30天伴侶關係療癒\n30天水星魔法儀式"}, {"id": "cat_2_out_1", "title": "【推薦方案 2】希望增加聯絡、重新建立互動", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：增加聯絡機會／增加相處機會／穩定彼此的情感連結／增加復合的契機\n30天伴侶關係療癒"}, {"id": "cat_2_out_2", "title": "【推薦方案 3】希望化解過去的誤會與心結", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：放下過往心結與疙瘩／清理負面連結／溝通順暢／增加復合的契機\n30天伴侶關係療癒"}, {"id": "cat_2_out_3", "title": "【推薦方案 4】希望減少第三者或外界因素的干擾", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：保護關係、避免流言蜚語的介入／清理外界對關係的負向干擾／強化關係中的忠誠／提升對彼此的專一／穩定彼此的情感連結\n30天伴侶關係療癒"}, {"id": "cat_2_out_4", "title": "【推薦方案 5】希望順利復合，重新建立穩定的感情", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：溝通順暢／穩定彼此的情感連結／提升彼此的愛意／增加復合的轉機／增加復合的契機\n30天伴侶關係療癒"}, {"id": "cat_2_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n30天主題式能量補充（雙方）：增加聯絡機會／溝通順暢／關係修復／增加復合的契機／增加對彼此的想念\n30天伴侶關係療癒\n30天水星魔法儀式"}], "pathways": []}, {"id": "cat_3", "name": "曖昧中，希望進一步發展", "icon": "🌸", "intro_message": "您選擇了【曖昧中，希望進一步發展】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_3_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你目前最希望改善哪個部分？", "options": ["希望增加聊天與見面的機會", "希望確認交往關係", "對方忽冷忽熱、態度不明確", "擔心對方同時與其他人曖昧", "希望彼此更加親密、增加甜蜜感"]}, {"id": "cat_3_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "請問你們目前的互動狀況是？", "options": ["每天聊天，也經常見面", "每天聊天，但很少見面", "偶爾聊天，有時會約會", "大多是我主動聯絡對方", "對方會主動，但忽冷忽熱", "最近互動明顯減少", "已經很久沒有聯絡", "曾經告白過，但被拒絕", "沒有接受對方曾經的告白"]}, {"id": "cat_3_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問你們目前的曖昧關係，已經持續多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至兩年", "兩年以上", "曾經曖昧中斷，最近重新開始互動"]}, {"id": "cat_3_s3", "step_number": 4, "step_label": "期待願望", "title": "你最希望這段曖昧關係接下來有什麼進展？", "options": ["增加聊天、約會與相處的機會", "希望雙方確認心意，順利成為戀人", "關係更親近，有機會確認交往關係"]}], "outcomes": [{"id": "cat_3_out_0", "title": "【推薦方案 1】增加聊天、約會與相處的機會", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n精靈魔法療癒儀式\n30天主題式能量補充（雙方）：感情升溫／增加聯絡機會／增加相處機會\n30天伴侶關係療癒"}, {"id": "cat_3_out_1", "title": "【推薦方案 2】希望雙方確認心意，順利成為戀人", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n精靈魔法療癒儀式\n30天主題式能量補充（雙方）：穩定彼此的情感連結／關係健康發展／感情升溫\n30天伴侶關係療癒"}, {"id": "cat_3_out_2", "title": "【推薦方案 3】關係更親近，有機會確認交往關係", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n愛情整體關係能量調整\n30天主題式能量補充（雙方）：穩定彼此的情感連結／關係健康發展／感情升溫\n30天伴侶關係療癒"}, {"id": "cat_3_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n精靈魔法療癒儀式\n30天主題式能量補充（雙方）：感情升溫／增加聯絡機會／增加相處機會\n30天伴侶關係療癒"}], "pathways": []}, {"id": "cat_4", "name": "單戀，希望對方喜歡自己", "icon": "🌸", "intro_message": "您選擇了【單戀，希望對方喜歡自己】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_4_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你目前最希望改善哪個部分？", "options": ["希望對方注意到自己、提升自己對對方的吸引力", "希望增加認識與互動的機會", "希望未來能夠順利交往"]}, {"id": "cat_4_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "請問你和喜歡的人目前是什麼關係？", "options": ["朋友，平常有互動", "同事、同學或生活圈認識的人", "網路認識，尚未實際見面", "認識但不熟悉，很少互動", "經常見面，但沒有私下聯絡", "對方知道我的心意，但沒有明確回應", "對方曾經拒絕我的告白"]}, {"id": "cat_4_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問你喜歡對方多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至兩年", "兩至五年", "五年以上"]}, {"id": "cat_4_s3", "step_number": 4, "step_label": "期待願望", "title": "如果你和喜歡的人能夠有更多發展，你最希望實現什麼願望？", "options": ["增加認識、聊天與相處的機會", "提升自己的魅力，讓對方有機會注意到我", "希望彼此有更多單獨約會的機會"]}], "outcomes": [{"id": "cat_4_out_0", "title": "【推薦方案 1】增加認識、聊天與相處的機會", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：增加相處機會／增加聯絡機會／感情升溫／減少關係裡的內耗\n30天伴侶關係療癒"}, {"id": "cat_4_out_1", "title": "【推薦方案 2】提升自己的魅力，讓對方有機會注意到我", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：增加對彼此的想念／感情升溫／減少關係裡的內耗\n15天愛情天使祝福能量傳送"}, {"id": "cat_4_out_2", "title": "【推薦方案 3】希望彼此有更多單獨約會的機會", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n強效版感情小儀式\n30天主題式能量補充（雙方）：增加相處機會／增加聯絡機會／感情升溫\n15天愛情天使祝福能量傳送"}, {"id": "cat_4_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（雙方）：增加相處機會／增加聯絡機會／感情升溫／減少關係裡的內耗\n30天伴侶關係療癒"}], "pathways": []}, {"id": "cat_5", "name": "單身，希望遇見理想對象", "icon": "🌸", "intro_message": "您選擇了【單身，希望遇見理想對象】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_5_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你目前最希望改善哪個部分？", "options": ["吸引適合自己的理想伴侶", "提升個人魅力與吸引力", "改善總是遇到不適合對象的情況", "放下過去感情帶來的影響", "提升自信與感情中的安全感"]}, {"id": "cat_5_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "請問你目前的感情狀態比較接近哪一種？", "options": ["已經單身一段時間，生活圈較少認識新對象", "有認識新對象，但很難發展成穩定關係", "經常遇到不適合或不認真的對象", "有桃花機會，但自己不容易心動", "想談戀愛，但對感情缺乏信心", "過去的感情仍然影響自己", "母胎單身，不知道怎麼開啟戀情"]}, {"id": "cat_5_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問你目前已經單身多久了？", "options": ["三個月以內", "三至六個月", "半年至一年", "一至三年", "三至五年", "五年以上", "從來沒有交往經驗"]}, {"id": "cat_5_s3", "step_number": 4, "step_label": "期待願望", "title": "你最希望接下來的感情生活有什麼改變？", "options": ["增加桃花機會，認識更多適合的對象", "提升個人魅力、自信與吸引力", "改善反覆遇到不適合對象的情況", "放下過去的感情傷害，重新敞開心扉", "建立健康的感情觀與安全感", "提升配得感，吸引善待自己的對象"]}], "outcomes": [{"id": "cat_5_out_0", "title": "【推薦方案 1】增加桃花機會，認識更多適合的對象", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n強效版感情小儀式\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／清理自我毀滅的傾向／愛自己\n30天生命道路校正"}, {"id": "cat_5_out_1", "title": "【推薦方案 2】提升個人魅力、自信與吸引力", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n強效版豐盛小儀式\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己\n30天富饒能量調整"}, {"id": "cat_5_out_2", "title": "【推薦方案 3】改善反覆遇到不適合對象的情況", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-不指定對象\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／清理重複卡關的模式／愛自己\n30天生命道路校正"}, {"id": "cat_5_out_3", "title": "【推薦方案 4】放下過去的感情傷害，重新敞開心扉", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：提升自信心／提升自我價值（配得感）／消融對自己的詛咒（唱雖自己、總是說自己不好、說很多貶低自己的話）／愛自己／清理負面的預設／清理負面想法與情緒／清理糾結、內耗的循環／清理自我批判的傾向\n30天生命道路校正\n30天土星魔法療癒"}, {"id": "cat_5_out_4", "title": "【推薦方案 5】建立健康的感情觀與安全感", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n遠距祝福能量傳送\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己\n30天生命道路校正"}, {"id": "cat_5_out_5", "title": "【推薦方案 6】提升配得感，吸引善待自己的對象", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n遠距祝福能量傳送\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／提升桃花運勢／愛自己\n30天富饒能量調整"}, {"id": "cat_5_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n強效版感情小儀式\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／清理自我毀滅的傾向／愛自己\n30天生命道路校正"}], "pathways": []}, {"id": "cat_6", "name": "想放下過去的感情", "icon": "🌸", "intro_message": "您選擇了【想放下過去的感情】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_6_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你目前的狀態是什麼？", "options": ["還是很想念對方、無法停止思念", "對過去的傷害與委屈耿耿於懷", "無法接受分手或關係結束", "對對方仍然抱有期待", "容易反覆查看對方的動態", "因為過去的感情而失去自信", "害怕再次受傷、不敢開始新感情", "希望徹底放下心結、迎接新戀情"]}, {"id": "cat_6_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "請問過去的感情，對你造成什麼影響？", "options": ["曾經被對方PUA，導致沒自信、不敢再對別人敞開心扉", "過去的陰影影響現在的感情", "想要把重心放在自己身上", "不甘心、無法接受過去的經歷", "對過去產生仇恨值，希望自己能恢復平靜"]}, {"id": "cat_6_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問過去這段感情，已經影響你多久了？", "options": ["一個月以內", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三至五年", "五年以上", "雖然已經過去很久，但最近又被觸發"]}, {"id": "cat_6_s3", "step_number": 4, "step_label": "期待願望", "title": "如果能夠慢慢走出過去的感情，你最希望自己有什麼改變？", "options": ["減少對對方的想念與依戀，找回自己的生活", "放下過去的委屈、憤怒與不甘心", "接受關係已經結束，不再反覆期待", "修復過去受傷的自信與自我價值", "重新敞開心扉，迎接新的感情"]}], "outcomes": [{"id": "cat_6_out_0", "title": "【推薦方案 1】減少對對方的想念與依戀，找回自己的生活", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：減少得失心／提升自信心／提升自我價值（配得感）／將抱怨轉化為祝福／愛自己\n30天生命道路校正"}, {"id": "cat_6_out_1", "title": "【推薦方案 2】放下過去的委屈、憤怒與不甘心", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自我尊重（提升對自己與他人的對自己的尊重）／提升自我價值（配得感）／將抱怨轉化為祝福／愛自己\n30天土星魔法療癒"}, {"id": "cat_6_out_2", "title": "【推薦方案 3】接受關係已經結束，不再反覆期待", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己／減少得失心\n30天生命道路校正"}, {"id": "cat_6_out_3", "title": "【推薦方案 4】修復過去受傷的自信與自我價值", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n遠距祝福能量傳送\n30天主題式能量補充（個人）：將愛的負面信念轉化為正向信念／提升自信心／提升自我價值（配得感）／情緒平衡／愛自己\n30天生命道路校正"}, {"id": "cat_6_out_4", "title": "【推薦方案 5】重新敞開心扉，迎接新的感情", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n感情美滿小儀式\n30天主題式能量補充（個人）：提升桃花運勢／提升自信心／提升自我價值（配得感）／愛自己\n七天強效版能量補充（愛情／大型）"}, {"id": "cat_6_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（個人）：減少得失心／提升自信心／提升自我價值（配得感）／將抱怨轉化為祝福／愛自己\n30天生命道路校正"}], "pathways": []}, {"id": "cat_7", "name": "想跟對方和平分手／離婚", "icon": "💍", "intro_message": "您選擇了【想跟對方和平分手／離婚】。為協助您找到最合適的療癒服務，請依序回答以下幾個診斷問題：", "steps": [{"id": "cat_7_s0", "step_number": 1, "step_label": "核心問題診斷", "title": "請問你目前最希望改善哪個部分？", "options": ["希望對方能夠接受分手／離婚", "希望減少爭吵與情緒衝突", "希望雙方能夠理性溝通、達成共識", "希望順利結束關係、減少糾纏", "希望減少分手／離婚對孩子或家人的影響", "希望放下愧疚、恐懼與心理壓力"]}, {"id": "cat_7_s1", "step_number": 2, "step_label": "相處現況診斷", "title": "請問你們目前的關係進展到哪個階段？", "options": ["我想分開，但還沒有告訴對方", "已經提出分手／離婚，但對方不同意", "雙方都有分開的想法，但尚未達成共識", "對方情緒反應較大，難以好好溝通", "因為孩子、家庭或財務問題而無法順利分開", "已經分開，但對方仍持續聯絡或糾纏", "覺得自己虧欠對方、有愧疚感", "兩人的利益關係難以分割"]}, {"id": "cat_7_s2", "step_number": 3, "step_label": "持續時間診斷", "title": "請問你想結束這段關係的念頭，已經持續多久了？", "options": ["最近一個月才開始有這個想法", "一至三個月", "三至六個月", "半年至一年", "一至三年", "三年以上"]}, {"id": "cat_7_s3", "step_number": 4, "step_label": "期待願望", "title": "如果能夠順利結束這段關係，你最希望達成什麼結果？", "options": ["希望對方理解並接受分手／離婚的決定", "減少彼此的爭吵、衝突與情緒傷害", "希望雙方能夠理性溝通，達成分開的共識", "希望順利處理共同生活、家庭與財務問題", "希望減少分開對孩子及家人的影響", "希望對方尊重彼此的界線，不再糾纏", "放下愧疚、恐懼與心理壓力，安心做出決定", "希望和平結束關係，祝福雙方都能重新開始"]}], "outcomes": [{"id": "cat_7_out_0", "title": "【推薦方案 1】希望對方理解並接受分手／離婚的決定", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢\n30天土星魔法療癒"}, {"id": "cat_7_out_1", "title": "【推薦方案 2】減少彼此的爭吵、衝突與情緒傷害", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢\n30天土星魔法療癒"}, {"id": "cat_7_out_2", "title": "【推薦方案 3】希望雙方能夠理性溝通，達成分開的共識", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"id": "cat_7_out_3", "title": "【推薦方案 4】希望順利處理共同生活、家庭與財務問題", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"id": "cat_7_out_4", "title": "【推薦方案 5】希望減少分開對孩子及家人的影響", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"id": "cat_7_out_5", "title": "【推薦方案 6】希望對方尊重彼此的界線，不再糾纏", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"id": "cat_7_out_6", "title": "【推薦方案 7】放下愧疚、恐懼與心理壓力，安心做出決定", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"id": "cat_7_out_7", "title": "【推薦方案 8】希望和平結束關係，祝福雙方都能重新開始", "is_default": false, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢／順利和解\n30天土星魔法療癒"}, {"id": "cat_7_out_default", "title": "【全方位平衡修復方案】(預設通用結論)", "is_default": true, "conditions": [], "recommendation": "推薦產品：\n\n聖光人際關係斷捨離-指定對象\n30天主題式能量補充（雙方）：順利分手／順利離婚／放下過往心結與疙瘩／清理負面連結／溝通順暢\n30天土星魔法療癒"}], "pathways": []}]}, {"id": "theme_wealth", "name": "提升財運與金錢豐盛", "icon": "💰", "message": "探索您的財運瓶頸與財富能量，為您推薦最適合的金錢豐盛儀式：", "categories": [{"id": "wealth_cat_0", "name": "正財收入提升 / 升遷加薪", "icon": "📈", "intro_message": "歡迎探索【正財收入提升 / 升遷加薪】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_0_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【正財收入提升 / 升遷加薪】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_0_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_0_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_0_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (正財收入提升 / 升遷加薪)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_0_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (正財收入提升 / 升遷加薪)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_0_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (正財收入提升 / 升遷加薪)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_0_out_default", "title": "【全方位能量平衡方案】(正財收入提升 / 升遷加薪)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "wealth_cat_1", "name": "偏財與投資獲利", "icon": "🎲", "intro_message": "歡迎探索【偏財與投資獲利】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_1_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【偏財與投資獲利】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_1_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_1_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_1_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (偏財與投資獲利)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_1_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (偏財與投資獲利)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_1_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (偏財與投資獲利)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_1_out_default", "title": "【全方位能量平衡方案】(偏財與投資獲利)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "wealth_cat_2", "name": "破財漏財防護 / 財庫充盈", "icon": "🛡️", "intro_message": "歡迎探索【破財漏財防護 / 財庫充盈】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_2_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【破財漏財防護 / 財庫充盈】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_2_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_2_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_2_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (破財漏財防護 / 財庫充盈)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_2_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (破財漏財防護 / 財庫充盈)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_2_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (破財漏財防護 / 財庫充盈)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_2_out_default", "title": "【全方位能量平衡方案】(破財漏財防護 / 財庫充盈)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "wealth_cat_3", "name": "創業 / 開店 / 業績突破", "icon": "🏬", "intro_message": "歡迎探索【創業 / 開店 / 業績突破】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_3_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【創業 / 開店 / 業績突破】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_3_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_3_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_3_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (創業 / 開店 / 業績突破)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_3_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (創業 / 開店 / 業績突破)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_3_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (創業 / 開店 / 業績突破)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_3_out_default", "title": "【全方位能量平衡方案】(創業 / 開店 / 業績突破)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "wealth_cat_4", "name": "欠款追回 / 債務化解", "icon": "🧾", "intro_message": "歡迎探索【欠款追回 / 債務化解】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_4_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【欠款追回 / 債務化解】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_4_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_4_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_4_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (欠款追回 / 債務化解)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_4_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (欠款追回 / 債務化解)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_4_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (欠款追回 / 債務化解)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_4_out_default", "title": "【全方位能量平衡方案】(欠款追回 / 債務化解)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "wealth_cat_5", "name": "財運阻礙與負向匱乏清理", "icon": "🧹", "intro_message": "歡迎探索【財運阻礙與負向匱乏清理】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_5_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【財運阻礙與負向匱乏清理】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_5_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_5_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_5_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (財運阻礙與負向匱乏清理)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_5_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (財運阻礙與負向匱乏清理)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_5_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (財運阻礙與負向匱乏清理)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_5_out_default", "title": "【全方位能量平衡方案】(財運阻礙與負向匱乏清理)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "wealth_cat_6", "name": "貴人相助與金錢機遇", "icon": "🤝", "intro_message": "歡迎探索【貴人相助與金錢機遇】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_6_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【貴人相助與金錢機遇】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_6_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_6_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_6_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (貴人相助與金錢機遇)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_6_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (貴人相助與金錢機遇)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_6_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (貴人相助與金錢機遇)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_6_out_default", "title": "【全方位能量平衡方案】(貴人相助與金錢機遇)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "wealth_cat_7", "name": "長期財富豐盛穩定", "icon": "🏦", "intro_message": "歡迎探索【長期財富豐盛穩定】。請透過以下問卷梳理您的金錢能量卡點：", "steps": [{"id": "wealth_cat_7_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問你在【長期財富豐盛穩定】目前面臨的最大挑戰是？", "options": ["收入停滯不前、缺乏突破契機", "常常莫名破財、存不住錢", "業績壓力沉重、缺乏穩定客源", "缺乏投資直覺或機遇", "背負財務壓力、現金流吃緊", "付出了努力卻總得不到相應回報"]}, {"id": "wealth_cat_7_s1", "step_number": 2, "step_label": "步驟 2", "title": "目前這項財務或事業狀況，已經持續多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年至三年", "三年以上"]}, {"id": "wealth_cat_7_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果財富能量順利改善，你最期望實現的願望是？", "options": ["順利升遷加薪、獲取豐厚正財回報", "拓展多元收入管道、投資穩定獲利", "建立強大金錢結界、守住財富不漏財", "事業業績倍增、貴人客源源源不絕", "財務壓力徹底釋放、重獲金錢自由與安全感"]}], "outcomes": [{"id": "wealth_cat_7_out_0", "title": "【推薦方案 1】金錢磁鐵豐盛能量儀式 (長期財富豐盛穩定)", "recommendation": "推薦產品：\n\n金錢磁鐵豐盛小儀式\n30天主題式能量補充：吸引財富貴人／開拓金錢管道／提升豐盛意識"}, {"id": "wealth_cat_7_out_1", "title": "【推薦方案 2】財庫補足與守財護盾 (長期財富豐盛穩定)", "recommendation": "推薦產品：\n\n財庫充盈魔法蠟燭儀式\n30天水星與木星能量調頻：防護漏財洞／穩定金錢能量／化解金錢焦慮"}, {"id": "wealth_cat_7_out_2", "title": "【推薦方案 3】事業業績倍增突破方案 (長期財富豐盛穩定)", "recommendation": "推薦產品：\n\n太陽光明事業金錢強效儀式\n30天事業高頻共振：吸引高端客源／提升商業決策敏銳度／事業貴人相助"}, {"id": "wealth_cat_7_out_default", "title": "【全方位能量平衡方案】(長期財富豐盛穩定)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}]}, {"id": "theme_career", "name": "改善工作與事業發展", "icon": "💼", "message": "釐清職場盲點與職涯卡點，為您注入強大事業發展助力：", "categories": [{"id": "career_cat_0", "name": "轉職求職與面試順遂", "icon": "🎯", "intro_message": "歡迎探索【轉職求職與面試順遂】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_0_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【轉職求職與面試順遂】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_0_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_0_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_0_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_0_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_0_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_0_out_default", "title": "【全方位能量平衡方案】(轉職求職與面試順遂)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "career_cat_1", "name": "職場人際融洽與小人化解", "icon": "🤺", "intro_message": "歡迎探索【職場人際融洽與小人化解】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_1_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【職場人際融洽與小人化解】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_1_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_1_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_1_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_1_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_1_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_1_out_default", "title": "【全方位能量平衡方案】(職場人際融洽與小人化解)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "career_cat_2", "name": "主管賞識與升遷考核順利", "icon": "⭐", "intro_message": "歡迎探索【主管賞識與升遷考核順利】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_2_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【主管賞識與升遷考核順利】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_2_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_2_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_2_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_2_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_2_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_2_out_default", "title": "【全方位能量平衡方案】(主管賞識與升遷考核順利)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "career_cat_3", "name": "工作壓力釋放與職業倦怠轉化", "icon": "☕", "intro_message": "歡迎探索【工作壓力釋放與職業倦怠轉化】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_3_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【工作壓力釋放與職業倦怠轉化】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_3_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_3_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_3_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_3_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_3_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_3_out_default", "title": "【全方位能量平衡方案】(工作壓力釋放與職業倦怠轉化)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "career_cat_4", "name": "事業拓展與合夥順遂", "icon": "🚀", "intro_message": "歡迎探索【事業拓展與合夥順遂】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_4_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【事業拓展與合夥順遂】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_4_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_4_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_4_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_4_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_4_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_4_out_default", "title": "【全方位能量平衡方案】(事業拓展與合夥順遂)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "career_cat_5", "name": "專業技能突破與考試證照", "icon": "📜", "intro_message": "歡迎探索【專業技能突破與考試證照】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_5_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【專業技能突破與考試證照】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_5_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_5_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_5_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_5_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_5_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_5_out_default", "title": "【全方位能量平衡方案】(專業技能突破與考試證照)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "career_cat_6", "name": "專案推動順利與重大簽約達成", "icon": "🖋️", "intro_message": "歡迎探索【專案推動順利與重大簽約達成】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_6_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【專案推動順利與重大簽約達成】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_6_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_6_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_6_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_6_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_6_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_6_out_default", "title": "【全方位能量平衡方案】(專案推動順利與重大簽約達成)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "career_cat_7", "name": "整體職涯運勢全面提升", "icon": "🌟", "intro_message": "歡迎探索【整體職涯運勢全面提升】。請透過以下問卷診斷您的職涯能量狀態：", "steps": [{"id": "career_cat_7_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【整體職涯運勢全面提升】目前最希望改善的部分是？", "options": ["求職面試總欠缺臨門一腳", "職場人際複雜、有小人阻礙", "工作繁重缺乏成就感與方向", "考核升遷總是與自己擦身而過", "合夥溝通出現分歧或信任危機", "專案進度卡關、客戶猶豫不決"]}, {"id": "career_cat_7_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問這項職場困擾，已經影響您多久了？", "options": ["一個月以內", "一至三個月", "半年至一年", "一年以上"]}, {"id": "career_cat_7_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果在工作領域能迎來轉機，您最希望達成的願望是？", "options": ["順利錄取心儀職缺、待遇優渥", "職場小人退散、建立融洽夥伴關係", "深受主管與團隊信任、順利晉升關鍵職位", "找回熱情與成就感、擺脫職業倦怠", "簽約順利、專案圓滿達成目標"]}], "outcomes": [{"id": "career_cat_7_out_0", "title": "【推薦方案 1】職場貴人與小人化解儀式", "recommendation": "推薦產品：\n\n聖光職場人際防護小儀式\n30天主題式能量補充：化解辦公室阻礙／吸引貴人提攜／提升職場能見度"}, {"id": "career_cat_7_out_1", "title": "【推薦方案 2】事業突破與升遷加官儀式", "recommendation": "推薦產品：\n\n木星事業擴展大儀式\n30天事業高頻共振：面試考核加分／重大決策指引／拓展發展舞台"}, {"id": "career_cat_7_out_2", "title": "【推薦方案 3】專案圓滿與成交簽約方案", "recommendation": "推薦產品：\n\n水星順暢溝通與商務達成儀式\n30天商務能量共振：客戶信任建立／順利促成簽約／專案進展順遂"}, {"id": "career_cat_7_out_default", "title": "【全方位能量平衡方案】(整體職涯運勢全面提升)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}]}, {"id": "theme_growth", "name": "自我成長與個人狀態改善", "icon": "🧘", "message": "深度修復身心靈能量，重塑內在自信、平靜與光芒：", "categories": [{"id": "growth_cat_0", "name": "情緒焦慮平復與睡眠品質改善", "icon": "🌙", "intro_message": "歡迎來到【情緒焦慮平復與睡眠品質改善】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_0_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【情緒焦慮平復與睡眠品質改善】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_0_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_0_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_0_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_0_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_0_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_0_out_default", "title": "【全方位能量平衡方案】(情緒焦慮平復與睡眠品質改善)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "growth_cat_1", "name": "提升內在自信與自我肯定", "icon": "🦁", "intro_message": "歡迎來到【提升內在自信與自我肯定】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_1_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【提升內在自信與自我肯定】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_1_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_1_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_1_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_1_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_1_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_1_out_default", "title": "【全方位能量平衡方案】(提升內在自信與自我肯定)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "growth_cat_2", "name": "過往心結化解與深層情感療癒", "icon": "🕊️", "intro_message": "歡迎來到【過往心結化解與深層情感療癒】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_2_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【過往心結化解與深層情感療癒】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_2_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_2_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_2_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_2_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_2_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_2_out_default", "title": "【全方位能量平衡方案】(過往心結化解與深層情感療癒)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "growth_cat_3", "name": "個人氣場淨化與魅力提升", "icon": "✨", "intro_message": "歡迎來到【個人氣場淨化與魅力提升】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_3_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【個人氣場淨化與魅力提升】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_3_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_3_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_3_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_3_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_3_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_3_out_default", "title": "【全方位能量平衡方案】(個人氣場淨化與魅力提升)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "growth_cat_4", "name": "負向能量排毒與磁場結界保護", "icon": "🚿", "intro_message": "歡迎來到【負向能量排毒與磁場結界保護】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_4_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【負向能量排毒與磁場結界保護】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_4_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_4_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_4_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_4_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_4_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_4_out_default", "title": "【全方位能量平衡方案】(負向能量排毒與磁場結界保護)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "growth_cat_5", "name": "生命方向探尋與天賦潛能開啟", "icon": "🧭", "intro_message": "歡迎來到【生命方向探尋與天賦潛能開啟】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_5_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【生命方向探尋與天賦潛能開啟】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_5_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_5_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_5_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_5_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_5_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_5_out_default", "title": "【全方位能量平衡方案】(生命方向探尋與天賦潛能開啟)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "growth_cat_6", "name": "家庭關係和解與家族能量清理", "icon": "🏡", "intro_message": "歡迎來到【家庭關係和解與家族能量清理】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_6_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【家庭關係和解與家族能量清理】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_6_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_6_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_6_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_6_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_6_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_6_out_default", "title": "【全方位能量平衡方案】(家庭關係和解與家族能量清理)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "growth_cat_7", "name": "靈性直覺覺察與身心靈平衡", "icon": "🌌", "intro_message": "歡迎來到【靈性直覺覺察與身心靈平衡】療癒空間。請靜心回答以下問題：", "steps": [{"id": "growth_cat_7_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您在【靈性直覺覺察與身心靈平衡】目前最深層的感受是？", "options": ["經常感到焦慮內耗、思緒難以平靜", "對自己缺乏信心、容易自我否定", "過往創傷歷歷在目、難以釋懷", "感覺身心疲憊沉重、磁場混濁", "迷惘缺乏前進方向、找不到人生熱情", "與家人或重要他人關係緊繃存在芥蒂"]}, {"id": "growth_cat_7_s1", "step_number": 2, "step_label": "步驟 2", "title": "這項身心靈狀態，已經持續了多久？", "options": ["近期一至三個月", "半年至一年", "一年至三年", "從小或多年以來一直如此"]}, {"id": "growth_cat_7_s2", "step_number": 3, "step_label": "步驟 3", "title": "如果能獲得深層修復，您最希望實現的心願是？", "options": ["夜夜安穩好眠、身心徹底放鬆平靜", "重拾堅定自信、全然愛自己接納自己", "放下過往包袱與心結、重獲輕盈自由", "建立純淨高頻能量場、小人與負能量自然退避", "看清人生前行方向、活出天賦與熱情"]}], "outcomes": [{"id": "growth_cat_7_out_0", "title": "【推薦方案 1】深層身心放鬆與安眠修復", "recommendation": "推薦產品：\n\n月亮安眠與情緒釋放魔法蠟燭\n30天心輪與頂輪能量滋養：平息思緒風暴／釋放深層緊繃／找回夜間深度好眠"}, {"id": "growth_cat_7_out_1", "title": "【推薦方案 2】內在自信重塑與氣場光芒", "recommendation": "推薦產品：\n\n太陽光芒自我肯定儀式\n30天太陽神經叢滋養：消除自我懷疑／重拾勇氣與自信／散發耀眼光芒"}, {"id": "growth_cat_7_out_2", "title": "【推薦方案 3】靈魂療癒與神聖結界保護", "recommendation": "推薦產品：\n\n大天使聖光深層清理與保護結界儀式\n30天全身能量場淨化：清理外在干擾／化解累世心結／穩定靈性中心"}, {"id": "growth_cat_7_out_default", "title": "【全方位能量平衡方案】(靈性直覺覺察與身心靈平衡)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}]}, {"id": "theme_divination", "name": "占卜、課程", "icon": "🔮", "message": "由專業導師為您啟動高維指引，探索生命的無限可能：", "categories": [{"id": "div_cat_0", "name": "個人運勢深度占卜諮詢", "icon": "🃏", "intro_message": "歡迎了解【個人運勢深度占卜諮詢】。請分享您的期望與需求：", "steps": [{"id": "div_cat_0_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【個人運勢深度占卜諮詢】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_0_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_0_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_0_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_0_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_0_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_0_out_default", "title": "【全方位能量平衡方案】(個人運勢深度占卜諮詢)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "div_cat_1", "name": "情感雙人深度合盤占卜", "icon": "❤️", "intro_message": "歡迎了解【情感雙人深度合盤占卜】。請分享您的期望與需求：", "steps": [{"id": "div_cat_1_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【情感雙人深度合盤占卜】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_1_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_1_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_1_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_1_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_1_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_1_out_default", "title": "【全方位能量平衡方案】(情感雙人深度合盤占卜)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "div_cat_2", "name": "事業與財富年度戰略指引", "icon": "📅", "intro_message": "歡迎了解【事業與財富年度戰略指引】。請分享您的期望與需求：", "steps": [{"id": "div_cat_2_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【事業與財富年度戰略指引】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_2_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_2_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_2_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_2_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_2_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_2_out_default", "title": "【全方位能量平衡方案】(事業與財富年度戰略指引)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "div_cat_3", "name": "前世今生因果與靈魂藍圖解析", "icon": "📜", "intro_message": "歡迎了解【前世今生因果與靈魂藍圖解析】。請分享您的期望與需求：", "steps": [{"id": "div_cat_3_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【前世今生因果與靈魂藍圖解析】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_3_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_3_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_3_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_3_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_3_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_3_out_default", "title": "【全方位能量平衡方案】(前世今生因果與靈魂藍圖解析)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "div_cat_4", "name": "白魔法能量學與儀式實踐課", "icon": "🎓", "intro_message": "歡迎了解【白魔法能量學與儀式實踐課】。請分享您的期望與需求：", "steps": [{"id": "div_cat_4_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【白魔法能量學與儀式實踐課】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_4_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_4_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_4_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_4_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_4_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_4_out_default", "title": "【全方位能量平衡方案】(白魔法能量學與儀式實踐課)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "div_cat_5", "name": "直覺力開發與塔羅解析啟蒙", "icon": "👁️", "intro_message": "歡迎了解【直覺力開發與塔羅解析啟蒙】。請分享您的期望與需求：", "steps": [{"id": "div_cat_5_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【直覺力開發與塔羅解析啟蒙】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_5_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_5_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_5_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_5_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_5_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_5_out_default", "title": "【全方位能量平衡方案】(直覺力開發與塔羅解析啟蒙)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "div_cat_6", "name": "靈擺能量探測與七脈輪淨化實務", "icon": "⚖️", "intro_message": "歡迎了解【靈擺能量探測與七脈輪淨化實務】。請分享您的期望與需求：", "steps": [{"id": "div_cat_6_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【靈擺能量探測與七脈輪淨化實務】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_6_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_6_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_6_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_6_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_6_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_6_out_default", "title": "【全方位能量平衡方案】(靈擺能量探測與七脈輪淨化實務)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}, {"id": "div_cat_7", "name": "一對一靈性導師專屬陪伴服務", "icon": "🧑‍🏫", "intro_message": "歡迎了解【一對一靈性導師專屬陪伴服務】。請分享您的期望與需求：", "steps": [{"id": "div_cat_7_s0", "step_number": 1, "step_label": "步驟 1", "title": "請問您希望透過【一對一靈性導師專屬陪伴服務】獲得什麼層面的指引？", "options": ["釐清當前重大人生選擇的十字路口", "深入探究彼此真實心意與未來可能發展", "預測未來半年至一年的關鍵機遇與避坑建議", "學習掌握自我調頻與日常淨化的實用方法", "解決長久以來的重複命運模式與因果盲點", "獲得導師長期的智慧陪伴與個別化指引"]}, {"id": "div_cat_7_s1", "step_number": 2, "step_label": "步驟 2", "title": "請問您過往有接觸過相關諮詢或學習經驗嗎？", "options": ["完全沒有，這是第一次體驗", "曾做過簡單占卜或大眾占卜", "有持續接觸，希望能有更深度的洞察", "自己有在學習，希望能獲得專業進階指導"]}, {"id": "div_cat_7_s2", "step_number": 3, "step_label": "步驟 3", "title": "若能順利獲得指引或完成學習，您最期待的轉變是？", "options": ["心中疑惑全然解開、對未來充滿信心與方向感", "看清關係全貌、做出最符合靈魂最高福祉的決定", "掌握能量自主權、成為自己生命的最佳指引者", "建立長久穩定的高頻連結、在生活中實踐奇蹟"]}], "outcomes": [{"id": "div_cat_7_out_0", "title": "【推薦方案 1】一對一深層占卜與靈魂諮詢", "recommendation": "推薦產品：\n\n客製化高維度直覺占卜 (60分鐘深度對談)\n附贈專屬後續能量調頻報告與白魔法護符建議"}, {"id": "div_cat_7_out_1", "title": "【推薦方案 2】主題式身心靈啟蒙精華課程", "recommendation": "推薦產品：\n\n白魔法與直覺力系統實踐課程 (包含教材、儀式套組與導師社群解惑)\n為期4週建立扎實能量自癒基礎"}, {"id": "div_cat_7_out_2", "title": "【推薦方案 3】全年度專屬靈性護航陪跑服務", "recommendation": "推薦產品：\n\n全年度每月能量校準與戰略占卜諮詢\n全年重大星象專屬儀式守護＋突發緊急狀況調頻支援"}, {"id": "div_cat_7_out_default", "title": "【全方位能量平衡方案】(一對一靈性導師專屬陪伴服務)", "recommendation": "推薦產品：\n\n獨角獸核心能量調頻儀式\n30天主題式能量補充：深層清理阻礙／全面激活潛能／穩定能量頻率"}], "pathways": []}]}]};
-        const DATA_VERSION = 'v18_collapsible_panels';
+        const DATA_VERSION = 'v22_compact_arrow_step1_excluded';
 
         let appData = null;
         try {
@@ -2774,16 +3087,47 @@
 
                             <div style="font-size:12px; font-weight:700; color:#475569; margin-bottom:6px;">選項清單：</div>
                             <div class="crud-options-list">
-                                ${step.options.map((opt, optIdx) => `
-                                    <div class="crud-option-row">
-                                        <span class="crud-option-num">${optIdx + 1}</span>
-                                        <input type="text" class="crud-option-input" value="${opt}"
-                                               oninput="updateStepOption('${cat.id}', ${sIdx}, ${optIdx}, this.value)">
-                                        <button class="crud-btn-del" onclick="deleteStepOption('${cat.id}', ${sIdx}, ${optIdx})" title="刪除此選項">
-                                            <i class="fa-solid fa-trash"></i>
-                                        </button>
-                                    </div>
-                                `).join('')}
+                                ${step.options.map((opt, optIdx) => {
+                                    const curGoto = (step.gotos || {})[optIdx] || '';
+                                    const forwardSteps = [];
+                                    for (let k = sIdx + 1; k < cat.steps.length; k++) {
+                                        forwardSteps.push({ idx: k, step: cat.steps[k] });
+                                    }
+                                    return `
+                                        <div class="crud-option-row">
+                                            <span class="crud-option-num">${optIdx + 1}</span>
+                                            <input type="text" class="crud-option-input" value="${opt}"
+                                                   oninput="updateStepOption('${cat.id}', ${sIdx}, ${optIdx}, this.value)">
+                                            
+                                            ${sIdx > 0 ? `
+                                                <div class="goto-selector-wrapper" style="display:flex; align-items:center; gap:3px;" title="設定跳轉目標">
+                                                    <span style="font-size:11px; font-weight:800; color:#6366f1; padding:0 2px;">
+                                                        <i class="fa-solid fa-arrow-right"></i>
+                                                    </span>
+                                                    <select class="crud-goto-select ${curGoto ? 'has-goto' : ''}"
+                                                            onchange="updateOptionGoto('${cat.id}', ${sIdx}, ${optIdx}, this.value)">
+                                                        <option value="">⏩ 依序下一步 (步驟 ${sIdx + 2})</option>
+                                                        ${forwardSteps.map(f => `
+                                                            <option value="step_${f.idx}" ${curGoto === `step_${f.idx}` ? 'selected' : ''}>
+                                                                ⏭️ 步 ${f.idx + 1} (${f.step.step_label || '步驟' + (f.idx + 1)})
+                                                            </option>
+                                                        `).join('')}
+                                                        <option value="conclusion" ${curGoto === 'conclusion' ? 'selected' : ''}>🏆 結論庫</option>
+                                                        ${(cat.outcomes || []).map(out => `
+                                                            <option value="out_${out.id}" ${curGoto === `out_${out.id}` ? 'selected' : ''}>
+                                                                💎 ${out.title}
+                                                            </option>
+                                                        `).join('')}
+                                                    </select>
+                                                </div>
+                                            ` : ''}
+
+                                            <button class="crud-btn-del" onclick="deleteStepOption('${cat.id}', ${sIdx}, ${optIdx})" title="刪除此選項">
+                                                <i class="fa-solid fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    `;
+                                }).join('')}
                             </div>
                             <button class="crud-btn-add" onclick="addStepOption('${cat.id}', ${sIdx})">
                                 <i class="fa-solid fa-plus"></i> 新增選項
@@ -2860,8 +3204,46 @@
                                             <span>✏️ 正在修改【${out ? out.title : '結論'}】的專屬連線路徑 (已單獨載入)</span>
                                         </div>
                                         <div style="font-size:11.5px; color:#475569;">
-                                            💡 <b>提示：</b>畫布已<b>單獨呈現</b>此結論所連結之選項與專屬光索。您可以<b>重新勾選或取消</b>選項，修改完成請點擊<b>【💾 儲存修改】</b>才會真正生效！亦可點擊<b>【🧹 清除此連線】</b>重置。
+                                            💡 <b>提示：</b>畫布已<b>單獨呈現</b>此結論所連結之選項。每一條組合線路皆以<b>不同顏色</b>標示，您可<b>直接點選任一條線路彈出刪除鈕</b>單獨刪除某一條線，亦可重新勾選或取消選項。修改完成請點擊<b>【💾 儲存修改】</b>生效。
                                         </div>
+                                        ${(() => {
+                                            const stepChoices = [];
+                                            for (let s = 0; s < cat.steps.length; s++) {
+                                                const step = cat.steps[s];
+                                                const val = getStepSelectionForPath(draftingPath, step, s);
+                                                if (val === 'ALL') stepChoices.push(['ALL']);
+                                                else if (Array.isArray(val) && val.length > 0) stepChoices.push(val);
+                                                else stepChoices.push([]);
+                                            }
+                                            const combos = generateGotoAwareCombinations(cat, stepChoices);
+                                            const activeCombos = combos.filter(c => !((draftingPath.excludedCombos || []).includes(getComboKey(c))));
+                                            if (activeCombos.length === 0) return '';
+                                            return `
+                                                <div class="drafting-lines-bar">
+                                                    <div style="font-size:11.5px; font-weight:700; color:#334155; margin-bottom:5px;">
+                                                        <i class="fa-solid fa-route"></i> 包含線路 (共 ${activeCombos.length} 條，點擊線路或按鈕可單獨刪除)：
+                                                    </div>
+                                                    <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                                                        ${activeCombos.map((combo, idx) => {
+                                                            const cKey = getComboKey(combo);
+                                                            const cColor = LINE_PALETTE[idx % LINE_PALETTE.length].color;
+                                                            const cLabel = getComboLabel(combo, cat);
+                                                            const isSel = (selectedLineComboKey === cKey);
+                                                            return `
+                                                                <div class="line-badge-item ${isSel ? 'selected' : ''}" style="border-left:3.5px solid ${cColor};" onclick="showLineDeletePopover(null, '${cKey}', ${idx}, ${JSON.stringify(combo).replace(/"/g, '&quot;')}, '${cColor}')" title="點擊檢視或刪除此條線路">
+                                                                    <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:${cColor};"></span>
+                                                                    <b style="color:#0f172a;">路線 #${idx + 1}</b>
+                                                                    <span style="color:#64748b; font-size:11px;">(${cLabel})</span>
+                                                                    <button class="btn-del-line-chip" onclick="event.stopPropagation(); deleteSingleLineCombo('${cKey}')" title="刪除此條線路">
+                                                                        <i class="fa-solid fa-trash-can"></i>
+                                                                    </button>
+                                                                </div>
+                                                            `;
+                                                        }).join('')}
+                                                    </div>
+                                                </div>
+                                            `;
+                                        })()}
                                     </div>
 
                                     <div style="display:flex; align-items:center; gap:8px;">
@@ -2967,6 +3349,7 @@
                                         <div class="step-col-qtitle">${step.title}</div>
                                         ${step.options.map((opt, optIdx) => {
                                             const isSel = curList.includes(opt);
+                                            const badgeInfo = getGotoBadgeInfo(step, optIdx, cat);
                                             return `
                                                 <div class="wiring-option-card ${isSel ? 'is-selected' : ''}"
                                                      id="node-s${sIdx}-o${optIdx}"
@@ -2975,6 +3358,13 @@
                                                      onclick="toggleOptionSelection(${sIdx}, '${encodeURIComponent(opt)}')">
                                                     <div class="wiring-checkbox">${isSel ? '✓' : ''}</div>
                                                     <span class="wiring-option-text">${opt}</span>
+                                                    ${sIdx > 0 ? `
+                                                        <button class="wiring-goto-pill-btn ${badgeInfo.cls}"
+                                                                onclick="openGotoPopover(event, '${cat.id}', ${sIdx}, ${optIdx})"
+                                                                title="${badgeInfo.hasGoto ? '點擊修改跳轉目標' : '點擊設定跳轉目標'}">
+                                                            ${badgeInfo.text}
+                                                        </button>
+                                                    ` : ''}
                                                 </div>
                                             `;
                                         }).join('')}
@@ -3082,6 +3472,7 @@
                                                     <td><span class="pathway-color-dot" style="background:${p.color || '#7c3aed'};"></span>#${pIdx + 1}</td>
                                                     ${cat.steps.map((s, sIdx) => {
                                                         const sel = getStepSelectionForPath(p, s, sIdx);
+                                                        if (sel === 'SKIPPED') return `<td><span class="pathway-pill-badge" style="background:#fef3c7; color:#92400e; font-weight:700;"><i class="fa-solid fa-forward-step"></i> GOTO 跳過</span></td>`;
                                                         if (sel === 'ALL') return `<td><span class="pathway-pill-badge" style="background:#f1f5f9; color:#475569;">任意符合 (*)</span></td>`;
                                                         if (Array.isArray(sel) && sel.length > 0) {
                                                             return `<td><span class="pathway-pill-badge">${sel.join(', ')}</span></td>`;
@@ -3127,14 +3518,16 @@
                 pathwayId: null,
                 targetOutcomeId: targetOutId,
                 conditions: {},
+                excludedCombos: [],
                 color: color
             };
+            selectedLineComboKey = null;
             renderWorkspace();
             showToast('🎯 已開啟路徑建構模式：點選勾選各步驟選項，最後點選未連線之結論卡！');
         }
 
         function cancelDraftingPath() {
-            draftingPath = { active: false, isEditingExisting: false, conditions: {}, targetOutcomeId: null };
+            draftingPath = { active: false, isEditingExisting: false, conditions: {}, targetOutcomeId: null, excludedCombos: [] }; selectedLineComboKey = null; if (typeof closeLineDeletePopover === 'function') closeLineDeletePopover();
             renderWorkspace();
             showToast('已取消編輯，所有修改已還原。');
         }
@@ -3204,8 +3597,10 @@
                     pathwayId: existingPath.id,
                     targetOutcomeId: outId,
                     conditions: JSON.parse(JSON.stringify(existingPath.conditions || {})),
+                    excludedCombos: existingPath.excludedCombos ? JSON.parse(JSON.stringify(existingPath.excludedCombos)) : [],
                     color: colorInfo.color
                 };
+                selectedLineComboKey = null;
 
                 // 確保每個步驟都有初始值對應
                 cat.steps.forEach((s, idx) => {
@@ -3246,7 +3641,7 @@
                     if (cat.pathways) {
                         cat.pathways = cat.pathways.filter(p => p.targetOutcomeId !== outId);
                     }
-                    draftingPath = { active: false, isEditingExisting: false, conditions: {}, targetOutcomeId: null };
+                    draftingPath = { active: false, isEditingExisting: false, conditions: {}, targetOutcomeId: null, excludedCombos: [] }; selectedLineComboKey = null; if (typeof closeLineDeletePopover === 'function') closeLineDeletePopover();
                     saveToStorage();
                     renderSidebar();
                     renderWorkspace();
@@ -3267,10 +3662,14 @@
 
             if (!draftingPath.conditions) draftingPath.conditions = {};
 
-            // 檢查是否有未選擇的步驟，未選擇者自動視為 'ALL' (任意符合)
+            // 檢查是否有未選擇的步驟 (若已被前置 GOTO 跳過，自動標記為 SKIPPED；其餘未選擇者視為 ALL)
             cat.steps.forEach((s, idx) => {
+                const isBypassed = isStepBypassedByDraftingGoto(idx, cat, draftingPath);
                 const cur = draftingPath.conditions[s.id] || draftingPath[`s${idx}`];
-                if (!cur || (Array.isArray(cur) && cur.length === 0)) {
+                if (isBypassed) {
+                    draftingPath.conditions[s.id] = 'SKIPPED';
+                    draftingPath[`s${idx}`] = 'SKIPPED';
+                } else if (!cur || (Array.isArray(cur) && cur.length === 0)) {
                     draftingPath.conditions[s.id] = 'ALL';
                     draftingPath[`s${idx}`] = 'ALL';
                 } else {
@@ -3288,6 +3687,7 @@
                 const existingPath = (cat.pathways || []).find(p => p.id === draftingPath.pathwayId);
                 if (existingPath) {
                     existingPath.conditions = { ...draftingPath.conditions };
+                    existingPath.excludedCombos = draftingPath.excludedCombos ? [...draftingPath.excludedCombos] : [];
                     existingPath.color = colorInfo.color;
                     cat.steps.forEach((s, idx) => {
                         existingPath[`s${idx}`] = existingPath.conditions[s.id];
@@ -3305,6 +3705,7 @@
                 const newPath = {
                     id: `path_${Date.now()}`,
                     conditions: { ...draftingPath.conditions },
+                    excludedCombos: draftingPath.excludedCombos ? [...draftingPath.excludedCombos] : [],
                     targetOutcomeId: draftingPath.targetOutcomeId,
                     color: colorInfo.color
                 };
@@ -3316,7 +3717,7 @@
                 showToast(`✨ 成功建立【${out ? out.title : '結論'}】的新組合路徑！`);
             }
 
-            draftingPath = { active: false, isEditingExisting: false, conditions: {}, targetOutcomeId: null };
+            draftingPath = { active: false, isEditingExisting: false, conditions: {}, targetOutcomeId: null, excludedCombos: [] }; selectedLineComboKey = null; if (typeof closeLineDeletePopover === 'function') closeLineDeletePopover();
             saveToStorage();
             renderSidebar();
             renderWorkspace();
@@ -3549,6 +3950,7 @@
         // 1. 多選 N 個選項，全程產生 N 條獨立光索 (例如多選 2 個產生 2 條線，多選 5 個產生 5 條線)。
         // 2. 當路線相同（經過相同選項或結論）時，絕不重疊，而是以 5.5px 精密間距平行並聯排列。
         // 3. 不同路徑 (pathway) 之間，亦施加專屬車道偏移 (pathShift)，保持獨立軌跡。
+        // v15: 編輯同一結論時，賦予每一條線路獨立色彩，並支援單獨點選線路彈出刪除按鈕！
         function drawContinuousPathwayWires(svg, path, pIdx, totalPaths, cat, boardRect, isDrafting, isHighlighted = false, customOpacity = null) {
             if (!cat.steps || cat.steps.length === 0) return;
             const M = cat.steps.length;
@@ -3568,42 +3970,58 @@
                 }
             }
 
-            let combinations = [[]];
-            for (let s = 0; s < M; s++) {
-                const choices = stepChoices[s];
-                if (choices.length > 0) {
-                    const next = [];
-                    for (const prev of combinations) {
-                        for (const c of choices) {
-                            next.push([...prev, { stepIdx: s, val: c }]);
-                        }
-                    }
-                    combinations = next;
-                }
-            }
+            // ★ v17: 使用 GOTO 感知的組合生成器，若有 GOTO 跳轉，組合直接跳躍跨步，中間步驟完全被跨過！
+            const combinations = generateGotoAwareCombinations(cat, stepChoices);
 
             if (combinations.length === 0 || combinations[0].length === 0) return;
 
-            const maxWires = 16;
-            const activeCombos = combinations.slice(0, maxWires);
+            // 過濾掉已被使用者單獨刪除的路線 (excludedCombos)
+            const excluded = path.excludedCombos || [];
+            const validCombos = combinations.filter(combo => !excluded.includes(getComboKey(combo)));
+
+            if (validCombos.length === 0) return;
+
+            const maxWires = 24;
+            const activeCombos = validCombos.slice(0, maxWires);
             const N = activeCombos.length;
 
             const pathShift = (pIdx - (totalPaths - 1) / 2) * 5.0;
 
-            // 每個結論以專屬顏色呈現！
-            let color = path.color;
-            if (!color && path.targetOutcomeId) {
+            // 結論預設基礎色彩
+            let baseColor = path.color;
+            if (!baseColor && path.targetOutcomeId) {
                 const outIdx = (cat.outcomes || []).findIndex(o => o.id === path.targetOutcomeId);
-                color = getOutcomeColorInfo(outIdx >= 0 ? outIdx : pIdx).color;
+                baseColor = getOutcomeColorInfo(outIdx >= 0 ? outIdx : pIdx).color;
             }
-            if (!color) color = '#8b5cf6';
+            if (!baseColor) baseColor = '#8b5cf6';
 
-            const opacity = customOpacity !== null ? customOpacity : (isHighlighted ? 1.0 : (isDrafting ? 0.9 : 0.85));
+            const isEditingThisOutcome = draftingPath.active && (
+                isDrafting ||
+                (draftingPath.targetOutcomeId && draftingPath.targetOutcomeId === path.targetOutcomeId)
+            );
 
             activeCombos.forEach((combo, k) => {
+                const comboKey = getComboKey(combo);
                 const intraOffset = N > 1 ? (k - (N - 1) / 2) * 5.5 : 0;
                 const totalOffset = intraOffset + pathShift;
 
+                // 每一條線路不同顏色
+                let wireColor;
+                if (isEditingThisOutcome) {
+                    wireColor = LINE_PALETTE[k % LINE_PALETTE.length].color;
+                } else {
+                    wireColor = baseColor;
+                }
+
+                // 判斷是否為使用者目前點選的高亮線路
+                const isSelectedLine = (selectedLineComboKey === comboKey);
+                let wireOpacity = customOpacity !== null ? customOpacity : (isHighlighted ? 1.0 : (isDrafting ? 0.92 : 0.85));
+
+                if (isEditingThisOutcome && selectedLineComboKey) {
+                    wireOpacity = isSelectedLine ? 1.0 : 0.22;
+                }
+
+                // 繪製各分段線路 (若 fromNode 到 toNode 跨越了步驟，貝茲曲線會直接優雅跨越中間步驟！)
                 for (let i = 0; i < combo.length - 1; i++) {
                     const fromNode = combo[i];
                     const toNode = combo[i + 1];
@@ -3616,50 +4034,235 @@
                         const srcDy = (fromChoicesCount === 1 && N > 1) ? totalOffset : 0;
                         const dstDy = totalOffset;
 
-                        drawSingleCurvedWire(svg, ptFrom.x, ptFrom.y + srcDy, ptTo.x, ptTo.y + dstDy, color, path.id, isDrafting, opacity, path.targetOutcomeId);
+                        drawSingleCurvedWire(svg, ptFrom.x, ptFrom.y + srcDy, ptTo.x, ptTo.y + dstDy, wireColor, path.id, isDrafting, wireOpacity, path.targetOutcomeId, comboKey, k, combo, cat);
                     }
                 }
 
-                if (path.targetOutcomeId && combo.length > 0) {
+                // 繪製最後一個節點連接至結論庫
+                // 若為 GOTO 直達特定結論，則鎖定該 directOutcomeId；否則連接至路徑之目標結論
+                const targetOutId = combo.directOutcomeId || path.targetOutcomeId;
+                if (targetOutId && combo.length > 0) {
                     const lastNode = combo[combo.length - 1];
                     const ptLast = getAnchorPoint(lastNode.stepIdx, lastNode.val, cat, boardRect, 'right');
-                    const ptOut = getOutcomeAnchorPoint(path.targetOutcomeId, boardRect);
+                    const ptOut = getOutcomeAnchorPoint(targetOutId, boardRect);
 
                     if (ptLast && ptOut) {
                         const fromChoicesCount = stepChoices[lastNode.stepIdx].length;
                         const srcDy = (fromChoicesCount === 1 && N > 1) ? totalOffset : 0;
                         const dstDy = totalOffset;
 
-                        drawSingleCurvedWire(svg, ptLast.x, ptLast.y + srcDy, ptOut.x, ptOut.y + dstDy, color, path.id, isDrafting, opacity, path.targetOutcomeId);
+                        drawSingleCurvedWire(svg, ptLast.x, ptLast.y + srcDy, ptOut.x, ptOut.y + dstDy, wireColor, path.id, isDrafting, wireOpacity, targetOutId, comboKey, k, combo, cat);
                     }
                 }
             });
         }
 
-        function drawSingleCurvedWire(svg, x1, y1, x2, y2, color, pathId, isDrafting = false, opacity = 0.85, outcomeId = null) {
+        function drawSingleCurvedWire(svg, x1, y1, x2, y2, color, pathId, isDrafting = false, opacity = 0.85, outcomeId = null, comboKey = '', comboIndex = 0, comboNodes = [], cat = null) {
             const dx = Math.abs(x2 - x1) * 0.45;
             const d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${(x1 + dx).toFixed(1)} ${y1.toFixed(1)}, ${(x2 - dx).toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
 
+            const isSelected = (selectedLineComboKey === comboKey);
+            const safeKey = comboKey ? comboKey.replace(/[^a-zA-Z0-9]/g, '_') : `idx_${comboIndex}`;
+
+            // 1. 可視主線路
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', d);
             path.setAttribute('stroke', color);
             path.style.opacity = opacity;
+            path.style.transition = 'opacity 0.18s ease, stroke-width 0.18s ease';
 
             if (isDrafting) {
-                path.setAttribute('class', 'pathway-wire wire-drafting');
-                path.setAttribute('stroke-dasharray', '6 3');
-                path.style.strokeWidth = '2.8px';
+                path.setAttribute('class', `pathway-wire wire-combo-${safeKey} wire-drafting ${isSelected ? 'wire-selected' : ''}`);
+                path.setAttribute('stroke-dasharray', isSelected ? 'none' : '6 3');
+                path.style.strokeWidth = isSelected ? '5px' : '3.0px';
+                if (isSelected) {
+                    path.style.filter = `drop-shadow(0 0 8px ${color})`;
+                }
             } else {
-                path.setAttribute('class', `pathway-wire wire-path-${pathId}`);
+                path.setAttribute('class', `pathway-wire wire-combo-${safeKey} wire-path-${pathId} ${isSelected ? 'wire-selected' : ''}`);
                 path.setAttribute('data-path', pathId);
-                path.style.strokeWidth = '2.4px';
-                path.onclick = () => {
-                    if (outcomeId) handleOutcomeCardClick(outcomeId);
-                    else highlightPathwayOnCanvas(pathId);
-                };
+                path.style.strokeWidth = isSelected ? '4.8px' : '2.5px';
             }
 
             svg.appendChild(path);
+
+            // 2. 擴大感應區的透明線段 (Hit-testing Area，方便使用者點選)
+            const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            hitPath.setAttribute('d', d);
+            hitPath.setAttribute('stroke', 'transparent');
+            hitPath.setAttribute('stroke-width', '18');
+            hitPath.setAttribute('fill', 'none');
+            hitPath.style.cursor = 'pointer';
+
+            hitPath.onmouseenter = () => {
+                if (!selectedLineComboKey) {
+                    const segs = svg.querySelectorAll(`.wire-combo-${safeKey}`);
+                    segs.forEach(s => s.classList.add('wire-combo-hover'));
+                    svg.classList.add('wire-hover-mode');
+                }
+            };
+            hitPath.onmouseleave = () => {
+                const segs = svg.querySelectorAll(`.wire-combo-${safeKey}`);
+                segs.forEach(s => s.classList.remove('wire-combo-hover'));
+                svg.classList.remove('wire-hover-mode');
+            };
+
+            hitPath.onclick = (e) => {
+                e.stopPropagation();
+                handleWireClick(e, comboKey, comboIndex, comboNodes, pathId, outcomeId, color, cat);
+            };
+
+            svg.appendChild(hitPath);
+        }
+
+        // 點擊線路事件：高亮此線路並在點擊位置旁彈出專屬刪除按鈕
+        function handleWireClick(e, comboKey, comboIndex, comboNodes, pathId, outcomeId, color, cat) {
+            if (!draftingPath.active) {
+                if (outcomeId) {
+                    handleOutcomeCardClick(outcomeId);
+                    setTimeout(() => {
+                        showLineDeletePopover(e, comboKey, comboIndex, comboNodes, color, cat);
+                    }, 120);
+                }
+                return;
+            }
+
+            showLineDeletePopover(e, comboKey, comboIndex, comboNodes, color, cat);
+        }
+
+        function showLineDeletePopover(e, comboKey, comboIndex, comboNodes, color, cat) {
+            selectedLineComboKey = comboKey;
+            renderAllPathwayWires();
+
+            const board = document.getElementById('pathwayCanvasBoard');
+            if (!board) return;
+
+            let popover = document.getElementById('lineDeletePopover');
+            if (!popover) {
+                popover = document.createElement('div');
+                popover.id = 'lineDeletePopover';
+                popover.className = 'line-delete-floating-popover';
+                board.appendChild(popover);
+            }
+
+            const boardRect = board.getBoundingClientRect();
+            let posX = (e ? e.clientX : boardRect.left + 200) - boardRect.left + board.scrollLeft + 15;
+            let posY = (e ? e.clientY : boardRect.top + 200) - boardRect.top + board.scrollTop - 35;
+
+            const popoverW = 270;
+            if (posX + popoverW > board.scrollWidth) {
+                posX = Math.max(10, posX - popoverW - 30);
+            }
+            if (posY < 10) posY = 10;
+
+            popover.style.left = posX + 'px';
+            popover.style.top = posY + 'px';
+            popover.style.display = 'block';
+
+            const routeText = getComboLabel(comboNodes, cat || getCat(currentNavId));
+
+            popover.innerHTML = `
+                <div class="line-popover-header">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span class="line-color-dot" style="background:${color}; box-shadow: 0 0 8px ${color};"></span>
+                        <span class="line-popover-title">路線 #${comboIndex + 1}</span>
+                    </div>
+                    <button class="line-popover-close" onclick="closeLineDeletePopover(event)" title="關閉">✕</button>
+                </div>
+                <div class="line-popover-route">
+                    ${routeText}
+                </div>
+                <div class="line-popover-action">
+                    <button class="btn-delete-single-line" onclick="deleteSingleLineCombo('${comboKey}')">
+                        <i class="fa-solid fa-trash-can"></i> 刪除此條線路
+                    </button>
+                </div>
+            `;
+        }
+
+        function closeLineDeletePopover(e) {
+            if (e) e.stopPropagation();
+            const popover = document.getElementById('lineDeletePopover');
+            if (popover) {
+                popover.style.display = 'none';
+            }
+            selectedLineComboKey = null;
+            renderAllPathwayWires();
+        }
+
+        // 單獨刪除某一條線路
+        function deleteSingleLineCombo(comboKey) {
+            if (!draftingPath.active) return;
+            if (!draftingPath.excludedCombos) draftingPath.excludedCombos = [];
+            if (!draftingPath.excludedCombos.includes(comboKey)) {
+                draftingPath.excludedCombos.push(comboKey);
+            }
+
+            markDirty();
+            cleanOrphanOptionsInDrafting();
+            closeLineDeletePopover();
+            renderWorkspace();
+            showToast('🗑️ 已成功刪除該條組合線路！');
+        }
+
+        // 檢查並清理孤立選項：若某步驟選項已無任何有效線路相通，自動取消勾選
+        function cleanOrphanOptionsInDrafting() {
+            const cat = getCat(currentNavId);
+            if (!cat || !draftingPath.active) return;
+
+            const stepChoices = [];
+            for (let s = 0; s < cat.steps.length; s++) {
+                const step = cat.steps[s];
+                const val = getStepSelectionForPath(draftingPath, step, s);
+                if (val === 'ALL') {
+                    stepChoices.push(['ALL']);
+                } else if (Array.isArray(val) && val.length > 0) {
+                    stepChoices.push(val);
+                } else {
+                    stepChoices.push([]);
+                }
+            }
+
+            const combinations = generateGotoAwareCombinations(cat, stepChoices);
+
+            const activeCombos = combinations.filter(c => !((draftingPath.excludedCombos || []).includes(getComboKey(c))));
+
+            if (activeCombos.length === 0) {
+                // 全部線路皆已被刪除
+                if (draftingPath.isEditingExisting && draftingPath.targetOutcomeId) {
+                    const out = (cat.outcomes || []).find(o => o.id === draftingPath.targetOutcomeId);
+                    const outName = out ? out.title : '此結論';
+                    if (cat.pathways) {
+                        cat.pathways = cat.pathways.filter(p => p.targetOutcomeId !== draftingPath.targetOutcomeId);
+                    }
+                    draftingPath = { active: false, isEditingExisting: false, conditions: {}, targetOutcomeId: null, excludedCombos: [] };
+                    saveToStorage();
+                    renderSidebar();
+                    renderWorkspace();
+                    showToast(`該結論【${outName}】所有線路已被刪除，已恢復為未連線狀態。`);
+                    return;
+                } else {
+                    draftingPath.conditions = {};
+                    cat.steps.forEach((s, idx) => { draftingPath[`s${idx}`] = []; });
+                    renderWorkspace();
+                    return;
+                }
+            }
+
+            // 更新選項打勾狀態：只保留存在於 activeCombos 中的選項
+            cat.steps.forEach((s, sIdx) => {
+                const curSel = draftingPath.conditions[s.id] || draftingPath[`s${sIdx}`];
+                if (Array.isArray(curSel)) {
+                    const validOpts = curSel.filter(opt => {
+                        return activeCombos.some(combo => {
+                            const node = combo.find(n => n.stepIdx === sIdx);
+                            return node && node.val === opt;
+                        });
+                    });
+                    draftingPath.conditions[s.id] = validOpts;
+                    draftingPath[`s${sIdx}`] = validOpts;
+                }
+            });
         }
 
         function highlightPathwayOnCanvas(pathId) {
@@ -3780,6 +4383,290 @@
             if (cat && cat.steps[sIdx]) { cat.steps[sIdx].title = val; markDirty(); }
         }
 
+        
+        // ==========================================
+        // GOTO 跳轉點管理邏輯 (v16)
+        // ==========================================
+        
+        // ==========================================
+        // GOTO 感知的多路徑組合推進生成器 (v17)
+        // 核心：若某選項設定 GOTO，線路直接跨步跳躍或直達結論庫，絕不經過被跳過的步驟！
+        // ==========================================
+        function getOptionGotoRule(cat, sIdx, val) {
+            if (val === 'ALL' || val === 'SKIPPED') return 'next';
+            if (!cat.steps[sIdx]) return 'next';
+            const optIdx = cat.steps[sIdx].options.indexOf(val);
+            if (optIdx < 0) return 'next';
+            const gotos = cat.steps[sIdx].gotos || {};
+            return gotos[optIdx] || 'next';
+        }
+
+        function generateGotoAwareCombinations(cat, stepChoices) {
+            if (!cat.steps || cat.steps.length === 0) return [];
+            const M = cat.steps.length;
+
+            let inFlight = [ { nodes: [], nextStepIdx: 0, isFinished: false, directOutcomeId: null } ];
+            let finished = [];
+            let loopLimit = 0;
+
+            while (inFlight.length > 0 && loopLimit < M + 8) {
+                loopLimit++;
+                const nextInFlight = [];
+
+                for (const p of inFlight) {
+                    if (p.isFinished || p.nextStepIdx >= M) {
+                        finished.push(p);
+                        continue;
+                    }
+
+                    const s = p.nextStepIdx;
+                    const choices = stepChoices[s];
+
+                    if (!choices || choices.length === 0) {
+                        finished.push({ ...p, isFinished: true });
+                        continue;
+                    }
+
+                    for (const c of choices) {
+                        const goto = getOptionGotoRule(cat, s, c);
+                        const newNodes = [ ...p.nodes, { stepIdx: s, val: c } ];
+
+                        if (goto === 'conclusion') {
+                            // GOTO 直達結論庫：跳過後續所有步驟！
+                            finished.push({
+                                nodes: newNodes,
+                                nextStepIdx: M,
+                                isFinished: true,
+                                directOutcomeId: null
+                            });
+                        } else if (goto.startsWith('out_')) {
+                            // GOTO 直達特定結論：跳過後續所有步驟！
+                            finished.push({
+                                nodes: newNodes,
+                                nextStepIdx: M,
+                                isFinished: true,
+                                directOutcomeId: goto.replace('out_', '')
+                            });
+                        } else if (goto.startsWith('step_')) {
+                            const targetIdx = parseInt(goto.replace('step_', ''), 10);
+                            if (targetIdx > s && targetIdx < M) {
+                                // 跳過中間步驟，直接前往 targetIdx！
+                                nextInFlight.push({
+                                    nodes: newNodes,
+                                    nextStepIdx: targetIdx,
+                                    isFinished: false,
+                                    directOutcomeId: null
+                                });
+                            } else {
+                                nextInFlight.push({
+                                    nodes: newNodes,
+                                    nextStepIdx: s + 1,
+                                    isFinished: false,
+                                    directOutcomeId: null
+                                });
+                            }
+                        } else {
+                            nextInFlight.push({
+                                nodes: newNodes,
+                                nextStepIdx: s + 1,
+                                isFinished: false,
+                                directOutcomeId: null
+                            });
+                        }
+                    }
+                }
+                inFlight = nextInFlight;
+            }
+
+            const all = [ ...finished, ...inFlight ];
+            return all.map(item => {
+                const arr = item.nodes;
+                arr.directOutcomeId = item.directOutcomeId;
+                return arr;
+            });
+        }
+
+        // 判斷某步驟是否在當前編輯中已被前置 GOTO 完全跳過
+        function isStepBypassedByDraftingGoto(sIdx, cat, drafting) {
+            if (!drafting || !drafting.active) return false;
+            for (let prevIdx = 0; prevIdx < sIdx; prevIdx++) {
+                const prevStep = cat.steps[prevIdx];
+                if (!prevStep || !prevStep.gotos) continue;
+                const sel = getStepSelectionForPath(drafting, prevStep, prevIdx);
+                if (!Array.isArray(sel) || sel.length === 0) continue;
+
+                const allJumpPast = sel.every(optVal => {
+                    const optIdx = prevStep.options.indexOf(optVal);
+                    if (optIdx < 0) return false;
+                    const goto = prevStep.gotos[optIdx];
+                    if (!goto) return false;
+                    if (goto === 'conclusion' || goto.startsWith('out_')) return true;
+                    if (goto.startsWith('step_')) {
+                        const targetIdx = parseInt(goto.replace('step_', ''), 10);
+                        return targetIdx > sIdx;
+                    }
+                    return false;
+                });
+
+                if (allJumpPast) return true;
+            }
+            return false;
+        }
+
+        function getGotoBadgeInfo(step, optIdx, cat) {
+            if (!step || !step.gotos) return { hasGoto: false, text: '<i class="fa-solid fa-arrow-right"></i>', cls: '' };
+            const target = step.gotos[optIdx];
+            if (!target || target === 'next') return { hasGoto: false, text: '<i class="fa-solid fa-arrow-right"></i>', cls: '' };
+            if (target === 'conclusion') return { hasGoto: true, text: '🏆 ➔ 結論庫', cls: 'active-goto-conclusion' };
+            if (target.startsWith('out_')) {
+                const outId = target.replace('out_', '');
+                const out = cat ? (cat.outcomes || []).find(o => o.id === outId) : null;
+                const outName = out ? (out.title.length > 5 ? out.title.slice(0, 5) + '…' : out.title) : '方案';
+                return { hasGoto: true, text: `💎 ➔ ${outName}`, cls: 'active-goto-conclusion' };
+            }
+            if (target.startsWith('step_')) {
+                const targetIdx = parseInt(target.replace('step_', ''), 10);
+                return { hasGoto: true, text: `⚡ ➔ 步${targetIdx + 1}`, cls: 'active-goto' };
+            }
+            return { hasGoto: false, text: '<i class="fa-solid fa-arrow-right"></i>', cls: '' };
+        }
+
+        function updateOptionGoto(catId, sIdx, optIdx, targetValue) {
+            if (sIdx === 0) return; // 步驟一不設跳轉
+            const cat = getCat(catId);
+            if (!cat || !cat.steps[sIdx]) return;
+            if (!cat.steps[sIdx].gotos) cat.steps[sIdx].gotos = {};
+            if (!targetValue || targetValue === 'next') {
+                delete cat.steps[sIdx].gotos[optIdx];
+            } else {
+                cat.steps[sIdx].gotos[optIdx] = targetValue;
+            }
+            markDirty();
+            saveToStorage();
+            renderWorkspace();
+            showToast(`⚡ 已更新選項 ${optIdx + 1} 的 GOTO 跳轉點！`);
+        }
+
+        function openGotoPopover(event, catId, sIdx, optIdx) {
+            if (sIdx === 0) return; // 步驟一不設跳轉
+            if (event) event.stopPropagation();
+            const board = document.getElementById('pathwayCanvasBoard');
+            if (!board) return;
+
+            let popover = document.getElementById('gotoMenuPopover');
+            if (!popover) {
+                popover = document.createElement('div');
+                popover.id = 'gotoMenuPopover';
+                popover.className = 'goto-popover-menu';
+                board.appendChild(popover);
+            }
+
+            const cat = getCat(catId);
+            if (!cat || !cat.steps[sIdx]) return;
+            const step = cat.steps[sIdx];
+            const optText = step.options[optIdx];
+            const curGoto = (step.gotos || {})[optIdx] || '';
+
+            const boardRect = board.getBoundingClientRect();
+            let posX = (event ? event.clientX : boardRect.left + 200) - boardRect.left + board.scrollLeft + 12;
+            let posY = (event ? event.clientY : boardRect.top + 200) - boardRect.top + board.scrollTop - 20;
+
+            const popoverW = 310;
+            if (posX + popoverW > board.scrollWidth) {
+                posX = Math.max(10, posX - popoverW - 25);
+            }
+            if (posY < 10) posY = 10;
+
+            popover.style.left = posX + 'px';
+            popover.style.top = posY + 'px';
+            popover.style.display = 'block';
+
+            const forwardSteps = [];
+            for (let k = sIdx + 1; k < cat.steps.length; k++) {
+                forwardSteps.push({ idx: k, step: cat.steps[k] });
+            }
+
+            let itemsHtml = `
+                <div class="goto-item ${!curGoto || curGoto === 'next' ? 'selected' : ''}" onclick="selectGotoTarget('${cat.id}', ${sIdx}, ${optIdx}, 'next')">
+                    <span class="goto-icon">⏩</span>
+                    <div class="goto-info">
+                        <span class="goto-title">預設 (依序前往下一步)</span>
+                        <span class="goto-desc">${cat.steps[sIdx + 1] ? `正常前往 步驟 ${sIdx + 2} (${cat.steps[sIdx + 1].step_label || '下一步'})` : '正常進入結論庫'}</span>
+                    </div>
+                    ${!curGoto || curGoto === 'next' ? '<span class="goto-check">✓</span>' : ''}
+                </div>
+            `;
+
+            forwardSteps.forEach(f => {
+                const isSel = (curGoto === `step_${f.idx}`);
+                itemsHtml += `
+                    <div class="goto-item ${isSel ? 'selected' : ''}" onclick="selectGotoTarget('${cat.id}', ${sIdx}, ${optIdx}, 'step_${f.idx}')">
+                        <span class="goto-icon">⏭️</span>
+                        <div class="goto-info">
+                            <span class="goto-title">直接前往 步驟 ${f.idx + 1}</span>
+                            <span class="goto-desc">${f.step.step_label || f.step.title} (跳過中間步驟)</span>
+                        </div>
+                        ${isSel ? '<span class="goto-check">✓</span>' : ''}
+                    </div>
+                `;
+            });
+
+            const isConclusion = (curGoto === 'conclusion');
+            itemsHtml += `
+                <div class="goto-item ${isConclusion ? 'selected' : ''}" onclick="selectGotoTarget('${cat.id}', ${sIdx}, ${optIdx}, 'conclusion')">
+                    <span class="goto-icon">🏆</span>
+                    <div class="goto-info">
+                        <span class="goto-title">直接前往 推薦結論庫</span>
+                        <span class="goto-desc">立即結束問卷，依目前回答產出診斷結果</span>
+                    </div>
+                    ${isConclusion ? '<span class="goto-check">✓</span>' : ''}
+                </div>
+            `;
+
+            (cat.outcomes || []).forEach(out => {
+                const isOutSel = (curGoto === `out_${out.id}`);
+                itemsHtml += `
+                    <div class="goto-item ${isOutSel ? 'selected' : ''}" onclick="selectGotoTarget('${cat.id}', ${sIdx}, ${optIdx}, 'out_${out.id}')">
+                        <span class="goto-icon">💎</span>
+                        <div class="goto-info">
+                            <span class="goto-title">直達方案：${out.title}</span>
+                            <span class="goto-desc">直接推薦此結論</span>
+                        </div>
+                        ${isOutSel ? '<span class="goto-check">✓</span>' : ''}
+                    </div>
+                `;
+            });
+
+            popover.innerHTML = `
+                <div class="goto-popover-header">
+                    <div style="font-size:12.5px; font-weight:800; color:#1e293b; display:flex; align-items:center; gap:6px;">
+                        <i class="fa-solid fa-arrow-right" style="color:#6366f1;"></i>
+                        <span>跳轉目標設定 (步驟 ${sIdx + 1} 選項 ${optIdx + 1})</span>
+                    </div>
+                    <button class="line-popover-close" onclick="closeGotoPopover(event)" title="關閉">✕</button>
+                </div>
+                <div class="goto-popover-subtitle">
+                    選擇「<b>${optText}</b>」時，將直接前往所選步驟（跳過中間步驟）或直達結論庫：
+                </div>
+                <div class="goto-options-list">
+                    ${itemsHtml}
+                </div>
+            `;
+        }
+
+        function closeGotoPopover(e) {
+            if (e) e.stopPropagation();
+            const popover = document.getElementById('gotoMenuPopover');
+            if (popover) {
+                popover.style.display = 'none';
+            }
+        }
+
+        function selectGotoTarget(catId, sIdx, optIdx, target) {
+            updateOptionGoto(catId, sIdx, optIdx, target);
+            closeGotoPopover();
+        }
+
         function updateStepOption(catId, sIdx, optIdx, val) {
             const cat = getCat(catId);
             if (cat && cat.steps[sIdx]) { cat.steps[sIdx].options[optIdx] = val; markDirty(); }
@@ -3798,6 +4685,16 @@
             const cat = getCat(catId);
             if (cat && cat.steps[sIdx]) {
                 cat.steps[sIdx].options.splice(optIdx, 1);
+                if (cat.steps[sIdx].gotos) {
+                    const oldGotos = cat.steps[sIdx].gotos;
+                    const newGotos = {};
+                    Object.keys(oldGotos).forEach(k => {
+                        const idx = parseInt(k, 10);
+                        if (idx < optIdx) newGotos[idx] = oldGotos[k];
+                        else if (idx > optIdx) newGotos[idx - 1] = oldGotos[k];
+                    });
+                    cat.steps[sIdx].gotos = newGotos;
+                }
                 saveToStorage();
                 renderWorkspace();
             }
@@ -4158,7 +5055,7 @@
         function handlePhoneCategorySelect(cat) {
             phoneSimState.currentCat = cat;
             phoneSimState.currentStepIdx = 0;
-            phoneSimState.answers = [];
+            phoneSimState.answers = []; phoneSimState.forcedOutcomeId = null;
 
             addPhoneMsg('user', cat.name);
             selectNav(cat.id);
@@ -4193,7 +5090,30 @@
         function handlePhoneStepAnswer(stepIdx, answerText) {
             addPhoneMsg('user', answerText);
             phoneSimState.answers[stepIdx] = answerText;
-            advanceToPhoneStep(stepIdx + 1);
+
+            const cat = phoneSimState.currentCat;
+            const step = cat ? cat.steps[stepIdx] : null;
+            let nextStepIdx = stepIdx + 1;
+
+            if (step && step.gotos) {
+                const optIdx = step.options.indexOf(answerText);
+                const gotoRule = step.gotos[optIdx];
+                if (gotoRule) {
+                    if (gotoRule === 'conclusion') {
+                        nextStepIdx = 9999;
+                    } else if (gotoRule.startsWith('out_')) {
+                        phoneSimState.forcedOutcomeId = gotoRule.replace('out_', '');
+                        nextStepIdx = 9999;
+                    } else if (gotoRule.startsWith('step_')) {
+                        const targetIdx = parseInt(gotoRule.replace('step_', ''), 10);
+                        if (!isNaN(targetIdx) && targetIdx > stepIdx) {
+                            nextStepIdx = targetIdx;
+                        }
+                    }
+                }
+            }
+
+            advanceToPhoneStep(nextStepIdx);
         }
 
         function handleFinalOutcomeDelivery() {
@@ -4210,6 +5130,10 @@
                     for (let sIdx = 0; sIdx < cat.steps.length; sIdx++) {
                         const step = cat.steps[sIdx];
                         const userAns = ans[sIdx];
+                        // GOTO 跳過之步驟自動視為萬用符合
+                        if (userAns === undefined) {
+                            continue;
+                        }
                         const stepSel = getStepSelectionForPath(p, step, sIdx);
                         if (stepSel === 'ALL') {
                             continue;
@@ -4220,14 +5144,27 @@
                             break;
                         }
                     }
+                    // 檢查使用者所選之特定組合是否在排除名單內 (v15 單獨刪除線路支援)
+                    if (isMatch && p.excludedCombos && p.excludedCombos.length > 0) {
+                        const userAnsKey = cat.steps.map((s, sIdx) => `${sIdx}:${ans[sIdx]}`).join('|');
+                        if (p.excludedCombos.includes(userAnsKey)) {
+                            isMatch = false;
+                        }
+                    }
                     if (isMatch) {
                         matchedPath = p;
                         break;
                     }
                 }
 
-                if (matchedPath) {
-                    const out = (cat.outcomes || []).find(o => o.id === matchedPath.targetOutcomeId);
+                // 若有 GOTO 直達指定結論
+                let forcedOut = null;
+                if (phoneSimState.forcedOutcomeId) {
+                    forcedOut = (cat.outcomes || []).find(o => o.id === phoneSimState.forcedOutcomeId);
+                }
+
+                if (forcedOut || matchedPath) {
+                    const out = forcedOut || (cat.outcomes || []).find(o => o.id === matchedPath.targetOutcomeId);
                     addPhoneMsg('bot', `✨ 感謝您的耐心回答！
 系統循著您設定的組合路徑，為您計算出合適方案：`);
                     setTimeout(() => {
@@ -4292,7 +5229,44 @@
         // 面板收合與展開互動邏輯 (左側自動縮小 / 右側模擬器隱藏與顯示)
         // ==========================================
         let isSidebarPinned = false; // 預設未釘選：滑鼠移開自動隱藏縮小成一排
-        let isSimulatorHidden = false; // 預設模擬器顯示
+        let isSimulatorHidden = false;
+        let selectedLineComboKey = null;
+
+        // 線路色彩庫：當同一結論有多條組合線路時，賦予每一條線路獨立且醒目的專屬色彩
+        const LINE_PALETTE = [
+            { color: '#06b6d4', name: '青藍', glow: 'rgba(6, 182, 212, 0.45)' },
+            { color: '#ec4899', name: '桃粉', glow: 'rgba(236, 72, 153, 0.45)' },
+            { color: '#f59e0b', name: '琥珀金', glow: 'rgba(245, 158, 11, 0.45)' },
+            { color: '#10b981', name: '翡翠綠', glow: 'rgba(16, 185, 129, 0.45)' },
+            { color: '#8b5cf6', name: '紫羅蘭', glow: 'rgba(139, 92, 246, 0.45)' },
+            { color: '#3b82f6', name: '湛藍', glow: 'rgba(59, 130, 246, 0.45)' },
+            { color: '#f43f5e', name: '熱情紅', glow: 'rgba(244, 63, 94, 0.45)' },
+            { color: '#84cc16', name: '青檸綠', glow: 'rgba(132, 204, 22, 0.45)' },
+            { color: '#d946ef', name: '洋紅', glow: 'rgba(217, 70, 239, 0.45)' },
+            { color: '#14b8a6', name: '松石綠', glow: 'rgba(20, 184, 166, 0.45)' },
+            { color: '#fb923c', name: '珊瑚橘', glow: 'rgba(251, 146, 60, 0.45)' },
+            { color: '#6366f1', name: '靛藍', glow: 'rgba(99, 102, 241, 0.45)' },
+            { color: '#0ea5e9', name: '海天藍', glow: 'rgba(14, 165, 233, 0.45)' },
+            { color: '#a855f7', name: '鮮紫', glow: 'rgba(168, 85, 247, 0.45)' },
+            { color: '#eab308', name: '明黃', glow: 'rgba(234, 179, 8, 0.45)' },
+            { color: '#22c55e', name: '亮綠', glow: 'rgba(34, 197, 94, 0.45)' }
+        ];
+
+        function getComboKey(combo) {
+            if (!combo || !Array.isArray(combo)) return '';
+            return combo.map(n => `${n.stepIdx}:${n.val}`).join('|');
+        }
+
+        function getComboLabel(combo, cat) {
+            if (!cat || !combo || !Array.isArray(combo)) return '';
+            return combo.map(node => {
+                if (node.val === 'ALL') return `步驟 ${node.stepIdx + 1}: 全部通配 (*)`;
+                const step = cat.steps[node.stepIdx];
+                const opt = step ? (step.options || []).find(o => o.value === node.val) : null;
+                const optText = opt ? opt.text : node.val;
+                return `${node.stepIdx + 1}.${optText}`;
+            }).join(' ➔ ');
+        } // 預設模擬器顯示
 
         function initCollapsiblePanels() {
             const sidebar = document.getElementById('sidebarNav');
