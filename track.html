@@ -206,12 +206,21 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 .sum h2{margin:0;font-size:17px;font-weight:800}
 .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--ink-2)}
-.chip i,.tab i{width:8px;height:8px;border-radius:50%;background:var(--c,#8a968f)}
-.s-go{--c:#16a36a}.s-prep{--c:#d98a1b}.s-done{--c:#8a968f}.s-plan{--c:#3a6fc0}.s-x{--c:#c2412d}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--c,#16a36a);flex-shrink:0}
+.tab i{width:8px;height:8px;border-radius:50%;background:var(--tab-dot, var(--c, #16a36a));flex-shrink:0}
+.s-go{--c:#16a36a}.s-prep{--c:#d98a1b}.s-done{--c:#16a36a}.s-plan{--c:#3a6fc0}.s-x{--c:#c2412d}
 .badge{flex:none;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;color:var(--c,#16a36a);background:color-mix(in srgb,var(--c,#16a36a) 12%,#fff);border:1px solid color-mix(in srgb,var(--c,#16a36a) 30%,#fff)}
 .badge.s-go,.s-go .badge{--c:#16a36a}
 .badge.s-prep,.s-prep .badge{--c:#d98a1b}
-.badge.s-done,.s-done .badge{--c:#8a968f}
+.badge.s-done,.s-done .badge{--c:#16a36a}
+.tab.c-0 i, .tabs .tab:nth-child(5n+1) i{--tab-dot:#16a36a}
+.tab.c-1 i, .tabs .tab:nth-child(5n+2) i{--tab-dot:#d98a1b}
+.tab.c-2 i, .tabs .tab:nth-child(5n+3) i{--tab-dot:#0284c7}
+.tab.c-3 i, .tabs .tab:nth-child(5n+4) i{--tab-dot:#8b5cf6}
+.tab.c-4 i, .tabs .tab:nth-child(5n+5) i{--tab-dot:#ea580c}
+.tab.s-x i{--tab-dot:#c2412d!important}
+.tab[aria-selected=true],.tab.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.seg-l span.done{color:var(--ink-2);font-weight:600}
 .badge.s-plan,.s-plan .badge{--c:#3a6fc0}
 .badge.s-x,.s-x .badge{--c:#c2412d}
 .tabs{display:flex;gap:8px;overflow-x:auto;margin:0 -14px 12px;padding:2px 14px;scrollbar-width:none}
@@ -2008,7 +2017,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                     fallbackStore: (term && term.store && term.store.name) || fallbackSplitStore,
                     defaultName: `店家 ${idx + 1}`
                 });
-                tabBtn.className = `tab ${concise ? concise.statusClass : ''}` + (tabBtn.getAttribute('aria-selected') === 'true' ? ' active' : '');
+                tabBtn.className = `tab ${concise ? concise.statusClass : ''} c-${idx % 5}` + (tabBtn.getAttribute('aria-selected') === 'true' ? ' active' : '');
                 tabBtn.innerHTML = `<i></i><span>${escapeHtml(formatStoreMiddle(storeName))}</span>`;
             }
         }
@@ -3218,7 +3227,8 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             const tabsHtml = items.map((it, i) => {
                 const store = it.split.store || (it.term.store && it.term.store.name) || `店家 ${i + 1}`;
                 const isActive = (i === activeIndex);
-                return `<button type="button" class="tab ${it.concise ? it.concise.statusClass : ''}" data-slot-key="${escapeHtml(it.slotKey)}" data-sub-idx="${i}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" onclick="scrollToSplitIndex(${i})">
+                const colorCls = `c-${i % 5}`;
+                return `<button type="button" class="tab ${it.concise ? it.concise.statusClass : ''} ${colorCls}" data-slot-key="${escapeHtml(it.slotKey)}" data-sub-idx="${i}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" onclick="scrollToSplitIndex(${i})">
                     <i></i><span>${escapeHtml(formatStoreMiddle(store))}</span>
                 </button>`;
             }).join('');
@@ -3320,6 +3330,8 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
             let activeIdx = window.currentMultiOrderIndex || 0;
             let isSyncing = false;
+            let syncTimer = null;
+            let scrollTimer = null;
 
             function updateTabs(idx) {
                 activeIdx = idx;
@@ -3327,54 +3339,87 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                 if (window.currentMultiUuidList && window.currentMultiUuidList[idx]) {
                     window.currentMultiActiveOrderUuid = window.currentMultiUuidList[idx];
                 }
-                if (!tabsContainer) return;
-
-                const tabs = tabsContainer.querySelectorAll('.tab');
+                const tabs = tabsContainer ? tabsContainer.querySelectorAll('.tab') : [];
                 tabs.forEach((tab, i) => {
                     const isActive = (i === idx);
                     tab.classList.toggle('active', isActive);
                     tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
                 });
 
-                const activeTab = tabs[idx];
-                if (activeTab) {
-                    tabsContainer.scrollTo({ left: activeTab.offsetLeft - tabsContainer.offsetLeft - 20, behavior: 'smooth' });
+                if (tabs[idx]) {
+                    tabs[idx].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
                 }
             }
 
             window.scrollToSplitIndex = function(idx) {
-                markSliderInteraction();
+                if (typeof markSliderInteraction === 'function') markSliderInteraction();
                 updateTabs(idx);
-                isSyncing = true;
-                const topChild = topSlider.children[idx];
-                if (topChild) {
-                    topSlider.scrollTo({ left: topChild.offsetLeft - topSlider.offsetLeft, behavior: 'smooth' });
+                const cards = topSlider.children;
+                if (cards && cards[idx]) {
+                    isSyncing = true;
+                    const targetLeft = Math.max(0, cards[idx].offsetLeft - 14);
+                    topSlider.scrollTo({ left: targetLeft, behavior: 'smooth' });
+                    const bSlider = document.getElementById('splitsDetailSlider');
+                    if (bSlider && bSlider.children[idx]) {
+                        bSlider.scrollTo({ left: Math.max(0, bSlider.children[idx].offsetLeft - 14), behavior: 'smooth' });
+                    }
+                    clearTimeout(syncTimer);
+                    syncTimer = setTimeout(() => { isSyncing = false; }, 450);
                 }
-                setTimeout(() => { isSyncing = false; }, 400);
             };
 
+            // 綁定分頁按鈕點擊事件（兼顧 inline onclick 與事件監聽）
+            if (tabsContainer) {
+                const tabs = tabsContainer.querySelectorAll('.tab');
+                tabs.forEach((tab, i) => {
+                    tab.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        window.scrollToSplitIndex(i);
+                    });
+                });
+            }
+
+            // 滑動卡片匣時，自動尋找最貼近視野左側的卡片並同步選取上方對應分頁按鈕
+            topSlider.addEventListener('scroll', () => {
+                if (typeof markSliderInteraction === 'function') markSliderInteraction();
+                clearTimeout(scrollTimer);
+                scrollTimer = setTimeout(() => {
+                    if (isSyncing) return;
+                    const cards = topSlider.children;
+                    if (!cards || cards.length === 0) return;
+
+                    const curScroll = topSlider.scrollLeft;
+                    let bestIdx = 0;
+                    let minDiff = Infinity;
+                    for (let i = 0; i < cards.length; i++) {
+                        const cardTarget = Math.max(0, cards[i].offsetLeft - 14);
+                        const diff = Math.abs(curScroll - cardTarget);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            bestIdx = i;
+                        }
+                    }
+                    if (bestIdx !== activeIdx && bestIdx >= 0 && bestIdx < cards.length) {
+                        updateTabs(bestIdx);
+                        const bSlider = document.getElementById('splitsDetailSlider');
+                        if (bSlider && bSlider.children[bestIdx]) {
+                            bSlider.scrollTo({ left: Math.max(0, bSlider.children[bestIdx].offsetLeft - 14), behavior: 'smooth' });
+                        }
+                    }
+                }, 40);
+            }, { passive: true });
+
             enableMouseDragScroll(topSlider);
+            const bottomSlider = document.getElementById('splitsDetailSlider');
             if (bottomSlider) enableMouseDragScroll(bottomSlider);
 
             ['touchstart', 'touchmove', 'mousedown'].forEach(evName => {
                 topSlider.addEventListener(evName, markSliderInteraction, { passive: true });
             });
 
-            topSlider.addEventListener('scroll', () => {
-                markSliderInteraction();
-                if (isSyncing) return;
-                const scrollLeft = topSlider.scrollLeft;
-                const cardWidth = topSlider.children[0]?.offsetWidth || 1;
-                const idx = Math.round(scrollLeft / cardWidth);
-                if (idx !== activeIdx && idx >= 0 && idx < topSlider.children.length) {
-                    activeIdx = idx;
-                    window.currentMultiOrderIndex = idx;
-                    updateTabs(idx);
-                }
-            }, { passive: true });
-
-            if (window.currentMultiOrderIndex > 0 && window.scrollToSplitIndex) {
-                window.scrollToSplitIndex(window.currentMultiOrderIndex);
+            // 初始化分頁按鈕定位
+            if (activeIdx >= 0 && activeIdx < topSlider.children.length) {
+                updateTabs(activeIdx);
             }
         }
 
