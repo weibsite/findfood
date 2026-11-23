@@ -1540,6 +1540,44 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             return out;
         }
 
+                function _renderSubCardItemsHtml(splitItems) {
+            if (!Array.isArray(splitItems) || splitItems.length === 0) return '';
+            const lis = splitItems.map(it => {
+                let name = '';
+                let price = '';
+                if (it && it.text) {
+                    const parts = it.text.split('=');
+                    name = parts[0] ? parts[0].trim() : it.text;
+                    price = parts[1] ? parts[1].trim() : '';
+                } else if (it) {
+                    const q = it.qty || it.quantity || 1;
+                    name = `${it.name || it.title || '餐點'}${q > 1 ? ' x ' + q : ''}`;
+                    const p = it.price ?? it.total;
+                    price = p ? (String(p).startsWith('$') ? String(p) : '$' + p) : '';
+                }
+                const subLines = (it && Array.isArray(it.sub) && it.sub.length > 0)
+                    ? it.sub.map(s => `<div style="font-size:11.5px;color:var(--ink-3);padding-left:8px;margin-top:2px;">${escapeHtml(s)}</div>`).join('')
+                    : '';
+                return `<li style="display:block;padding:5px 0;border-bottom:1px dashed var(--line);">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;">
+                        <span style="color:var(--ink);font-weight:500;">${escapeHtml(name)}</span>
+                        <b style="color:var(--ink);">${escapeHtml(price)}</b>
+                    </div>
+                    ${subLines}
+                </li>`;
+            }).join('');
+
+            return `
+                <details class="items" style="margin-top:12px;">
+                    <summary style="font-size:13px;font-weight:600;color:var(--ink-2);cursor:pointer;outline:none;">餐點明細 (${splitItems.length} 項)</summary>
+                    <ul style="list-style:none;padding:6px 0 0;margin:0;">
+                        ${lis}
+                    </ul>
+                </details>
+            `;
+        }
+        window._renderSubCardItemsHtml = _renderSubCardItemsHtml;
+
         function _buildMultiSubCardHtml(ctx) {
             const { term, split, concise, url, address, idx, slotKey, switchState } = ctx;
             const subUuid = term.orderUuid || extractOrderUuid(url) || '';
@@ -1598,10 +1636,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                     <div class="seg-l"><span class="cur" style="color:var(--red);">已取消</span><span>備餐</span><span>外送</span><span>送達</span></div>
                     <div class="row"><small>外送夥伴</small><b style="color:var(--red);">無派單（訂單已取消）</b></div>
                     <div style="font-size:12px;color:var(--ink-3);margin:4px 0 10px;line-height:1.4;">${escapeHtml(cancelInfo.cancelReason || '店家目前無法處理您的訂單。')}</div>
-                    ${splitItems.length > 0 ? `
-                    <details class="items"><summary>餐點明細 (${splitItems.length} 項)</summary><ul>
-                        ${splitItems.map(it => `<li><span>${escapeHtml(it.name || it.title || '')} ${it.quantity ? 'x' + it.quantity : ''}</span><b>${escapeHtml(it.price || it.total || '')}</b></li>`).join('')}
-                    </ul></details>` : ''}
+                    ${_renderSubCardItemsHtml(splitItems)}
                     <div class="acts">
                         ${(url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders')
                             ? `<button class="btn ghost" type="button" onclick="window.open('${url}')">查看 Uber</button>`
@@ -1622,10 +1657,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                     <div style="margin:8px 0; border-radius:10px; overflow:hidden; max-height:160px; cursor:zoom-in;" onclick="zoomPhoto('${imgUrl}')">
                         <img src="${imgUrl}" alt="留置照片" style="width:100%; height:100%; object-fit:cover; display:block;" />
                     </div>` : ''}
-                    ${splitItems.length > 0 ? `
-                    <details class="items"><summary>餐點明細 (${splitItems.length} 項)</summary><ul>
-                        ${splitItems.map(it => `<li><span>${escapeHtml(it.name || it.title || '')} ${it.quantity ? 'x' + it.quantity : ''}</span><b>${escapeHtml(it.price || it.total || '')}</b></li>`).join('')}
-                    </ul></details>` : ''}
+                    ${_renderSubCardItemsHtml(splitItems)}
                     <div class="acts">
                         ${(url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders')
                             ? `<button class="btn ghost" type="button" onclick="window.open('${url}')">查看 Uber</button>`
@@ -1651,10 +1683,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                     <div class="seg-l"><span class="${cur1}">點餐</span><span class="${cur2}">備餐</span><span class="${cur3}">外送</span><span class="${cur4}">送達</span></div>
                     <div class="row"><small>外送夥伴</small><b>${escapeHtml(courierName)} (${escapeHtml(courierVehicle)})</b></div>
                     ${pinCode ? `<div class="pin-mini"><span>取餐 PIN 碼</span><b>${escapeHtml(pinCode)}</b></div>` : ''}
-                    ${splitItems.length > 0 ? `
-                    <details class="items"><summary>餐點明細 (${splitItems.length} 項)</summary><ul>
-                        ${splitItems.map(it => `<li><span>${escapeHtml(it.name || it.title || '')} ${it.quantity ? 'x' + it.quantity : ''}</span><b>${escapeHtml(it.price || it.total || '')}</b></li>`).join('')}
-                    </ul></details>` : ''}
+                    ${_renderSubCardItemsHtml(splitItems)}
                     <div class="acts">
                         ${(url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders')
                             ? `<button class="btn ghost" type="button" onclick="window.open('${url}')">查看 Uber</button>`
@@ -1870,6 +1899,9 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
+                if (parsedData && data) {
+                    orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', trackingUrls, splitResults, data.ext_order_ids || []);
+                }
                 orderTextArea.style.display = 'block';
             }
         }
@@ -2268,6 +2300,9 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
+                if (parsedData && data) {
+                    orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', trackingUrls, splitResults, data.ext_order_ids || []);
+                }
                 orderTextArea.style.display = 'block';
             }
         }
@@ -2951,6 +2986,9 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
+                if (parsedData && data) {
+                    orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', trackingUrls, splitResults, data.ext_order_ids || []);
+                }
                 orderTextArea.style.display = 'block';
             }
         }
@@ -2960,6 +2998,59 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
 
         // 雙向左右滑動連動同步器 (Sync deliveryStatusSlider & splitsDetailSlider)
+
+                function enableMouseDragScroll(slider) {
+            if (!slider || slider._hasMouseDrag) return;
+            slider._hasMouseDrag = true;
+            slider.style.cursor = 'grab';
+
+            let isDown = false;
+            let startX = 0;
+            let startScrollLeft = 0;
+            let hasDragged = false;
+
+            slider.addEventListener('mousedown', (e) => {
+                if (e.button !== 0 || e.target.closest('button, a, input, select, textarea, details, summary')) return;
+                isDown = true;
+                hasDragged = false;
+                slider.style.cursor = 'grabbing';
+                slider.style.userSelect = 'none';
+                slider.style.scrollSnapType = 'none';
+                startX = e.pageX - slider.offsetLeft;
+                startScrollLeft = slider.scrollLeft;
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                const x = e.pageX - slider.offsetLeft;
+                const walk = x - startX;
+                if (Math.abs(walk) > 4) {
+                    hasDragged = true;
+                    if (typeof markSliderInteraction === 'function') markSliderInteraction();
+                    slider.scrollLeft = startScrollLeft - walk;
+                }
+            });
+
+            const stopDrag = () => {
+                if (!isDown) return;
+                isDown = false;
+                slider.style.cursor = 'grab';
+                slider.style.removeProperty('user-select');
+                slider.style.scrollSnapType = 'x mandatory';
+            };
+
+            window.addEventListener('mouseup', stopDrag);
+
+            slider.addEventListener('wheel', (e) => {
+                if (slider.scrollWidth > slider.clientWidth) {
+                    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                        if (typeof markSliderInteraction === 'function') markSliderInteraction();
+                        slider.scrollLeft += e.deltaY;
+                        e.preventDefault();
+                    }
+                }
+            }, { passive: false });
+        }
 
         function setupSliderSync() {
             const topSlider = document.getElementById('deliveryStatusSlider');
@@ -3000,6 +3091,9 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                 }
                 setTimeout(() => { isSyncing = false; }, 400);
             };
+
+            enableMouseDragScroll(topSlider);
+            if (bottomSlider) enableMouseDragScroll(bottomSlider);
 
             ['touchstart', 'touchmove', 'mousedown'].forEach(evName => {
                 topSlider.addEventListener(evName, markSliderInteraction, { passive: true });
