@@ -331,6 +331,61 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
   <img id="zoomModalImg" src="" alt="放大照片" />
 </div>
 
+<!-- 外送放置位置與 GPS 座標抽屜 (#dropoffLocationModal) -->
+<div class="sheet-bg" id="dropoffLocationModal" aria-hidden="true" style="z-index:60;" onclick="if(event.target===this)closeDropoffLocationModal()">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dropoffModalTitle" onclick="event.stopPropagation()" style="height:auto; max-height:85vh;">
+    <div class="sheet-h">
+      <div>
+        <b id="dropoffModalTitle">外送放置位置</b>
+        <small id="dropoffModalSubtitle">送達現場與 GPS 座標</small>
+      </div>
+      <button class="x-btn" type="button" aria-label="關閉" onclick="closeDropoffLocationModal()">&times;</button>
+    </div>
+    <div style="padding:16px 18px 24px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+      <!-- GPS 座標卡片 -->
+      <div style="background:var(--page-bg,#f8fafc); border:1px solid var(--line,#e2e8f0); border-radius:12px; padding:12px 14px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <div style="overflow:hidden;">
+          <div style="font-size:11px; color:var(--ink-3,#64748b); font-weight:700; margin-bottom:2px;">📍 送達 GPS 座標</div>
+          <div id="dropoffModalCoords" style="font-size:13.5px; font-weight:700; color:var(--ink,#0f172a); font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">--</div>
+        </div>
+        <button type="button" id="dropoffCopyCoordsBtn" class="btn ghost" style="width:auto; min-height:28px; padding:0 10px; font-size:12px; border-radius:99px; flex-shrink:0;" onclick="copyDropoffCoords()">
+          複製座標
+        </button>
+      </div>
+
+      <!-- 送達地址 -->
+      <div style="font-size:13px; color:var(--ink-2,#334155); margin-bottom:12px; line-height:1.45; display:flex; gap:6px;">
+        <span style="flex-shrink:0;">🏠</span>
+        <div style="overflow:hidden; word-break:break-all;"><span style="color:var(--ink-3,#64748b);">目的地：</span><b id="dropoffModalAddress">--</b></div>
+      </div>
+
+      <!-- 地圖容器 (OpenLayers 互動地圖) -->
+      <div style="margin-bottom:12px;">
+        <div id="dropoffMapContainer" style="width:100%; height:200px; border-radius:12px; overflow:hidden; border:1px solid var(--line,#e2e8f0); position:relative; background:#f1f5f9;">
+          <div id="dropoffMapPlaceholder" style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--ink-3); font-size:12px;">載入地圖中...</div>
+        </div>
+      </div>
+
+      <!-- 現場留置照片 (若有的話) -->
+      <div id="dropoffModalPhotoWrap" style="margin-bottom:16px; display:none;">
+        <div style="font-size:11.5px; color:var(--ink-3,#64748b); font-weight:700; margin-bottom:4px;">📸 現場留置照片 (點擊放大)</div>
+        <div style="border-radius:10px; overflow:hidden; max-height:140px; cursor:zoom-in; border:1px solid var(--line);" onclick="zoomPhoto(window._curDropoffPhotoUrl)">
+          <img id="dropoffModalPhotoImg" src="" alt="現場留置照片" style="width:100%; height:100%; object-fit:cover; display:block;" />
+        </div>
+      </div>
+
+      <!-- 操作按鈕列 -->
+      <div style="display:flex; gap:8px;">
+        <a id="dropoffGoogleMapLink" href="#" target="_blank" class="btn" style="flex:1; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:5px; font-weight:700;">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px; height:14px;"><path d="M10 18s6-5.2 6-10a6 6 0 10-12 0c0 4.8 6 10 6 10z"/><circle cx="10" cy="8" r="2"/></svg>
+          Google 地圖導航 ↗
+        </a>
+        <button type="button" class="btn ghost" style="width:auto; min-width:70px; padding:0 14px;" onclick="closeDropoffLocationModal()">關閉</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 
     // 嚴格禁用任何客端設備定位請求 (我們只需追蹤外送員與餐點進度，絕不索取客人個人定位)
@@ -381,11 +436,205 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
         }
 
+        // 放置位置與送達 GPS 座標抽屜控制
+        window._curDropoffCoords = '';
+        window._curDropoffPhotoUrl = '';
+        window._dropoffOlMap = null;
+        window._dropoffOlSource = null;
 
+        function openDropoffLocationModal(lat, lng, address, storeName, imgUrl) {
+            const modal = document.getElementById('dropoffLocationModal');
+            if (!modal) return;
+
+            let parsedLat = (lat !== undefined && lat !== null && String(lat).trim() !== '' && String(lat) !== 'null' && String(lat) !== 'undefined') ? Number(lat) : null;
+            let parsedLng = (lng !== undefined && lng !== null && String(lng).trim() !== '' && String(lng) !== 'null' && String(lng) !== 'undefined') ? Number(lng) : null;
+            if (isNaN(parsedLat)) parsedLat = null;
+            if (isNaN(parsedLng)) parsedLng = null;
+
+            window._curDropoffCoords = (parsedLat && parsedLng) ? `${parsedLat}, ${parsedLng}` : '';
+            window._curDropoffPhotoUrl = imgUrl || '';
+
+            const subTitleEl = document.getElementById('dropoffModalSubtitle');
+            if (subTitleEl) subTitleEl.textContent = storeName ? `${storeName} · 送達現場與座標` : '送達現場與 GPS 座標';
+
+            const coordsEl = document.getElementById('dropoffModalCoords');
+            const copyBtn = document.getElementById('dropoffCopyCoordsBtn');
+            if (coordsEl) {
+                if (parsedLat && parsedLng) {
+                    coordsEl.textContent = `${parsedLat.toFixed(6)}, ${parsedLng.toFixed(6)}`;
+                    if (copyBtn) copyBtn.style.display = 'inline-block';
+                } else {
+                    coordsEl.textContent = '無精確座標資訊（依地址定位）';
+                    if (copyBtn) copyBtn.style.display = 'none';
+                }
+            }
+
+            const addrEl = document.getElementById('dropoffModalAddress');
+            if (addrEl) addrEl.textContent = address || '指定外送地址';
+
+            const gMapLink = document.getElementById('dropoffGoogleMapLink');
+            if (gMapLink) {
+                if (parsedLat && parsedLng) {
+                    gMapLink.href = `https://www.google.com/maps/search/?api=1&query=${parsedLat},${parsedLng}`;
+                    gMapLink.style.display = 'inline-flex';
+                } else if (address && address !== '指定外送地址') {
+                    gMapLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+                    gMapLink.style.display = 'inline-flex';
+                } else {
+                    gMapLink.style.display = 'none';
+                }
+            }
+
+            const photoWrap = document.getElementById('dropoffModalPhotoWrap');
+            const photoImg = document.getElementById('dropoffModalPhotoImg');
+            if (photoWrap && photoImg) {
+                if (imgUrl && String(imgUrl).trim() !== '' && String(imgUrl) !== 'null') {
+                    photoImg.src = imgUrl;
+                    photoWrap.style.display = 'block';
+                } else {
+                    photoWrap.style.display = 'none';
+                    photoImg.src = '';
+                }
+            }
+
+            modal.classList.add('open');
+            modal.style.display = 'flex';
+
+            _renderDropoffMap(parsedLat, parsedLng, address);
+        }
+        window.openDropoffLocationModal = openDropoffLocationModal;
+
+        function closeDropoffLocationModal() {
+            const modal = document.getElementById('dropoffLocationModal');
+            if (modal) {
+                modal.classList.remove('open');
+                modal.style.display = 'none';
+            }
+        }
+        window.closeDropoffLocationModal = closeDropoffLocationModal;
+
+        function copyDropoffCoords() {
+            const coords = window._curDropoffCoords;
+            if (!coords) return;
+            const btn = document.getElementById('dropoffCopyCoordsBtn');
+            const onDone = () => {
+                if (btn) {
+                    const original = btn.textContent;
+                    btn.textContent = '已複製 ✓';
+                    setTimeout(() => { btn.textContent = original; }, 2000);
+                }
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(coords).then(onDone).catch(() => {
+                    fallbackCopyText(coords);
+                    onDone();
+                });
+            } else {
+                fallbackCopyText(coords);
+                onDone();
+            }
+        }
+        window.copyDropoffCoords = copyDropoffCoords;
+
+        function fallbackCopyText(text) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            } catch (_e) {}
+        }
+
+        function _renderDropoffMap(lat, lng, address) {
+            const container = document.getElementById('dropoffMapContainer');
+            if (!container) return;
+
+            if (lat && lng && typeof ol !== 'undefined' && ol.Map) {
+                container.innerHTML = '';
+                const center = ol.proj.fromLonLat([Number(lng), Number(lat)]);
+                try {
+                    if (!window._dropoffOlMap) {
+                        const vectorSource = new ol.source.Vector();
+                        const vectorLayer = new ol.layer.Vector({
+                            source: vectorSource,
+                            zIndex: 10
+                        });
+                        window._dropoffOlSource = vectorSource;
+                        window._dropoffOlMap = new ol.Map({
+                            target: 'dropoffMapContainer',
+                            layers: [
+                                new ol.layer.Tile({
+                                    source: new ol.source.OSM()
+                                }),
+                                vectorLayer
+                            ],
+                            view: new ol.View({
+                                center: center,
+                                zoom: 17,
+                                maxZoom: 19
+                            }),
+                            controls: (ol.control && ol.control.defaults) ? ol.control.defaults({ attribution: false, zoom: true }) : []
+                        });
+                    } else {
+                        window._dropoffOlMap.setTarget('dropoffMapContainer');
+                        window._dropoffOlMap.getView().setCenter(center);
+                        window._dropoffOlMap.getView().setZoom(17);
+                    }
+
+                    window._dropoffOlSource.clear();
+                    const pinFeature = new ol.Feature({
+                        geometry: new ol.geom.Point(center)
+                    });
+                    pinFeature.setStyle(new ol.style.Style({
+                        image: new ol.style.Circle({
+                            radius: 9,
+                            fill: new ol.style.Fill({ color: '#16a34a' }),
+                            stroke: new ol.style.Stroke({ color: '#ffffff', width: 3.5 })
+                        })
+                    }));
+                    window._dropoffOlSource.addFeature(pinFeature);
+
+                    setTimeout(() => {
+                        if (window._dropoffOlMap) window._dropoffOlMap.updateSize();
+                    }, 120);
+                    return;
+                } catch (e) {
+                    console.warn('Dropoff OL Map init error:', e);
+                }
+            }
+
+            // Fallback: static tile or message
+            if (lat && lng) {
+                const x = Math.floor((Number(lng) + 180) / 360 * 32768);
+                const y = Math.floor((1 - Math.log(Math.tan(Number(lat) * Math.PI / 180) + 1 / Math.cos(Number(lat) * Math.PI / 180)) / Math.PI) / 2 * 32768);
+                const tileUrl = `https://a.basemaps.cartocdn.com/rastertiles/voyager/15/${x}/${y}.png?key=cb1_4rjx_1_2dc376e91234454a5297b6ba`;
+                container.innerHTML = `
+                    <div style="position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#e2e8f0;">
+                        <img src="${tileUrl}" alt="送達地圖" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none';" />
+                        <div style="position:absolute; font-size:24px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));">📍</div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--ink-3,#64748b); font-size:12.5px; text-align:center; padding:16px;">
+                        <div style="font-size:24px; margin-bottom:4px;">📍</div>
+                        <div>無 GPS 經緯度座標記錄</div>
+                        <div style="font-size:11px; margin-top:2px;">請點擊下方導航依地址開啟 Google 地圖</div>
+                    </div>
+                `;
+            }
+        }
 
         document.addEventListener('keydown', (e) => {
 
-            if (e.key === 'Escape') closeZoom();
+            if (e.key === 'Escape') {
+                closeZoom();
+                closeDropoffLocationModal();
+            }
 
         });
 
@@ -1647,8 +1896,17 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             } else if (concise.stepIndex === 4) {
                 // 已送達
                 const imgUrl = term.imgUrl || term.photoUrl || '';
+                const subLat = term.latitude || (term.destination && term.destination.latitude) || (term.dropoffLocation && term.dropoffLocation.latitude) || (term.courier && term.courier.latitude) || '';
+                const subLng = term.longitude || (term.destination && term.destination.longitude) || (term.dropoffLocation && term.dropoffLocation.longitude) || (term.courier && term.courier.longitude) || '';
+                const subAddr = (term.destination && term.destination.address) || (split && split.address) || address || '';
                 innerHtml += `
-                    <div class="eta"><strong>已送達</strong><span>外送完成</span></div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:4px;">
+                        <div class="eta" style="margin:0;"><strong>已送達</strong><span>外送完成</span></div>
+                        <button type="button" class="btn ghost" style="width:auto; min-height:28px; padding:0 10px; font-size:12px; margin:0; border-radius:99px; display:inline-flex; align-items:center; gap:4px; flex-shrink:0; font-weight:600;" onclick="openDropoffLocationModal('${_escJsAttr(subLat)}', '${_escJsAttr(subLng)}', '${_escJsAttr(subAddr)}', '${_escJsAttr(store)}', '${_escJsAttr(imgUrl)}')">
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:13px; height:13px;"><path d="M10 18s6-5.2 6-10a6 6 0 10-12 0c0 4.8 6 10 6 10z"/><circle cx="10" cy="8" r="2"/></svg>
+                            放置位置
+                        </button>
+                    </div>
                     <p class="state">${escapeHtml(concise.stateText)}</p>
                     <div class="seg" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
                     <div class="seg-l"><span>點餐</span><span>備餐</span><span>外送</span><span class="cur">送達</span></div>
@@ -1662,7 +1920,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                         ${(url && !term.isUntracked && url.trim() !== 'https://www.ubereats.com/tw/orders/' && url.trim() !== 'https://www.ubereats.com/tw/orders')
                             ? `<button class="btn ghost" type="button" onclick="window.open('${url}')">查看 Uber</button>`
                             : `<button class="btn ghost" type="button" disabled>無追蹤網址</button>`}
-                        ${imgUrl ? `<button class="btn" type="button" onclick="zoomPhoto('${imgUrl}')">留置照片</button>` : `<button class="btn" type="button" disabled>已完成</button>`}
+                        ${imgUrl ? `<button class="btn" type="button" onclick="zoomPhoto('${imgUrl}')">留置照片</button>` : `<button class="btn" type="button" onclick="openDropoffLocationModal('${_escJsAttr(subLat)}', '${_escJsAttr(subLng)}', '${_escJsAttr(subAddr)}', '${_escJsAttr(store)}', '${_escJsAttr(imgUrl)}')">放置位置</button>`}
                     </div>
                 `;
             } else {
@@ -2276,10 +2534,13 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
                 <!-- 操作按鈕卡片 -->
                 <div class="card pad">
+                    <button type="button" class="btn" style="margin-bottom:8px; display:inline-flex; align-items:center; justify-content:center; gap:6px;" onclick="openDropoffLocationModal('${lat || ''}', '${lng || ''}', '${esc(address)}', '${esc(storeName)}', '${esc(imgUrl)}')">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:15px; height:15px;"><path d="M10 18s6-5.2 6-10a6 6 0 10-12 0c0 4.800 6 10 6 10z"/><circle cx="10" cy="8" r="2"/></svg>
+                        放置位置與 GPS 座標
+                    </button>
                     ${googleMapUrl ? `
-                    <a class="btn" href="${googleMapUrl}" target="_blank">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 18s6-5.2 6-10a6 6 0 10-12 0c0 4.800 6 10 6 10z"/><circle cx="10" cy="8" r="2"/></svg>
-                        開啟送達地圖
+                    <a class="btn ghost" href="${googleMapUrl}" target="_blank">
+                        開啟 Google 地圖
                     </a>` : ''}
                     ${primaryUrl ? `
                     <a class="btn ghost" href="${primaryUrl}" target="_blank">
