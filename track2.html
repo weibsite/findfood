@@ -1218,18 +1218,31 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             return await p;
         }
 
-        function _findMultiCardBySlotKey(slotKey) {
-            const cards = document.querySelectorAll('.split-slide-card[data-slot-key]');
+        function _makeMultiSlotKey(uuidOrKey, i) {
+            if (typeof uuidOrKey === 'string' && uuidOrKey.startsWith('sub_')) return uuidOrKey;
+            return 'sub_' + (i ?? 0);
+        }
+        window._makeMultiSlotKey = _makeMultiSlotKey;
+
+        function _getSlotSwitchState(slotKey) {
+            return (window._cardSwitchState && window._cardSwitchState[slotKey]) || null;
+        }
+        window._getSlotSwitchState = _getSlotSwitchState;
+
+        function _findMultiCardBySlotKey(slotKey, idx) {
+            const cards = document.querySelectorAll('.sub[data-slot-key], .split-slide-card[data-slot-key]');
             for (const c of cards) {
                 if (c.getAttribute('data-slot-key') === slotKey) return c;
+                if (typeof idx === 'number' && c.getAttribute('data-sub-idx') === String(idx)) return c;
             }
             return null;
         }
 
-        function _findMultiTabBySlotKey(slotKey) {
-            const tabs = document.querySelectorAll('#splitTabsContainer .split-tab-btn[data-slot-key]');
+        function _findMultiTabBySlotKey(slotKey, idx) {
+            const tabs = document.querySelectorAll('#splitTabsContainer .tab[data-slot-key], #splitTabsContainer .split-tab-btn[data-slot-key]');
             for (const t of tabs) {
                 if (t.getAttribute('data-slot-key') === slotKey) return t;
+                if (typeof idx === 'number' && t.getAttribute('data-sub-idx') === String(idx)) return t;
             }
             return null;
         }
@@ -1653,8 +1666,30 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             `;
         }
 
-        function _updateSingleMultiCardAndTabDom(slotKey, term, split, concise, url, address, idx, switchState) {
-            const cardEl = _findMultiCardBySlotKey(slotKey, idx);
+        function _updateSingleMultiCardAndTabDom(slotKey, termRes, arg3, arg4, arg5, arg6, arg7, arg8) {
+            let term, split, concise, url, address, idx, switchState;
+            const state = window._cardSwitchState[slotKey];
+            const cardEl = _findMultiCardBySlotKey(slotKey);
+            const displayIdx = cardEl ? parseInt(cardEl.getAttribute('data-sub-idx') || cardEl.getAttribute('data-idx') || '0', 10) : 0;
+
+            if (arguments.length <= 3) {
+                term = termRes;
+                url = arg3 || '';
+                idx = displayIdx;
+                split = (window.lastParsedData && window.lastParsedData.splits && window.lastParsedData.splits[displayIdx]) || {};
+                concise = getSubOrderConciseStatus(term, Boolean(term && term._isSwitched));
+                address = (window.lastParsedData && window.lastParsedData.address) || '指定外送地址';
+                switchState = state;
+            } else {
+                term = termRes;
+                split = arg3 || {};
+                concise = arg4 || getSubOrderConciseStatus(term, Boolean(term && term._isSwitched));
+                url = arg5 || '';
+                address = arg6 || '';
+                idx = (typeof arg7 === 'number') ? arg7 : displayIdx;
+                switchState = arg8 || state;
+            }
+
             if (cardEl) {
                 const newCardHtml = _buildMultiSubCardHtml({ term, split, concise, url, address, idx, slotKey, switchState });
                 const tmp = document.createElement('div');
@@ -1664,6 +1699,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                     cardEl.className = freshArticle.className;
                     cardEl.innerHTML = freshArticle.innerHTML;
                     cardEl.setAttribute('data-slot-key', slotKey);
+                    cardEl.setAttribute('data-sub-idx', String(idx));
                     if (freshArticle.getAttribute('data-sub-uuid')) {
                         cardEl.setAttribute('data-sub-uuid', freshArticle.getAttribute('data-sub-uuid'));
                     }
@@ -1680,7 +1716,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                     fallbackStore: (term && term.store && term.store.name) || fallbackSplitStore,
                     defaultName: `店家 ${idx + 1}`
                 });
-                tabBtn.className = `tab ${concise.statusClass}` + (tabBtn.classList.contains('active') ? ' active' : '');
+                tabBtn.className = `tab ${concise ? concise.statusClass : ''}` + (tabBtn.getAttribute('aria-selected') === 'true' ? ' active' : '');
                 tabBtn.innerHTML = `<i></i><span>${escapeHtml(formatStoreMiddle(storeName))}</span>`;
             }
         }
@@ -2818,7 +2854,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
         }
 
-        function renderMultiDeliveredStage(splitResults, parsedData, data, isBackgroundRefresh = false) {
+        function renderMultiDeliveredStage(splitResults, parsedData, data, trackingUrls) {
             window.isMultiOrderMode = true;
             window.currentRenderedStage = 'multi';
             window.hasRenderedOrderOnce = true;
@@ -2829,25 +2865,30 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             const statusArea = document.getElementById('trackStatusArea');
             if (!statusArea) return;
 
+            trackingUrls = trackingUrls || [];
+            parsedData = parsedData || {};
+            data = data || {};
+            splitResults = splitResults || [];
+
             const activeIndex = window.currentMultiOrderIndex || 0;
             const items = splitResults.map((r, i) => {
-                const term = r.term || {};
-                const split = r.split || {};
-                const url = r.url || '';
-                const address = (term && term.destination && term.destination.address) || (split && split.address) || parsedData.address || '';
-                const concise = getSubOrderConciseStatus(term, Boolean(term._isSwitched));
-                const slotKey = _makeMultiSlotKey(r.orderUuid || extractOrderUuid(url), i);
+                const term = (r && r.term) ? r.term : (r || {});
+                const split = (r && r.split) ? r.split : ((parsedData && parsedData.splits && parsedData.splits[i]) || {});
+                const url = (r && r.url) ? r.url : ((trackingUrls && trackingUrls[i]) || '');
+                const address = (term && term.destination && term.destination.address) || (split && split.address) || (parsedData && parsedData.address) || '';
+                const concise = getSubOrderConciseStatus(term, Boolean(term && term._isSwitched));
+                const slotKey = (r && r._slotKey) || (split && split._slotKey) || _makeMultiSlotKey(r && (r.orderUuid || (typeof extractOrderUuid === 'function' ? extractOrderUuid(url) : '')), i);
                 const switchState = _getSlotSwitchState(slotKey);
                 return { term, split, concise, url, address, idx: i, slotKey, switchState };
             });
 
             let goCount = 0, prepCount = 0, doneCount = 0, planCount = 0, xCount = 0;
             items.forEach(it => {
-                if (it.concise.statusClass === 's-go') goCount++;
-                else if (it.concise.statusClass === 's-prep') prepCount++;
-                else if (it.concise.statusClass === 's-done') doneCount++;
-                else if (it.concise.statusClass === 's-plan') planCount++;
-                else if (it.concise.statusClass === 's-x') xCount++;
+                if (it.concise && it.concise.statusClass === 's-go') goCount++;
+                else if (it.concise && it.concise.statusClass === 's-prep') prepCount++;
+                else if (it.concise && it.concise.statusClass === 's-done') doneCount++;
+                else if (it.concise && it.concise.statusClass === 's-plan') planCount++;
+                else if (it.concise && it.concise.statusClass === 's-x') xCount++;
             });
 
             const chipsHtml = `
@@ -2861,7 +2902,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             const tabsHtml = items.map((it, i) => {
                 const store = it.split.store || (it.term.store && it.term.store.name) || `店家 ${i + 1}`;
                 const isActive = (i === activeIndex);
-                return `<button type="button" class="tab ${it.concise.statusClass}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" onclick="scrollToSplitIndex(${i})">
+                return `<button type="button" class="tab ${it.concise ? it.concise.statusClass : ''}" data-slot-key="${escapeHtml(it.slotKey)}" data-sub-idx="${i}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" onclick="scrollToSplitIndex(${i})">
                     <i></i><span>${escapeHtml(formatStoreMiddle(store))}</span>
                 </button>`;
             }).join('');
@@ -2893,6 +2934,8 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
                 orderTextArea.style.display = 'block';
             }
         }
+
+        
 
 
 
