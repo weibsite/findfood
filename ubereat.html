@@ -745,6 +745,13 @@
 // ============================================================
 window.ENABLE_PICKUP_FREE_DELIVERY = false;
 
+// ============================================================
+// 【外送費計算門檻設定】(可程式開關/數值)
+// 實際計算門檻：40 元 (低於40免運，超過40收取差額加成)
+// 介面提示文字：依然顯示「超過50」字樣
+// ============================================================
+window.FREE_DELIVERY_CALC_THRESHOLD = 40;
+
 function isPickupFreeDeliveryEnabled() {
     try {
         if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
@@ -6188,7 +6195,7 @@ async function handleQuickAdd(event, storeUuid, sectionUuid, subsectionUuid, men
 
             storeCanPickup: (typeof isPickupFreeDeliveryEnabled === 'function' && isPickupFreeDeliveryEnabled() && typeof window.currentStoreCanPickup !== 'undefined') ? window.currentStoreCanPickup : false,
       storeDeliveryFee: (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
-      originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
+      originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + ((typeof window.FREE_DELIVERY_CALC_THRESHOLD === 'number') ? window.FREE_DELIVERY_CALC_THRESHOLD : 40) : 0)
 
           };
 
@@ -7364,7 +7371,7 @@ html += `<div id="planACard" style="background:#f9f9f9; padding:10px; border-rad
           const sg = {};
           cart.forEach(it => { if(!sg[it.storeName||'']) sg[it.storeName||'']=[]; sg[it.storeName||''].push(it); });
           Object.keys(sg).forEach(s => {
-              totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + 50 : 0))));
+              totalOrigExcess += Math.max(0, ...sg[s].map(it => (typeof it.originalStoreDeliveryFee !== 'undefined' ? it.originalStoreDeliveryFee : (it.storeDeliveryFee > 0 ? it.storeDeliveryFee + ((typeof window.FREE_DELIVERY_CALC_THRESHOLD === 'number') ? window.FREE_DELIVERY_CALC_THRESHOLD : 40) : 0))));
           });
 
           const pd = total >= promoCap ? maxPromoVal : Math.floor(total/2);
@@ -9744,7 +9751,7 @@ const note = document.getElementById('modalNote').value.trim();
 
       storeCanPickup: (typeof isPickupFreeDeliveryEnabled === 'function' && isPickupFreeDeliveryEnabled() && typeof window.currentStoreCanPickup !== 'undefined') ? window.currentStoreCanPickup : false,
       storeDeliveryFee: (typeof currentStoreDeliveryFee !== 'undefined' ? currentStoreDeliveryFee : 0),
-      originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + 50 : 0)
+      originalStoreDeliveryFee: typeof currentOriginalDeliveryFee !== 'undefined' ? currentOriginalDeliveryFee : (typeof currentStoreDeliveryFee !== 'undefined' && currentStoreDeliveryFee > 0 ? currentStoreDeliveryFee + ((typeof window.FREE_DELIVERY_CALC_THRESHOLD === 'number') ? window.FREE_DELIVERY_CALC_THRESHOLD : 40) : 0)
 
     };
 
@@ -10869,7 +10876,8 @@ async function openStore(uuid, storeName, actionUrl = '', skipFetch = false, din
           fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費</div>`;
       } else if (!window.isGroceryStore && d && d.fareInfo && typeof d.fareInfo.serviceFee === 'number') {
           const fee = d.fareInfo.serviceFee;
-          const displayFee = fee > 50 ? (fee - 50) : 0;
+          const calcThreshold = (typeof window.FREE_DELIVERY_CALC_THRESHOLD === 'number') ? window.FREE_DELIVERY_CALC_THRESHOLD : 40;
+          const displayFee = fee > calcThreshold ? (fee - calcThreshold) : 0;
           if (displayFee <= 0) {
               currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = fee;
               fareHtml = `<div id="storeFareArea" style="text-align: center; color: #d32f2f; font-size: 14px; margin-bottom: 10px; font-weight: bold;">🚚 免外送費</div>`;
@@ -11296,7 +11304,8 @@ if (window.isGroceryStore && d.hours && Array.isArray(d.hours)) {
                           fareArea.style.display = 'block';
                       }
                   } else if (fee !== null) {
-                      let displayFee = fee > 50 ? (fee - 50) : 0;
+                      const calcThreshold = (typeof window.FREE_DELIVERY_CALC_THRESHOLD === 'number') ? window.FREE_DELIVERY_CALC_THRESHOLD : 40;
+                      let displayFee = fee > calcThreshold ? (fee - calcThreshold) : 0;
                       if (displayFee <= 0) {
                           currentStoreDeliveryFee = 0; currentOriginalDeliveryFee = fee;
                           if (fareArea) {
