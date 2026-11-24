@@ -411,9 +411,21 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
 
     } catch(e) {}
 
+    // HTML 特殊字元跳脫保護函式 (全域共用，防護 XSS 並支援範本安全引數)
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+    const esc = escapeHtml;
+    window.escapeHtml = escapeHtml;
+    window.esc = esc;
 
-
-        // 留置照片放大燈箱控制
+    // 留置照片放大燈箱控制
 
         function zoomPhoto(imgUrl) {
 
@@ -2167,7 +2179,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
                 if (parsedData && data) {
-                    orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', trackingUrls, splitResults, data.ext_order_ids || []);
+                    orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', [primaryUrl], [{ status: 'canceled' }], data.ext_order_ids || []);
                 }
                 orderTextArea.style.display = 'block';
             }
@@ -2571,7 +2583,7 @@ a:focus-visible,button:focus-visible{outline:3px solid #2f8f6b;outline-offset:2p
             const orderTextArea = document.getElementById('trackOrderText');
             if (orderTextArea) {
                 if (parsedData && data) {
-                    orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', trackingUrls, splitResults, data.ext_order_ids || []);
+                    orderTextArea.innerHTML = renderOrderDetails(parsedData, data.text || '', [primaryUrl], [{ status: 'delivered' }], data.ext_order_ids || []);
                 }
                 orderTextArea.style.display = 'block';
             }
