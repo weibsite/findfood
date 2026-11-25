@@ -1,34 +1,4 @@
-
-
-// Specific function to handle delivery method toggle
-function setDeliveryMethod(method, fromUser = false) {
-    if (typeof window.setDeliveryMethod === 'function') {
-        window.setDeliveryMethod(method, fromUser);
-    }
-}
-
-
-
-// Override switchVertical to update modern tabs UI
-var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
-switchVertical = function(v) {
-    originalSwitchVertical(v);
-    if(v === 'SHOP') {
-        document.getElementById('verticalBtnShop').className = 'active';
-        document.getElementById('verticalBtnRest').className = 'inactive';
-    } else {
-        document.getElementById('verticalBtnShop').className = 'inactive';
-        document.getElementById('verticalBtnRest').className = 'active';
-    }
-};
-
-// Restore visual state on load for delivery method
-document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-        const savedMethod = localStorage.getItem('userDeliveryMethod') || '當面點交';
-        setDeliveryMethod(savedMethod);
-    }, 500);
-});
+// Delivery method helpers (setDeliveryMethod defined in 01_config.js)
 window.doStoreKeywordSearch = function(kw) {
 
       const box = document.getElementById('headerSearchBox');

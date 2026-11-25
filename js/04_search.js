@@ -538,7 +538,8 @@
 
 
 
-  let currentVertical = 'RESTAURANTS';
+  var currentVertical = (typeof currentVertical !== 'undefined' ? currentVertical : (window.currentVertical || 'RESTAURANTS'));
+window.currentVertical = currentVertical;
 
   
   function handleHeroClick(mode) {
@@ -577,11 +578,24 @@
   function switchVertical(mode) {
       if (mode && currentVertical === mode) return;
       currentVertical = mode ? mode : (currentVertical === 'RESTAURANTS' ? 'SHOP' : 'RESTAURANTS');
+      window.currentVertical = currentVertical;
       
       const btnShop = document.getElementById('verticalBtnShop');
       const btnShopMob = document.getElementById('verticalBtnShopMobile');
       const btnRest = document.getElementById('verticalBtnRest');
       const btnRestMob = document.getElementById('verticalBtnRestMobile');
+      
+      if (currentVertical === 'SHOP') {
+          if (btnShop) btnShop.className = 'active';
+          if (btnRest) btnRest.className = 'inactive';
+          if (btnShopMob) btnShopMob.className = 'active';
+          if (btnRestMob) btnRestMob.className = 'inactive';
+      } else {
+          if (btnShop) btnShop.className = 'inactive';
+          if (btnRest) btnRest.className = 'active';
+          if (btnShopMob) btnShopMob.className = 'inactive';
+          if (btnRestMob) btnRestMob.className = 'active';
+      }
       
       const queryInput = document.getElementById('query');
       const queryInputMob = document.getElementById('globalSearchInputMobile');
@@ -627,6 +641,8 @@
       }
   }
 
+  window.switchVertical = switchVertical;
+  window.toggleVertical = toggleVertical;
   function toggleVertical() {
       switchVertical(currentVertical === 'RESTAURANTS' ? 'SHOP' : 'RESTAURANTS');
   }

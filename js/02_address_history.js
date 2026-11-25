@@ -368,7 +368,8 @@
 
   // 初始化 UI 與設定
 
-  let liffInitPromise = null;
+  var liffInitPromise = window.liffInitPromise || null;
+  window.liffInitPromise = liffInitPromise;
 
   document.addEventListener("DOMContentLoaded", async () => {
   // Restore delivery method and notes for ALL inputs
@@ -457,37 +458,55 @@
       });
   }
 
-  liffInitPromise = liff.init({ liffId: "2011657436-rGVj5SoG" }).catch(err => {
+  liffInitPromise = window.__LIFF_INIT_PROMISE__ || liff.init({ liffId: "2011657436-rGVj5SoG" }).catch(err => {
       console.error('LIFF init failed', err);
   });
 
-    
-
-    try {
-
-      const configRes = await fetch('config.json?t=' + Date.now());
-
-      if (configRes.ok) {
-
-        const configData = await configRes.json();
-
-        const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        if (isLocalHost) {
-          API_BASE_URL = window.location.origin;
-        } else if (configData.api_url) {
-          API_BASE_URL = configData.api_url.replace(/\/$/, '');
-        } else if (configData.line_url) {
-          API_BASE_URL = configData.line_url.replace(/\/$/, '');
+    if (window.__UE_GATE_CFG__) {
+      const cfg = window.__UE_GATE_CFG__;
+      const isLocalBackend = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+                             (window.location.port === '5000' || window.location.port === '8000');
+      if (isLocalBackend) {
+        API_BASE_URL = window.location.origin;
+      } else if (cfg.api_url) {
+        API_BASE_URL = String(cfg.api_url).replace(/\/$/, '');
+      } else if (cfg.line_url) {
+        API_BASE_URL = String(cfg.line_url).replace(/\/$/, '');
+      }
+      if (cfg.ws_url) WS_URL = cfg.ws_url;
+      window.API_BASE_URL = API_BASE_URL;
+      window.WS_URL = WS_URL;
+    } else {
+      try {
+        let configRes = null;
+        try {
+          configRes = await fetch('config.json?t=' + Date.now());
+        } catch (err1) {
+          try {
+            configRes = await fetch('./config.json?t=' + Date.now());
+          } catch (err2) {
+            configRes = await fetch('../config.json?t=' + Date.now());
+          }
         }
 
-        if (configData.ws_url) WS_URL = configData.ws_url;
+        if (configRes && configRes.ok) {
+          const configData = await configRes.json();
+          const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          if (isLocalHost) {
+            API_BASE_URL = window.location.origin;
+          } else if (configData.api_url) {
+            API_BASE_URL = configData.api_url.replace(/\/$/, '');
+          } else if (configData.line_url) {
+            API_BASE_URL = configData.line_url.replace(/\/$/, '');
+          }
 
+          if (configData.ws_url) WS_URL = configData.ws_url;
+          window.API_BASE_URL = API_BASE_URL;
+          window.WS_URL = WS_URL;
+        }
+      } catch (e) {
+        console.log('找不到 config.json，將使用預設路徑。');
       }
-
-    } catch (e) {
-
-      console.log('找不到 config.json，將使用預設路徑。');
-
     }
 
     

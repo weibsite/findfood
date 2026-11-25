@@ -342,10 +342,23 @@ function buildSplitSuggestionHtml(result) {
 
   window.errorModalCloseCallback = null;
 
+  const _BYPASS_PWD_HASH = '5a9f126db7c29f9c';
+  function _hashBypassPwd(s) {
+    const x = 'ue_bp_' + String(s) + '_2026';
+    let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+    for (let i = 0; i < x.length; i++) {
+        const c = x.charCodeAt(i);
+        h1 = Math.imul(h1 ^ c, 0x01000193);
+        h2 = Math.imul(h2 ^ (c + i), 0x85ebca6b);
+    }
+    return (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+  }
+
   // 🌟 檢查是否已由密碼解鎖忽略「暫時無法接單」狀態
   window.isClosedStatusBypassed = function() {
     try {
-        return localStorage.getItem('bypass_closed_status') === '5318';
+        const saved = localStorage.getItem('bypass_closed_status');
+        return saved === _BYPASS_PWD_HASH || Boolean(saved && saved.length === 4 && _hashBypassPwd(saved) === _BYPASS_PWD_HASH);
     } catch (e) {
         return false;
     }
@@ -393,9 +406,9 @@ function buildSplitSuggestionHtml(result) {
   window.verifyBypassPassword = function() {
     const input = document.getElementById('bypassClosedPwdInput');
     const val = input ? input.value.trim() : '';
-    if (val === '5318') {
+    if (_hashBypassPwd(val) === _BYPASS_PWD_HASH) {
         try {
-            localStorage.setItem('bypass_closed_status', '5318');
+            localStorage.setItem('bypass_closed_status', _BYPASS_PWD_HASH);
         } catch (e) {
             console.error('localStorage error', e);
         }
@@ -478,7 +491,7 @@ function buildSplitSuggestionHtml(result) {
     }
 
     if (title === '代訂睡覺中' || title === '目前暫時無法接單') {
-        document.getElementById('errorModalIcon').innerHTML = '<img class="sleep-icon-img" src="https://weibsite.github.io/findfood/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1)); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;">';
+        document.getElementById('errorModalIcon').innerHTML = '<img class="sleep-icon-img" draggable="false" src="https://9ysong.shop/image/sleep.gif" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1)); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;">';
     } else if (title === '外送時間說明' || title === '外送方式說明') {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:42px; line-height:1;">ℹ️</div>';
     } else if (title === '購物車是空的') {
@@ -494,7 +507,7 @@ function buildSplitSuggestionHtml(result) {
     } else if (title.includes('地址') || title.includes('送達')) {
         document.getElementById('errorModalIcon').innerHTML = '<div style="font-size:48px; line-height:1;">📍</div>';
     } else {
-        document.getElementById('errorModalIcon').innerHTML = isError ? '<img src="https://weibsite.github.io/findfood/image/wait.png" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">' : '✅';
+        document.getElementById('errorModalIcon').innerHTML = isError ? '<img draggable="false" src="https://9ysong.shop/image/wait.png" style="height: 120px; width: auto; object-fit: contain; vertical-align: middle; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.1));">' : '✅';
     }
 
     document.getElementById('errorModalIcon').style.color = isError ? '#d32f2f' : '#f43f5e';

@@ -1,3 +1,48 @@
+// ============================================================
+// 全域核心設定與狀態 (Global Application State & Config)
+// ============================================================
+var isAddressSet = false;
+window.isAddressSet = false;
+
+var currentLat = null;
+window.currentLat = null;
+
+var currentLng = null;
+window.currentLng = currentLng;
+
+var currentAddrTitle = '';
+window.currentAddrTitle = currentAddrTitle;
+
+var scheduleMode = 'ASAP';
+window.scheduleMode = scheduleMode;
+
+var selectedDateIndex = 0;
+window.selectedDateIndex = 0;
+
+var datesData = [];
+window.datesData = datesData;
+
+var currentVertical = 'RESTAURANTS';
+window.currentVertical = currentVertical;
+
+var isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+var API_BASE_URL = isLocalEnv ? window.location.origin : 'https://api.9ysong.shop';
+window.API_BASE_URL = API_BASE_URL;
+
+var WS_URL = 'wss://api.9ysong.shop/ws';
+try {
+    var protocol = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'wss:' : 'ws:';
+    var host = (typeof window !== 'undefined' && window.location.hostname) ? window.location.hostname : '127.0.0.1';
+    WS_URL = protocol + '//' + host + ':8000/ws';
+    window.WS_URL = WS_URL;
+} catch (e) {}
+
+var isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (typeof window !== 'undefined' && window.innerWidth <= 768);
+window.isMobileDevice = isMobileDevice;
+
+var isDesktopDevice = !isMobileDevice;
+window.isDesktopDevice = isDesktopDevice;
+
 
 // ============================================================
 // 排除自取免運店家管理 (強制收取外送加成，不享自取免運)
@@ -252,19 +297,7 @@ window.setDeliveryMethod = setDeliveryMethod;
 
 
 
-// Override switchVertical to update modern tabs UI
-var originalSwitchVertical = window.originalSwitchVertical || switchVertical;
-switchVertical = function(v) {
-    originalSwitchVertical(v);
-    if(v === 'SHOP') {
-        document.getElementById('verticalBtnShop').className = 'active';
-        document.getElementById('verticalBtnRest').className = 'inactive';
-    } else {
-        document.getElementById('verticalBtnShop').className = 'inactive';
-        document.getElementById('verticalBtnRest').className = 'active';
-    }
-};
-
+// (switchVertical override unified in 04_search.js)
 // Restore visual state on load for delivery method
 try {
     if (localStorage.getItem('unSchedulableCacheVer') !== '3') {
@@ -333,28 +366,7 @@ function getSelectedScheduleTimestamp() {
       }
   }
 
-  const isLocalEnv = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  let API_BASE_URL = isLocalEnv ? window.location.origin : 'https://api.9ysong.shop';
-
-  let WS_URL = 'wss://api.9ysong.shop/ws';
-
-  
-
-  // 動態取得預設的連線位置
-
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-  const host = window.location.hostname || '127.0.0.1';
-
-  WS_URL = `${protocol}//${host}:8000/ws`;
-
-  
-
-  // 設備檢測機制 (判斷是手機還是電腦)
-
-const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
-
-const isDesktopDevice = !isMobileDevice;
+  // (API_BASE_URL, WS_URL, isMobileDevice declared at top of 01_config.js)
 
 
 
@@ -396,19 +408,7 @@ function copyToClipboardFallback(text, btn) {
 
 
 
-let isAddressSet = false;
-
-  let currentLat = null;
-
-  let currentLng = null;
-
-  let currentAddrTitle = '';
-
-  let scheduleMode = 'ASAP';
-
-  let selectedDateIndex = 0;
-
-  const datesData = [];
+// (isAddressSet, scheduleMode, etc. declared at top of 01_config.js)
 
   
 
