@@ -27,7 +27,7 @@
 
   
 
-  .spinner { width: 100px !important; height: 100px !important; background: url('http://weibsite.github.io/findDOG/image/LOADING.gif') center/contain no-repeat; border: none !important; border-radius: 0; animation: none !important; margin: 0 auto; display: block; }
+  .spinner { width: 100px !important; height: 100px !important; background: url('https://9ysong.shop/LOADING.gif') center/contain no-repeat; border: none !important; border-radius: 0; animation: none !important; margin: 0 auto; display: block; }
   button .spinner { width: 36px !important; height: 36px !important; }
 
   /* Removed @keyframes spin since we use GIF now */
@@ -297,4 +297,22 @@
 @keyframes gwPop {
   0% { transform: scale(0.85); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
+}
+
+/* Anti-Copy & Anti-Drag Protections */
+body, .container, #homeView, #listView, #storeView, #cartView, #checkoutView, .modal, #errorModalCard {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, select, [contenteditable="true"], #gbShareLinkInput, .selectable-text {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
