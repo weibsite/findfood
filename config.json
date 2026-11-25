@@ -1,4 +1,5 @@
 {
     "ws_url": "wss://api.9ysong.shop/ws",
-    "line_url": "https://api.9ysong.shop"
+    "line_url": "https://api.9ysong.shop",
+    "api_url": "https://api.9ysong.shop"
 }
